@@ -2,6 +2,7 @@ package com.veil.music.util
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.content.FileProvider
 import com.veil.music.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -105,15 +106,24 @@ object UpdateChecker {
         val notes = obj.optString("body").trim()
         var apkUrl = ""
         var size = 0L
-        obj.optJSONArray("assets")?.let { assets ->
-            for (i in 0 until assets.length()) {
-                val a = assets.getJSONObject(i)
-                if (a.optString("name").endsWith(".apk", ignoreCase = true)) {
-                    apkUrl = a.optString("browser_download_url")
-                    size = a.optLong("size")
-                    break
+        // 发布包按 ABI 拆成两个（app-arm64-v8a… / app-armeabi-v7a…）。装错架构系统会直接拒装，
+        // 所以先挑名字里带本机 ABI 的那个；没有（例如只发了合并包）才退回第一个 .apk。
+        val abis = Build.SUPPORTED_ABIS.map { it.lowercase() }
+        val apks = buildList {
+            obj.optJSONArray("assets")?.let { assets ->
+                for (i in 0 until assets.length()) {
+                    val a = assets.getJSONObject(i)
+                    if (a.optString("name").endsWith(".apk", ignoreCase = true)) add(a)
                 }
             }
+        }
+        val apk = apks.firstOrNull { a ->
+            val name = a.optString("name").lowercase()
+            abis.any { name.contains(it) }
+        } ?: apks.firstOrNull()
+        if (apk != null) {
+            apkUrl = apk.optString("browser_download_url")
+            size = apk.optLong("size")
         }
         // Defence-in-depth: only ever install over TLS.
         if (!apkUrl.startsWith("https://")) return null
