@@ -35,6 +35,18 @@ android {
         buildConfig = true
     }
 
+    // 按 ABI 拆包：电视盒子只有 arm64-v8a（64 位系统）与 armeabi-v7a（老 32 位盒子）两种。
+    // 拆开之后每个包只带自己那一份 QuickJS 原生库，体积更小；两种都装不了才会用到合并包，
+    // 所以这里不生成 universal APK（要生成把 isUniversalApk 改成 true）。
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
