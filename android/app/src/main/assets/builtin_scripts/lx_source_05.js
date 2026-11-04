@@ -2,7 +2,7 @@
  * @name 杰翔聚合音源
  * @description 全平台支持flac，wy，qq，kw，kg支持母带
  * @version 2.3.0
- * @author https://qm.qq.com/cgi-bin/qm/qr?k=dEBGYbmu1lIRp7bAgHFim0W1uDsYl9v5&jump_from=webapi&authKey=fmTG96MhfqDQ5KARA/OvnuWAigCAloClvYhtSiEQd0jQneXmGons54BwlAh1+bUi
+ * @author 杰翔
  * @homepage https://github.com/haonanren118/jiexiang-Music-Source
  * @license MIT
  * @update 2026-09-13

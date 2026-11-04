@@ -95,6 +95,10 @@ dependencies {
     // Apple 的数据层一起移除（音源响应格式各平台差异极大，手写解析比声明式更省事）。
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // 手机管理页的局域网 HTTP 服务：自带 multipart 表单/文件上传解析（脚本 .js 上传、
+    // 热搜推送等手机端输入都靠它），复刻上游项目（upstream）的手机助手。
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
     // Images
     implementation("io.coil-kt:coil-compose:2.7.0")
 

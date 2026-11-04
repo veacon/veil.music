@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -46,9 +47,16 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -63,12 +71,16 @@ import com.veil.music.data.model.SourceID
 import com.veil.music.data.model.UserScript
 import com.veil.music.ui.components.QrDialog
 import com.veil.music.ui.navigation.LocalNavBarFocus
+import com.veil.music.util.GithubProxy
 import com.veil.music.ui.viewmodel.LYRIC_FONT_MAX_SP
 import com.veil.music.ui.viewmodel.LYRIC_FONT_MIN_SP
 import com.veil.music.ui.viewmodel.LYRIC_FONT_STEP_SP
 import com.veil.music.ui.viewmodel.LYRIC_GAP_MAX_PCT
 import com.veil.music.ui.viewmodel.LYRIC_GAP_MIN_PCT
 import com.veil.music.ui.viewmodel.LYRIC_GAP_STEP_PCT
+import com.veil.music.ui.viewmodel.LYRIC_TRACKING_MAX
+import com.veil.music.ui.viewmodel.LYRIC_TRACKING_MIN
+import com.veil.music.ui.viewmodel.LYRIC_TRACKING_STEP
 import com.veil.music.ui.viewmodel.FS_FONT_MAX_SP
 import com.veil.music.ui.viewmodel.FS_FONT_MIN_SP
 import com.veil.music.ui.viewmodel.FS_FONT_STEP_SP
@@ -85,6 +97,7 @@ import com.veil.music.ui.viewmodel.PlayerState
 import com.veil.music.ui.theme.MingMeiSpring
 import com.veil.music.ui.theme.PingFang
 import com.veil.music.ui.viewmodel.NowPlayingBackground
+import com.veil.music.ui.viewmodel.ORB_SPEED_STEP
 import com.veil.music.ui.viewmodel.PlayerViewModel
 import com.veil.music.ui.viewmodel.ScriptCoverage
 import com.veil.music.ui.viewmodel.SettingsUiState
@@ -122,6 +135,7 @@ fun SettingsScreen(
 ) {
     val state by vm.state.collectAsState()
     val update by vm.update.collectAsState()
+    val proxy by vm.proxy.collectAsState()
     val playerState by playerVm.state.collectAsState()
     var section by rememberSaveable { mutableStateOf(SettingsSection.AUDIO) }
     // 全屏歌词页里当前在调哪一个界面（全屏歌词 / 墨卷 / 声轨）。放在这里而不是 when 分支里：
@@ -162,14 +176,25 @@ fun SettingsScreen(
             // 一进来就停在中间，看起来像内容没加载出来。
             LaunchedEffect(section) { listState.scrollToItem(0) }
 
+            Column(Modifier.widthIn(max = 900.dp).fillMaxHeight()) {
+            // 全屏歌词分区：预览**钉在顶部**，不随右侧设置项滚动。
+            // 以前它只是列表里的一个 item，往下调字号/行距时预览早滚出屏幕了，
+            // 改完参数还得往上翻才能看效果 —— 所以固定成一条常驻的小预览。
+            if (section == SettingsSection.FS_LYRICS) {
+                FullscreenLyricPreview(
+                    style = fsStyle,
+                    pref = playerState.fsPrefs(fsStyle),
+                    modifier = Modifier.padding(bottom = 14.dp),
+                )
+            }
+
+            // 限宽而不是铺满：iOS 设置的列表本来就窄，1920 宽下铺满会读得很累。
             LazyColumn(
                 state = listState,
-                // 限宽而不是铺满：iOS 设置的列表本来就窄，1920 宽下铺满会读得很累。
-                modifier = Modifier.widthIn(max = 900.dp).fillMaxHeight(),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(end = 56.dp, bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                item("header") {
+            ) {                item("header") {
                     Text(section.label, color = IosLabel, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text(section.desc, color = IosValue, fontSize = 12.sp)
@@ -294,7 +319,9 @@ fun SettingsScreen(
                         item("lyric") {
                             IOSGroup(
                                 title = "歌词",
-                                footer = "字号 $LYRIC_FONT_MIN_SP–$LYRIC_FONT_MAX_SP sp，行距 $LYRIC_GAP_MIN_PCT–$LYRIC_GAP_MAX_PCT%。行距只拉开行与行，不改字号。",
+                                footer = "字号 $LYRIC_FONT_MIN_SP–$LYRIC_FONT_MAX_SP sp，行距 $LYRIC_GAP_MIN_PCT–$LYRIC_GAP_MAX_PCT%，" +
+                                    "字间距 ${LYRIC_TRACKING_MIN / 100f}–${LYRIC_TRACKING_MAX / 100f} em。" +
+                                    "行距只拉开行与行，不改字号；字间距是负数时字会收紧。",
                             ) {
                                 StepperRow(
                                     label = "字号",
@@ -309,17 +336,34 @@ fun SettingsScreen(
                                     onMinus = { playerVm.nudgeLyricLineGapPct(-LYRIC_GAP_STEP_PCT) },
                                     onPlus = { playerVm.nudgeLyricLineGapPct(LYRIC_GAP_STEP_PCT) },
                                 )
+                                IOSDivider()
+                                StepperRow(
+                                    label = "字间距",
+                                    value = String.format("%.2f em", playerState.lyricTracking / 100f),
+                                    onMinus = { playerVm.nudgeLyricTracking(-LYRIC_TRACKING_STEP) },
+                                    onPlus = { playerVm.nudgeLyricTracking(LYRIC_TRACKING_STEP) },
+                                )
                             }
                         }
 
                         item("background") {
-                            IOSGroup(title = "播放页背景") {
+                            IOSGroup(
+                                title = "播放页背景",
+                                footer = "「背景摆动速度」同时控制色块漂移的快慢和跟拍起伏的力度：0.1 倍几乎是静止的呼吸，" +
+                                    "2 倍则明显在流动。电视离得远，1.0 倍以下通常更耐看。",
+                            ) {
                                 NowPlayingBackground.entries.forEachIndexed { i, mode ->
                                     CheckRow(mode.label, sub = mode.desc, selected = playerState.nowPlayingBackground == mode) {
                                         playerVm.setNowPlayingBackground(mode)
                                     }
-                                    if (i != NowPlayingBackground.entries.lastIndex) IOSDivider()
+                                    IOSDivider()
                                 }
+                                StepperRow(
+                                    label = "背景摆动速度",
+                                    value = String.format("%.1f×", playerState.orbSpeed),
+                                    onMinus = { playerVm.nudgeOrbSpeed(-ORB_SPEED_STEP) },
+                                    onPlus = { playerVm.nudgeOrbSpeed(ORB_SPEED_STEP) },
+                                )
                             }
                         }
 
@@ -357,10 +401,6 @@ fun SettingsScreen(
                                     if (i != FsStyle.entries.lastIndex) IOSDivider()
                                 }
                             }
-                        }
-
-                        item("fs-preview") {
-                            FullscreenLyricPreview(fsStyle, pref)
                         }
 
                         item("fs-font") {
@@ -492,8 +532,29 @@ fun SettingsScreen(
                                 }
                             }
                         }
+
+                        // 检查更新下面：4 条 GitHub 加速 + 1 条直连，共 5 个可选线路。
+                        // 电视基本连不上 github.com / api.github.com，选中一条即可；选错的
+                        // 代价只是「慢一点」，因为其余线路（最后是直连）仍然会自动兜底。
+                        item("update-proxy") {
+                            IOSGroup(
+                                title = "GitHub 加速",
+                                footer = "检查更新与下载 APK 时优先走选中的线路，失败会自动依次尝试其余线路（最后兜底直连）。" +
+                                    "国内网络环境下 gh-proxy.com 通常最稳；网络本身能直连 GitHub 时选「直连」最快。",
+                            ) {
+                                GithubProxy.entries.forEachIndexed { i, p ->
+                                    CheckRow(
+                                        label = p.label,
+                                        sub = p.desc,
+                                        selected = proxy == p,
+                                    ) { vm.setUpdateProxy(p) }
+                                    if (i != GithubProxy.entries.lastIndex) IOSDivider()
+                                }
+                            }
+                        }
                     }
                 }
+            }
             }
         }
     }
@@ -558,22 +619,26 @@ private fun IOSGroupHeader(title: String, sub: String, action: String, onAction:
 }
 
 /**
- * 「全屏歌词 / 墨卷 / 声轨」设置的实时预览。
+ * 「全屏歌词 / 墨卷 / 声轨」设置的实时预览（**固定在分区顶部，矮条形态**）。
  *
- * 不是放一张截图，而是用**当前正在编辑的参数**直接排版一段示例歌词：改字号、行距、字间距、
- * 换字体、切纸面都会立刻反映在这块画面里；三个界面还各自带上自己那点特征（墨卷的朱砂章、
- * 声轨的标尺与时间码），所以调的时候知道自己在调哪一张画面。
+ * 三种界面在真机上长得完全不同，所以这里不能都画成「三行横排文字」：
+ *  - 全屏歌词：横排居中，当前句高亮、前后句淡出（含一层专辑色光晕）；
+ *  - 墨卷：**竖排**列、从右往左读，逐字由淡到浓（落墨），宣纸纤维 + 左下角朱砂方章；
+ *  - 声轨：横向时间轴，网格 + 轨道块（块宽 = 该句时值）+ 底部标尺 + 播放头游标。
+ *
+ * 这些都直接复用真实参数（字号 / 行距 / 字距 / 字体 / 纸面），所以调哪个都能看到对应变化。
  */
 @Composable
-private fun FullscreenLyricPreview(style: FsStyle, pref: FsStylePrefs) {
+private fun FullscreenLyricPreview(style: FsStyle, pref: FsStylePrefs, modifier: Modifier = Modifier) {
     val font: FontFamily? = when (pref.font) {
         LyricFontChoice.SYSTEM, LyricFontChoice.PINGFANG -> PingFang
         LyricFontChoice.MINGMEI -> MingMeiSpring
     }
-    // 预览按 0.5 倍缩：设置页只有几百 dp 宽，1:1 会撑破卡片。
-    val baseSp = (pref.fontSp * 0.5f).coerceIn(11f, 32f)
-    val gap = (baseSp * (pref.lineGapPct / 100f) * 0.36f).dp.coerceIn(1.dp, 34.dp)
+    // 预览按 0.30 倍缩：设置页只有几百 dp 宽，1:1 会撑破卡片。倍率固定 ——
+    // 滑杆从 20sp 走到 80sp，这里就从 6sp 走到 24sp，比例与全屏一致，看得见变化。
+    val baseSp = (pref.fontSp * 0.30f).coerceIn(6f, 26f)
     val tracking = (pref.letterSpacing / 100f).em
+    val gapScale = (pref.lineGapPct / 100f).coerceIn(0.4f, 3f)
 
     val paper = when (style) {
         FsStyle.PLAIN -> Color(0xFF0B0B0F)
@@ -587,105 +652,247 @@ private fun FullscreenLyricPreview(style: FsStyle, pref: FsStylePrefs) {
     }
     val accent = when (style) {
         FsStyle.PLAIN -> Color(0xFFFA233B)
-        FsStyle.INK -> Color(0xFFB23A2E)
+        FsStyle.INK -> if (pref.light) Color(0xFFB23A2E) else Color(0xFFE0564B)
         FsStyle.TRACK -> if (pref.light) Color(0xFF185FA5) else Color(0xFF85B7EB)
     }
-    val sample = listOf(
-        "夜色沿着窗台慢慢落下来",
-        "我把没说完的话交给风",
-        "等一个春天替我们回答",
-    )
-    // 恒定「第二行是正在唱的那句」，看起来像全屏歌词的中间态。
-    val active = 1
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth()) {
         Text(
-            "实时预览 · ${style.label}",
+            "实时预览 · ${style.label}（固定在顶部，调参数即时可见）",
             color = IosValue, fontSize = 12.sp,
-            modifier = Modifier.padding(start = 16.dp, bottom = 7.dp),
+            modifier = Modifier.padding(start = 4.dp, bottom = 7.dp),
         )
         Box(
-            Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(14.dp)).background(paper),
+            Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(14.dp)).background(paper),
         ) {
-            // 全屏歌词：背后是动态背景，预览给一层很淡的专辑色光晕，免得看成纯黑卡片。
-            if (style == FsStyle.PLAIN) Box(
-                Modifier.fillMaxSize().background(
-                    androidx.compose.ui.graphics.Brush.radialGradient(
-                        0.6f to Color(0x33FA233B), 1f to Color.Transparent,
-                    ),
-                ),
-            )
-            if (style == FsStyle.TRACK) TrackRuler(pref.light)
-            Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = if (style == FsStyle.TRACK) Alignment.Start else Alignment.CenterHorizontally,
-            ) {
-                sample.forEachIndexed { i, line ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (style == FsStyle.TRACK) {
-                            Text(
-                                "0:${(12 + i * 6).toString().padStart(2, '0')}",
-                                color = accent.copy(alpha = if (i == active) 1f else 0.45f),
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.width(38.dp),
-                            )
-                        }
-                        Text(
-                            text = line,
-                            color = when {
-                                style == FsStyle.TRACK && i == active -> ink
-                                i == active -> ink
-                                i < active -> ink.copy(alpha = 0.45f)
-                                else -> ink.copy(alpha = 0.26f)
-                            },
-                            fontSize = baseSp.sp,
-                            fontFamily = font,
-                            fontWeight = if (i == active) FontWeight.SemiBold else FontWeight.Normal,
-                            letterSpacing = tracking,
-                            maxLines = 1,
-                        )
-                    }
-                    if (i != sample.lastIndex) Spacer(Modifier.height(gap))
-                }
-            }
-            if (style == FsStyle.INK) {
-                // 朱砂章
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(18.dp).size(26.dp)
-                        .clip(RoundedCornerShape(3.dp)).background(accent),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("墨", color = if (pref.light) Color(0xFFFFF6E8) else Color(0xFFF7EADA), fontSize = 13.sp)
-                }
+            when (style) {
+                FsStyle.PLAIN -> PlainPreview(pref, baseSp, font, tracking, gapScale, ink, accent)
+                FsStyle.INK -> InkPreview(pref, baseSp, font, tracking, ink, accent, paper)
+                FsStyle.TRACK -> TrackPreview(pref, font, tracking, ink, accent)
             }
             Text(
                 "${style.label} · ${pref.font.label} · ${pref.fontSp}sp · 行距 ${pref.lineGapPct}% · 字距 " +
                     String.format("%.2f", pref.letterSpacing / 100f) + "em",
-                color = ink.copy(alpha = 0.4f), fontSize = 11.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 12.dp),
+                color = ink.copy(alpha = 0.42f), fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 8.dp),
             )
         }
     }
 }
 
-/** 声轨底部的刻度尺：只是给个「这是时间轴」的信号，不参与排版。 */
+/** 全屏歌词：横排居中，当前句最亮、上下句递淡。 */
 @Composable
-private fun BoxScope.TrackRuler(light: Boolean) {
-    val line = if (light) Color(0xFF12151A).copy(alpha = 0.18f) else Color.White.copy(alpha = 0.14f)
-    androidx.compose.foundation.Canvas(
-        Modifier.fillMaxWidth().height(18.dp).align(Alignment.BottomStart).padding(horizontal = 16.dp),
-    ) {
-        drawLine(line, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height), 1f)
-        var x = 0f
-        var i = 0
-        while (x <= size.width) {
-            val h = if (i % 4 == 0) size.height * 0.7f else size.height * 0.35f
-            drawLine(line, androidx.compose.ui.geometry.Offset(x, size.height - h), androidx.compose.ui.geometry.Offset(x, size.height), 1f)
-            x += size.width / 28f
-            i++
+private fun PlainPreview(
+    pref: FsStylePrefs,
+    sp: Float,
+    font: FontFamily?,
+    tracking: androidx.compose.ui.unit.TextUnit,
+    gapScale: Float,
+    ink: Color,
+    accent: Color,
+) {
+    val sample = listOf("夜色沿着窗台慢慢落下来", "我把没说完的话交给风", "等一个春天替我们回答")
+    Box(Modifier.fillMaxSize().background(
+        androidx.compose.ui.graphics.Brush.radialGradient(0.5f to accent.copy(alpha = 0.20f), 1f to Color.Transparent),
+    )) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 28.dp),
+            verticalArrangement = Arrangement.spacedBy((sp * 0.5f * gapScale).dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.weight(1f))
+            sample.forEachIndexed { i, line ->
+                val active = i == 1
+                Text(
+                    line,
+                    color = ink.copy(alpha = if (active) 1f else if (i < 1) 0.42f else 0.24f),
+                    fontSize = (if (active) sp * 1.15f else sp * 0.92f).sp,
+                    fontFamily = font,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    letterSpacing = tracking,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.weight(1f))
         }
+    }
+}
+
+/**
+ * 墨卷：竖排列、从右往左。
+ *
+ * 真实实现里当前句的列贴住右边距、旧句依次排在左边，所以这里也把 sample[0] 放最右，
+ * 用 [Arrangement.End] 对齐；当前句按字序由淡到浓（落墨），后面的句子整体压暗。
+ */
+@Composable
+private fun InkPreview(
+    pref: FsStylePrefs,
+    sp: Float,
+    font: FontFamily?,
+    tracking: androidx.compose.ui.unit.TextUnit,
+    ink: Color,
+    accent: Color,
+    paper: Color,
+) {
+    val lines = listOf("夜色沿着", "我把没说", "等一个春")
+    Box(Modifier.fillMaxSize()) {
+        // 宣纸纤维：几条极淡横线，模拟真实实现里的纸纹 + 受光。
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            for (i in 1..6) {
+                val y = size.height * (i / 7f)
+                drawRect(ink.copy(alpha = 0.03f), topLeft = androidx.compose.ui.geometry.Offset(0f, y), size = androidx.compose.ui.geometry.Size(size.width, 1f))
+            }
+        }
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy((sp * 0.9f).dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // reversed()：sample[0] 落在最右列 —— 这符合竖排「先右后左」的读序。
+            lines.reversed().forEachIndexed { revIdx, line ->
+                val isCurrent = revIdx == lines.lastIndex   // 反转后最后一个 = 原本的第一句
+                Column(
+                    verticalArrangement = Arrangement.spacedBy((sp * 0.12f).dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    line.forEachIndexed { ci, ch ->
+                        // 逐字落墨：当前句前面的字已写浓，后面还没写到 → 淡。
+                        val alpha = when {
+                            isCurrent -> if (ci < 3) 1f else 0.30f
+                            else -> 0.5f
+                        }
+                        Text(
+                            ch.toString(),
+                            color = ink.copy(alpha = alpha),
+                            fontSize = if (isCurrent) sp.sp else (sp * 0.86f).sp,
+                            fontFamily = font,
+                            letterSpacing = tracking,
+                        )
+                    }
+                }
+            }
+        }
+        // 左下角朱砂方章 + 歌名（与真实实现同位置）。
+        Row(
+            Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(20.dp).clip(RoundedCornerShape(3.dp)).background(accent), contentAlignment = Alignment.Center) {
+                Text("墨", color = paper, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(7.dp))
+            Text("示例歌名", color = ink.copy(alpha = 0.8f), fontSize = (sp * 0.7f).sp, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * 声轨：横向时间轴。播放头固定在左侧 42% 处，轨道块随时间向右延伸；
+ * 块内歌词用**和真实实现同一套字号 / 字距**排，所以在这里调字号、字距，
+ * 预览和全屏画面是同步变的（早先这里是写死的 12sp，调了像没反应）。
+ */
+@Composable
+private fun TrackPreview(
+    pref: FsStylePrefs,
+    font: FontFamily?,
+    tracking: androidx.compose.ui.unit.TextUnit,
+    ink: Color,
+    accent: Color,
+) {
+    val gapScale = (pref.lineGapPct / 100f).coerceIn(0.4f, 3f)
+    // 0.30 是「预览高 168dp / 实际屏高 1080px」与字号之间的折中比例：
+    // 倍率固定，20–80sp 一路缩到 6–24sp，滑杆动多少这里就动多少。
+    val previewSp = (pref.fontSp * 0.30f).coerceIn(6f, 26f)
+    val measurer = rememberTextMeasurer(cacheSize = 8)
+    val textStyle = androidx.compose.ui.text.TextStyle(
+        fontSize = previewSp.sp,
+        fontFamily = font,
+        letterSpacing = tracking,
+        fontWeight = FontWeight.Normal,
+    )
+    val lines = listOf("夜色沿着窗台", "我把没说完的话", "等一个春天")
+    val active = 1
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val w = constraints.maxWidth.toFloat()
+        val h = constraints.maxHeight.toFloat()
+        val cursorX = w * 0.42f
+        val rulerY = h * 0.84f
+        val blockTop = h * 0.20f
+        // 块高随行距缩放，并保证至少能放下两行当前字号的歌词。
+        val blockH = (h * 0.30f * gapScale).coerceIn(previewSp * 2.2f, h * 0.56f)
+
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val grid = ink.copy(alpha = 0.08f)
+
+            // 网格：每 2 秒一条竖线（播放头左右两侧都画）
+            var x = cursorX
+            while (x < size.width) {
+                drawLine(grid, androidx.compose.ui.geometry.Offset(x, blockTop - 8f), androidx.compose.ui.geometry.Offset(x, rulerY), 1f)
+                x += size.width * 0.09f
+            }
+            var xl = cursorX
+            while (xl > 0f) {
+                drawLine(grid, androidx.compose.ui.geometry.Offset(xl, blockTop - 8f), androidx.compose.ui.geometry.Offset(xl, rulerY), 1f)
+                xl -= size.width * 0.09f
+            }
+
+            // 轨道块：一句一块，宽度按时值递增；第一块压在播放头左侧（已唱）
+            var bx = cursorX - size.width * 0.10f
+            lines.forEachIndexed { i, line ->
+                val bw = size.width * (0.22f + i * 0.13f)
+                val isActive = i == active
+                drawRoundRect(
+                    color = if (isActive) accent.copy(alpha = 0.22f) else ink.copy(alpha = 0.07f),
+                    topLeft = androidx.compose.ui.geometry.Offset(bx, blockTop),
+                    size = androidx.compose.ui.geometry.Size(bw, blockH),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+                )
+                drawRoundRect(
+                    color = if (isActive) accent else ink.copy(alpha = 0.22f),
+                    topLeft = androidx.compose.ui.geometry.Offset(bx, blockTop),
+                    size = androidx.compose.ui.geometry.Size(bw, blockH),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(1.5f),
+                )
+                // 块内歌词：字号 / 字体 / 字距都取自 pref —— 改一处，这里立刻变。
+                val layout = measurer.measure(
+                    text = line,
+                    style = textStyle,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    constraints = androidx.compose.ui.unit.Constraints(
+                        maxWidth = (bw - 16f).toInt().coerceAtLeast(8),
+                    ),
+                )
+                drawText(
+                    textLayoutResult = layout,
+                    topLeft = androidx.compose.ui.geometry.Offset(bx + 8f, blockTop + 8f),
+                    color = if (isActive) ink else ink.copy(alpha = 0.42f),
+                )
+                bx += bw + size.width * 0.03f
+            }
+
+            // 底部标尺
+            drawLine(ink.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(0f, rulerY), androidx.compose.ui.geometry.Offset(size.width, rulerY), 1f)
+            var tx = 0f
+            var i = 0
+            while (tx <= size.width) {
+                val hh = if (i % 4 == 0) 9f else 4f
+                drawLine(ink.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(tx, rulerY - hh), androidx.compose.ui.geometry.Offset(tx, rulerY), 1f)
+                tx += size.width / 26f
+                i++
+            }
+
+            // 播放头游标：穿越整个轨道区
+            drawLine(accent, androidx.compose.ui.geometry.Offset(cursorX, blockTop - 10f), androidx.compose.ui.geometry.Offset(cursorX, rulerY), 2f)
+            drawCircle(accent, radius = 4f, center = androidx.compose.ui.geometry.Offset(cursorX, rulerY))
+        }
+        Text(
+            "0:12",
+            color = accent, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 10.dp),
+        )
     }
 }
 
@@ -819,12 +1026,21 @@ private fun StepperRow(label: String, value: String, onMinus: () -> Unit, onPlus
 @Composable
 private fun StepButton(glyph: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    // 遥控器按住不放时系统会持续送 KeyDown。只靠 clickable 的话按住只走一格，
+    // 而字号范围是 20–80、行距 40–300% —— 一格一格点要按几十下。这里自己接键：
+    // 首次按下与每一次重复都触发；KeyUp 一并吃掉，否则 clickable 还会再触发一遍。
     Box(
         Modifier
             .size(32.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (focused) Color(0xFF636366) else Color(0xFF2C2C2E))
             .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { e ->
+                if (e.key == Key.DirectionCenter || e.key == Key.Enter) {
+                    if (e.type == KeyEventType.KeyDown) onClick()
+                    true
+                } else false
+            }
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {

@@ -65,8 +65,9 @@ fun TrackBedFx(
     val fg = if (light) Color(0xFF12151A) else Color(0xFFF2F4F7)
     val muted = fg.copy(alpha = 0.45f)
     val accent = if (light) Color(0xFF185FA5) else Color(0xFF85B7EB)
-    val gap = (lineGapPct / 100f).coerceIn(0.6f, 2.2f)
-    val ls = (letterSpacingPct / 100f).coerceIn(0f, 0.4f)
+    // 与设置页滑杆同一组范围：行距 40–300%、字距 -1.00–+1.00em，不再二次夹取。
+    val gap = (lineGapPct / 100f).coerceIn(0.4f, 3f)
+    val ls = (letterSpacingPct / 100f).coerceIn(-1f, 1f)
 
     val beat = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
@@ -83,9 +84,16 @@ fun TrackBedFx(
         val topH = hPx * 0.13f
         val rulerH = hPx * 0.17f
         val rulerY = hPx - rulerH * 0.62f
-        // 歌词字号：跟用户的「全屏歌词字号」设置走。
-        val blockSp = fontSizeSp.coerceIn(24, 64)
-        val blockH = (hPx * 0.22f * gap).coerceAtLeast(96f)
+        // 歌词字号：跟用户的「全屏歌词字号」设置走（20–80sp，全部生效）。
+        val blockSp = fontSizeSp.coerceIn(20, 80)
+        // sp → px：块高和大字号得用同一套单位，否则「字号变大、块不动」文字就溢出去了。
+        val spPx = with(androidx.compose.ui.platform.LocalDensity.current) { blockSp.sp.toPx() }
+        // 块高：行距决定基本高度，但**字号撑开的量必须算进去** —— 否则把字号调到 60sp
+        // 时块还是原来那么高，文字溢出去、看起来「调了没反应」。上限压在屏高 55%，
+        // 免得行距拉满 + 大字号把轨道撑到标尺外面。
+        val blockH = (hPx * 0.22f * gap)
+            .coerceAtLeast(spPx * 2.6f)
+            .coerceIn(96f, hPx * 0.55f)
         val trackTop = ((topH + rulerY) / 2f - blockH / 2f).coerceAtLeast(topH)
 
         val blockStyle = TextStyle(

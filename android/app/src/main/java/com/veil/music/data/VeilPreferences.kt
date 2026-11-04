@@ -34,8 +34,10 @@ class VeilPreferences @Inject constructor(@ApplicationContext context: Context) 
     /** 解析失败时是否按「歌名+歌手+时长」自动换源（对应 lx 的 toggle source）。 */
     val toggleSource: StateFlow<Boolean> = _toggleSource.asStateFlow()
 
-    private val _builtinFallback = MutableStateFlow(prefs.getBoolean(KEY_BUILTIN_FALLBACK, true))
-    /** 脚本与换源都失败时，是否用内置直连（酷我 / 网易云）兜底。 */
+    // 内置直连（酷我 / 网易云 antiserver/outer 接口）已废弃：第三方脚本源生态更替后，
+    // 直连只能覆盖 kw/wy 且拿不到 VIP 音质，解析链路统一走用户脚本，这里默认关闭。
+    private val _builtinFallback = MutableStateFlow(prefs.getBoolean(KEY_BUILTIN_FALLBACK, false))
+    /** 脚本与换源都失败时，是否用内置直连（酷我 / 网易云）兜底。默认关闭，仅保留开关兼容旧设置。 */
     val builtinFallback: StateFlow<Boolean> = _builtinFallback.asStateFlow()
 
     private val _showResolveHint = MutableStateFlow(prefs.getBoolean(KEY_SHOW_HINT, true))

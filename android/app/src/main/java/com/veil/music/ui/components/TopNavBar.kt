@@ -14,13 +14,13 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
@@ -53,29 +53,31 @@ private fun EqBars(beatAnalyzer: com.veil.music.media.BeatAnalyzer?) {
     }
 }
 
+/**
+ * 顶部胶囊栏：正在播放 / 发现 / 我的 / 搜索 / 设置。
+ *
+ * 「正在播放」是**第一枚胶囊**，和其余 tab 完全同构 —— 左右键走到它就切到播放页，
+ * 不再有右上角那枚独立胶囊（那是上一版的形态，用户要求收回胶囊链里）。
+ * 它显示当前歌名（没播放时「未在播放」），播放中右侧跟一条 EQ 动效。
+ */
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun TopNavBar(
     selected: TopNavTab,
     onSelect: (TopNavTab) -> Unit,
     isPlaying: Boolean = false,
+    /** 第一枚胶囊上的文字：播放中显示歌名，否则「未在播放」。 */
+    nowPlayingTitle: String? = null,
     updateAvailable: Boolean = false,
     beatAnalyzer: com.veil.music.media.BeatAnalyzer? = null,
     /**
      * 页面按上键回到导航栏时落在哪个节点上。
      *
      * 这个 requester 绑的是**当前 tab**，所以从「设置」页按上键会回到「设置」那个胶囊，
-     * 不会被顺手切到「发现」。早先它固定绑在第一个 tab 上，于是每次按上键页面都会跳回
+     * 不会被顺手切到别的页。早先它固定绑在第一个 tab 上，于是每次按上键页面都会跳回
      * 发现页 —— 用户只是想移动焦点，并不想换页。
      */
     upEntryFocus: FocusRequester? = null,
-    /**
-     * 从「正在播放」这枚胶囊按上键时的落点（播放/暂停键）。
-     *
-     * 不指定的话走几何搜索：胶囊在屏幕正上方居中，而正下方是右侧的播放队列 —— 于是按上键
-     * 会直接掉进队列列表的第 28 首，而不是播放键。电视上这几乎是必经操作，所以显式给一条通道。
-     */
-    downTarget: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -84,36 +86,6 @@ fun TopNavBar(
     // 它恒绑在自己的胶囊上（不像 upEntryFocus 会跟着"当前选中项"搬家），所以换页之后可以立刻用它搬焦点。
     val tabFocus = remember { TopNavTab.entries.map { FocusRequester() } }
     val scope = rememberCoroutineScope()
-
-    // 「正在播放」页的顶栏 3 秒后自动收起。
-    // 之前是焦点一离开顶栏就立刻淡出 —— 从胶囊按下键切到播放键的那一瞬间胶囊就没了，
-    // 看起来像顶栏闪了一下。现在给 3 秒：还在找按钮的时候它一直在，之后让位给封面。
-    //
-    // 如果 3 秒到的时候焦点还停在胶囊上，先把焦点交给播放键再收起 —— 不能把焦点留在一个
-    // 已经透明了的控件上（用户会以为遥控器坏了）。焦点一回到顶栏，计时重新开始。
-    var autoHidden by remember { mutableStateOf(false) }
-    LaunchedEffect(selected, isFocused) {
-        if (selected != TopNavTab.NowPlaying) {
-            autoHidden = false
-            return@LaunchedEffect
-        }
-        if (isFocused) {
-            autoHidden = false
-            kotlinx.coroutines.delay(3_000)
-            val moved = downTarget?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
-            if (moved) autoHidden = true
-        } else {
-            // 焦点已经在内容区：3 秒后收起（期间按回顶栏会取消这一次）。
-            kotlinx.coroutines.delay(3_000)
-            if (!isFocused) autoHidden = true
-        }
-    }
-
-    val alpha by animateFloatAsState(
-        targetValue = if (selected == TopNavTab.NowPlaying && autoHidden) 0f else 1f,
-        animationSpec = tween(500),
-        label = "navBarAlpha"
-    )
 
     Box(
         modifier = modifier
@@ -124,10 +96,8 @@ fun TopNavBar(
             }
             .focusProperties {
                 // 从内容区「进入」这一栏时，落点永远是当前 tab —— 这就是"上键回当前层级"。
-                // 之前固定落第一个 tab，于是每次回到导航栏都会顺手切回发现页。
                 enter = { upEntryFocus ?: FocusRequester.Default }
             }
-            .graphicsLayer { this.alpha = alpha }
             .fillMaxWidth()
             .background(Color(0xFF0A0A0A))
             .padding(vertical = 10.dp),
@@ -182,12 +152,6 @@ fun TopNavBar(
                                     }
                                     true
                                 }
-                                Key.DirectionDown -> {
-                                    // 播放页：上/下键 → 播放/暂停键，而不是几何上更近的队列列表。
-                                    if (!isSelected) return@onKeyEvent false
-                                    val target = downTarget ?: return@onKeyEvent false
-                                    runCatching { target.requestFocus() }.isSuccess
-                                }
                                 else -> false
                             }
                         }
@@ -206,23 +170,36 @@ fun TopNavBar(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            if (tab == TopNavTab.Settings) {
+                            when {
+                                // 第一枚：正在播放。文字跟着当前歌名走，播放中再跟一条 EQ。
+                                tab == TopNavTab.NowPlaying -> {
+                                    Text(
+                                        text = nowPlayingTitle?.takeIf { it.isNotBlank() } ?: "未在播放",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = textColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.widthIn(max = 200.dp),
+                                    )
+                                    if (isPlaying) EqBars(beatAnalyzer)
+                                }
                                 // Settings tab is a gear (with a badge when an update is available).
-                                Icon(
-                                    if (updateAvailable) Glyph.GEAR_BADGE else Glyph.GEAR,
-                                    size = 18.dp, color = textColor,
-                                )
-                            } else {
-                                Text(
-                                    text       = tab.label,
-                                    fontSize   = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                    letterSpacing = if (isSelected) (-0.1).sp else 0.sp,
-                                    color      = textColor,
-                                )
-                            }
-                            if (tab == TopNavTab.NowPlaying && isPlaying && !isSelected) {
-                                EqBars(beatAnalyzer)
+                                tab == TopNavTab.Settings -> {
+                                    Icon(
+                                        if (updateAvailable) Glyph.GEAR_BADGE else Glyph.GEAR,
+                                        size = 18.dp, color = textColor,
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        text       = tab.label,
+                                        fontSize   = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                        letterSpacing = if (isSelected) (-0.1).sp else 0.sp,
+                                        color      = textColor,
+                                    )
+                                }
                             }
                         }
                     }

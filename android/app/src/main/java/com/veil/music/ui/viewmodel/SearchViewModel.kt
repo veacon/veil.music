@@ -6,6 +6,7 @@ import com.veil.music.data.VeilPreferences
 import com.veil.music.data.model.Song
 import com.veil.music.data.model.SourceID
 import com.veil.music.data.repository.LxRepository
+import com.veil.music.media.InAppWebServer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ data class SearchUiState(
 class SearchViewModel @Inject constructor(
     private val repo: LxRepository,
     prefs: VeilPreferences,
+    webServer: InAppWebServer,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState(source = prefs.homeSource.value))
@@ -42,6 +44,16 @@ class SearchViewModel @Inject constructor(
 
     private var searchJob: Job? = null
     private var hotLoaded = false
+
+    init {
+        // 手机管理页推来的搜索关键词：直接接管查询并发起搜索。
+        viewModelScope.launch {
+            webServer.searchRequests.collect { kw ->
+                _state.update { it.copy(query = kw) }
+                search(kw)
+            }
+        }
+    }
 
     fun setQuery(text: String) {
         _state.update { it.copy(query = text) }

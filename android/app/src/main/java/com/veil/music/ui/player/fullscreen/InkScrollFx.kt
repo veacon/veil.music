@@ -100,16 +100,20 @@ fun InkScrollFx(
         val hPx = constraints.maxHeight.toFloat()
         val measurer = rememberTextMeasurer(cacheSize = 512)
 
-        // 字号：以屏高为基准（竖排按高度排），同时受用户的歌词字号设置约束。
+        // 字号：**完全跟用户的设置走**（20sp 就是 20sp，80sp 就是 80sp）。
+        // 早先这里是「以屏高 5.2% 为基准、再用设置值当上下限」，设置值只起夹取作用，
+        // 于是调字号几乎看不出来；现在只压一个物理上限 —— 一列至少要站得下 5 个字，
+        // 否则竖排根本读不成句。
         val userPx = with(density) { fontSizeSp.sp.toPx() }
-        val minFont = max(18f, userPx * 0.9f)
-        val maxFont = max(minFont, userPx * 1.7f)
-        val fontPx = (hPx * 0.052f).coerceIn(minFont, maxFont)
+        val fontPx = userPx.coerceIn(12f, hPx * 0.18f)
         val fontSp = fontPx / density.density
         val histFontPx = fontPx * 0.82f
-        val ls = (letterSpacingPct / 100f).coerceIn(0f, 0.4f)
+        // 字距：-1.00em ~ +1.00em，负数收字、正数散排。
+        val ls = (letterSpacingPct / 100f).coerceIn(-1f, 1f)
+        val gapScale = (lineGapPct / 100f).coerceIn(0.4f, 3f)
         // 字距（竖排 = 行内字与字的垂直间距）：1.46 字高为基准，再叠加用户的行距与字距。
-        val charH = fontPx * (1.46f * (lineGapPct / 100f).coerceIn(0.6f, 2.2f) + ls)
+        // 下限压在 0.5 字高：负字距 + 紧行距叠加后不能变成 0 或负数，否则整列会倒着排。
+        val charH = fontPx * (1.46f * gapScale + ls).coerceAtLeast(0.5f)
         val padH = wPx * 0.055f
         val padV = hPx * 0.10f
         val contentH = (hPx - padV * 2f).coerceAtLeast(fontPx * 4f)

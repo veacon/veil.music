@@ -1,5 +1,5 @@
 /*!
- * @name 𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ
+ * @name Hello World 音源
  * @author hello world
  * @version 260925
  * @description 每天都要开心哦,无论如何...

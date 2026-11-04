@@ -22,6 +22,18 @@ data class UpdateInfo(
     val sizeBytes: Long,
 )
 
+/** 一次检查更新的结论。比 `UpdateInfo?` 多区分了「仓库还没发版」这种情况。 */
+sealed interface UpdateResult {
+    /** 有比当前更新的版本。 */
+    data class Newer(val info: UpdateInfo) : UpdateResult
+
+    /** 已经是最新。 */
+    data object UpToDate : UpdateResult
+
+    /** 仓库存在，但一个 Release 都没发过（`releases/latest` 返回 404）。 */
+    data object NoRelease : UpdateResult
+}
+
 /**
  * Self-updater that polls this repo's GitHub Releases. `check()` compares the latest
  * (non-prerelease) release's tag against the running versionName; if newer, `download()`
@@ -31,34 +43,56 @@ object UpdateChecker {
     /**
      * 发布仓库，格式 `owner/repo`。
      *
-     * 留空 = 不做更新检查（避免把上游 Apple TV 的包当成本应用更新推下来）。
-     * 上传到 GitHub 之后，把这里改成自己的仓库（例如 `"yourname/veil-music"`），
-     * 「关于」页的「检查更新」与启动时的静默检查就会一起生效，不需要改别的地方。
+     * 检查更新走 `api.github.com`；电视在局域网里通常**连不上 GitHub**，所以下面
+     * [PROXIES] 里的加速前缀优先、直连兜底（实测 gh-proxy 能正常代理 API 请求）。
      */
-    const val REPO = ""
+    const val REPO = "veacon/veil.music"
 
     /** 是否已经填了仓库。UI 用它区分「没有更新」和「还没配置更新源」。 */
     val isConfigured: Boolean get() = REPO.isNotBlank()
+
+    /**
+     * 本次要依次尝试的前缀：**用户选中的那条排最前**，其余线路跟着兜底（含直连）。
+     *
+     * 不写死顺序的原因很实际 —— 这类免费加速站会时不时抽风，某一天 gh-proxy 挂了
+     * 而 ghfast 好使。让用户能在设置里换一条，比发新版本来改常量快得多。
+     * 选了「直连」也照样排最前，只是它前面不再有加速站，直接打 GitHub。
+     */
+    private fun candidates(preferred: GithubProxy?): List<String> =
+        (listOfNotNull(preferred) + GithubProxy.entries.filter { it != preferred })
+            .map { it.prefix }
+            .distinct()
 
     private val LATEST = "https://api.github.com/repos/$REPO/releases/latest"
     private val ALL = "https://api.github.com/repos/$REPO/releases?per_page=15"
 
     /**
-     * Newest release that's newer than the current build, else null.
+     * 检查更新。
      * @param includeBeta when true, prereleases count too (the "beta" channel); otherwise
      *   only the stable `releases/latest` (which GitHub excludes prereleases from) is used.
+     * @param preferred 用户选定的加速线路；null = 只用内置默认顺序。
      */
-    suspend fun check(includeBeta: Boolean = false): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
-        if (REPO.isBlank()) return@withContext Result.success(null)
+    suspend fun check(
+        includeBeta: Boolean = false,
+        preferred: GithubProxy? = null,
+    ): Result<UpdateResult> = withContext(Dispatchers.IO) {
+        if (REPO.isBlank()) return@withContext Result.success(UpdateResult.UpToDate)
         runCatching {
-            val release = if (includeBeta) newestRelease() else JSONObject(httpGet(LATEST))
-            release?.let(::parseRelease)
+            val release = (if (includeBeta) newestRelease(preferred) else latestRelease(preferred))
+                ?: return@runCatching UpdateResult.NoRelease
+            parseRelease(release)?.let { UpdateResult.Newer(it) } ?: UpdateResult.UpToDate
         }.rethrowCancellation()
     }
 
+    /** `releases/latest`；404（还没有任何 release）返回 null，不当成错误。 */
+    private fun latestRelease(preferred: GithubProxy?): JSONObject? =
+        runCatching { JSONObject(httpGet(LATEST, preferred)) }
+            .onFailure { if (it !is HttpStatusException) throw it }
+            .getOrNull()
+
     /** Newest non-draft release (GitHub returns them newest-first), or null if none. */
-    private fun newestRelease(): JSONObject? {
-        val arr = JSONArray(httpGet(ALL))
+    private fun newestRelease(preferred: GithubProxy?): JSONObject? {
+        val arr = runCatching { JSONArray(httpGet(ALL, preferred)) }.getOrNull() ?: return null
         for (i in 0 until arr.length()) {
             val r = arr.getJSONObject(i)
             if (!r.optBoolean("draft")) return r
@@ -106,12 +140,13 @@ object UpdateChecker {
     suspend fun download(
         context: Context,
         info: UpdateInfo,
+        preferred: GithubProxy? = null,
         onProgress: (Float) -> Unit,
     ): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
             val dir = File(context.cacheDir, "updates").apply { mkdirs() }
             val out = File(dir, "update.apk")
-            val conn = open(info.apkUrl)
+            val conn = openFirstOk(info.apkUrl, preferred)
             // contentLengthLong 是 API 24；走响应头自己解析，老系统也能拿到总长度。
             val total = if (info.sizeBytes > 0) {
                 info.sizeBytes
@@ -156,13 +191,69 @@ object UpdateChecker {
     private fun <T> Result<T>.rethrowCancellation(): Result<T> =
         onFailure { if (it is CancellationException) throw it }
 
-    private fun httpGet(url: String): String =
-        open(url, "application/vnd.github+json").inputStream.bufferedReader().use { it.readText() }
+    /** 明确的 HTTP 状态错误（4xx 是「确定结论」，不该再到别的镜像重试）。 */
+    private class HttpStatusException(val code: Int) : Exception("HTTP $code")
+
+    /**
+     * 拉一个 GitHub API 地址：**用户选中的线路优先**，其余加速跟进，直连最后兜底。
+     *
+     * 电视连不上 GitHub，直连会一直超时，所以默认把镜像排前面；用户也可以主动选「直连」
+     * 让它排到第一位。
+     *
+     * 404 只认「真·GitHub 的 404」（响应体是 `{"message":"Not Found"}`）—— 加速站自己
+     * 的 404 往往只是「这条线路不支持这个接口」，把它当结论会误报成「仓库没发版」。
+     */
+    private fun httpGet(url: String, preferred: GithubProxy?): String {
+        var last: Exception? = null
+        var githubSaid404 = false
+        for (target in candidates(preferred).map { it + url }) {
+            try {
+                val conn = open(target, "application/vnd.github+json")
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    return conn.inputStream.bufferedReader().use { it.readText() }
+                }
+                if (code == 404) {
+                    val body = runCatching {
+                        conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    }.getOrDefault("")
+                    if (body.contains("\"message\"") || body.contains("Not Found")) githubSaid404 = true
+                    last = HttpStatusException(404)
+                    continue
+                }
+                last = HttpStatusException(code)
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        if (githubSaid404) throw HttpStatusException(404)
+        throw last ?: java.io.IOException("网络不可用")
+    }
+
+    /**
+     * 打开一个「直连几乎必然失败」的 GitHub 地址（Release 里的 APK）。
+     *
+     * APK 有几十 MB，不能像 API 那样整包读进内存再判断，所以这里只把连接建好并确认
+     * 状态码是 2xx，真正的流式读取仍然发生在 [download] 里。
+     */
+    private fun openFirstOk(url: String, preferred: GithubProxy?): HttpURLConnection {
+        var last: Exception? = null
+        for (target in candidates(preferred).map { it + url }) {
+            try {
+                val conn = open(target)
+                if (conn.responseCode in 200..299) return conn
+                last = HttpStatusException(conn.responseCode)
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        throw last ?: java.io.IOException("所有线路都不可用")
+    }
 
     private fun open(url: String, accept: String? = null): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 30_000
+            connectTimeout = 10_000
+            readTimeout = 20_000
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "veil-music")
             if (accept != null) setRequestProperty("Accept", accept)

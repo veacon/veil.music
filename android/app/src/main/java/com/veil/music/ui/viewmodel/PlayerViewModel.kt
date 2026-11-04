@@ -45,6 +45,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 /** 循环模式。 */
 enum class RepeatMode { Off, One, All }
@@ -156,11 +157,13 @@ data class PlayerState(
     val screensaverKeepBackground: Boolean = false,
     val showNowPlayingInfo: Boolean = true,
     val motionArtworkEnabled: Boolean = false,
-    val orbSpeed: Float = 1.0f,
+    val orbSpeed: Float = DEFAULT_ORB_SPEED,
     /** 歌词基准字号（sp）。设置页直接暴露这个数字，不再用小/中/大这种模糊档位。 */
     val lyricFontSp: Int = DEFAULT_LYRIC_FONT_SP,
     /** 歌词行距，百分比（100 = 原设计）。同样是数值，不做「紧凑/标准/宽松」三档。 */
     val lyricLineGapPct: Int = DEFAULT_LYRIC_GAP_PCT,
+    /** 播放页歌词字间距（em×100）。与全屏歌词那套同单位、同范围。 */
+    val lyricTracking: Int = DEFAULT_LYRIC_TRACKING,
     /**
      * 三类全屏歌词界面各自的排版参数（全屏歌词 / 墨卷 / 声轨，各存一套）。
      * 与播放页右栏的 [lyricFontSp] / [lyricLineGapPct] 完全独立。
@@ -189,6 +192,8 @@ data class PlayerState(
     val resolveHint: String? = null,
     /** 当前曲目的实际播放音质，可能低于设置里的期望值。 */
     val qualityLabel: String? = null,
+    /** 实际拿到的那条流是什么容器（FLAC / MP3 / M4A…）。从地址后缀读，读不出就是 null。 */
+    val qualityFormat: String? = null,
 ) {
     /**
      * 相对缩放。播放页的历史排版全部按「1.0 = 24sp」写死，这里换算一次，
@@ -199,40 +204,85 @@ data class PlayerState(
     /** 行距倍数。播放页把它乘到每行的 lineHeight 上，字不会变形、行距真的变开。 */
     val lyricLineGap: Float get() = lyricLineGapPct / 100f
 
+    /** 字间距（em）。直接交给 Text 的 letterSpacing，负数收字。 */
+    val lyricTrackingEm: Float get() = lyricTracking / 100f
+
     /** 取某个全屏样式的排版参数；缺省时回落到该样式的默认值。 */
     fun fsPrefs(style: FsStyle): FsStylePrefs = fsStyles[style] ?: FsStylePrefs.default(style)
 }
 
-/** 歌词基准字号：24sp 时 [PlayerState.lyricsScale] == 1.0，与播放页原设计一致。 */
+/**
+ * 歌词基准字号：24sp 时 [PlayerState.lyricsScale] == 1.0，与播放页原设计一致。
+ *
+ * 范围 20–80sp，与「全屏歌词」那三套对齐：同一组滑杆，走到头就是同一个视觉大小，
+ * 不必在两个页面之间切换时重新找感觉。
+ */
 const val DEFAULT_LYRIC_FONT_SP = 24
-const val LYRIC_FONT_MIN_SP = 16
-const val LYRIC_FONT_MAX_SP = 40
+const val LYRIC_FONT_MIN_SP = 20
+const val LYRIC_FONT_MAX_SP = 80
 /** 每次点 +/- 的步进。2sp 在电视上看得出变化，又不至于要按很多次。 */
 const val LYRIC_FONT_STEP_SP = 2
 
-/** 行距：100% 是播放页原来的排版，上下各放 40 个百分点够覆盖「贴着」到「很松」。 */
+/**
+ * 行距：100% 是播放页原来的排版。
+ *
+ * 40% = 行贴在一起（一屏尽量多读几句），300% = 一句一屏（跟唱）。
+ */
 const val DEFAULT_LYRIC_GAP_PCT = 100
-const val LYRIC_GAP_MIN_PCT = 80
-const val LYRIC_GAP_MAX_PCT = 180
+const val LYRIC_GAP_MIN_PCT = 40
+const val LYRIC_GAP_MAX_PCT = 300
 const val LYRIC_GAP_STEP_PCT = 10
 
-/** 全屏歌词（墨卷 / 声轨）：默认 40sp —— 电视 3 米视距下正文字号。 */
+/**
+ * 播放页歌词字间距，单位 em×100：0 = 原设计的紧缩排版，-100 = -1.00em，100 = +1.00em。
+ * 与「全屏歌词」的字间距同单位、同范围，两边读起来一致。
+ */
+const val DEFAULT_LYRIC_TRACKING = 0
+const val LYRIC_TRACKING_MIN = -100
+const val LYRIC_TRACKING_MAX = 100
+const val LYRIC_TRACKING_STEP = 5
+
+/**
+ * 全屏歌词（全屏歌词 / 墨卷 / 声轨，三套共用同一组范围）的字号。
+ *
+ * 范围放到 20–80sp：20sp 是「想一屏读完整段」的小字，80sp 是「坐在沙发上只看一句」
+ * 的大字。真机渲染不再二次夹取（早先墨卷/声轨内部各自夹在 24–64，调出这个区间就
+ * 看不出变化，等于白给了滑杆）。
+ */
 const val DEFAULT_FS_FONT_SP = 40
-const val FS_FONT_MIN_SP = 24
-const val FS_FONT_MAX_SP = 64
+const val FS_FONT_MIN_SP = 20
+const val FS_FONT_MAX_SP = 80
 const val FS_FONT_STEP_SP = 2
 
-/** 全屏歌词行距：100% 为默认排版。 */
+/**
+ * 全屏歌词行距：100% 为默认排版。
+ *
+ * 40% = 行压得很紧（能一屏塞下很多句），300% = 一句占大半屏（跟唱用）。
+ */
 const val DEFAULT_FS_GAP_PCT = 100
-const val FS_GAP_MIN_PCT = 70
-const val FS_GAP_MAX_PCT = 180
-const val FS_GAP_STEP_PCT = 5
+const val FS_GAP_MIN_PCT = 40
+const val FS_GAP_MAX_PCT = 300
+const val FS_GAP_STEP_PCT = 10
 
-/** 全屏歌词字间距：10 = 0.10em，0 = 完全贴紧。 */
+/**
+ * 全屏歌词字间距，单位 em×100：10 = 0.10em，0 = 完全贴紧，负数 = 收字。
+ * 允许 -1.00em ~ +1.00em —— 负数那边是「字挤在一起」的排法，正数那边是散排。
+ */
 const val DEFAULT_FS_TRACKING = 10
-const val FS_TRACKING_MIN = 0
-const val FS_TRACKING_MAX = 30
-const val FS_TRACKING_STEP = 2
+const val FS_TRACKING_MIN = -100
+const val FS_TRACKING_MAX = 100
+const val FS_TRACKING_STEP = 5
+
+/**
+ * 背景摆动速度：倍率，1.0 是现在这套「慢呼吸」的基准。
+ *
+ * 同时驱动色块漂移的周期和跟拍起伏的弹簧刚度 —— 调慢时两件事一起慢，不会出现
+ * 「色块不动了、还在一抽一抽」。下限 0.1 是几乎静止，上限 2.0 是明显流动。
+ */
+const val DEFAULT_ORB_SPEED = 1.0f
+const val ORB_SPEED_MIN = 0.1f
+const val ORB_SPEED_MAX = 2.0f
+const val ORB_SPEED_STEP = 0.1f
 
 /**
  * 默认解码方式：软解。理由见 [PlayerState.useSoftwareDecoder]。
@@ -246,6 +296,31 @@ private const val POLL_MS = 200L
 
 /** 启动续播最多等音源脚本多久。脚本是异步加载的，等它比抢跑要划算得多。 */
 private const val RESUME_SOURCE_WAIT_MS = 12_000L
+
+/**
+ * 从播放地址里读容器格式。
+ *
+ * 脚本返回的地址后缀通常就是真实容器（`.flac` / `.mp3` / `.m4a`）。有些平台的 CDN 地址
+ * 不带后缀，这时返回 null —— 播放页只显示音质档位，不瞎猜一个格式出来。
+ */
+private fun audioFormatOf(url: String): String? {
+    val path = url.substringBefore('?').substringBefore('#')
+    val segment = path.substringAfterLast('/')
+    val ext = segment.substringAfterLast('.', "").lowercase()
+    if (ext.isEmpty() || ext.length > 5) return null
+    return when (ext) {
+        "flac" -> "FLAC"
+        "mp3" -> "MP3"
+        "m4a", "mp4" -> "M4A"
+        "aac" -> "AAC"
+        "wav" -> "WAV"
+        "ogg" -> "OGG"
+        "opus" -> "OPUS"
+        "ape" -> "APE"
+        "dsf" -> "DSF"
+        else -> null
+    }
+}
 
 /**
  * 播放核心。
@@ -309,9 +384,11 @@ class PlayerViewModel @Inject constructor(
                 lyricsOffsetMs = lyricsOffsetPrefs.getOffset(),
                 lyricFontSp = readLyricFontSp(),
                 lyricLineGapPct = readLyricLineGapPct(),
+                lyricTracking = readLyricTracking(),
                 fsStyles = readFsStyles(),
                 useSoftwareDecoder = prefs.getBoolean("software_decoder", DEFAULT_SOFTWARE_DECODER),
-                orbSpeed = prefs.getFloat("orb_speed", 1.0f),
+                orbSpeed = prefs.getFloat("orb_speed", DEFAULT_ORB_SPEED)
+                    .coerceIn(ORB_SPEED_MIN, ORB_SPEED_MAX),
                 artworkRounded = prefs.getBoolean("artwork_rounded", true),
                 reduceMotion = prefs.getBoolean("reduce_motion", false),
                 lowPowerMode = prefs.getBoolean("low_power", false),
@@ -448,6 +525,8 @@ class PlayerViewModel @Inject constructor(
                 lyricsSource = null,
                 resolveHint = null,
                 motionUrl = null,
+                qualityLabel = null,
+                qualityFormat = null,
             )
         }
         retriedSongId = null
@@ -472,6 +551,7 @@ class PlayerViewModel @Inject constructor(
                     isLoading = true,
                     resolveHint = resolved.warning,
                     qualityLabel = resolved.quality.displayName,
+                    qualityFormat = audioFormatOf(resolved.url),
                 )
             }
             resolved.warning?.let { _toasts.tryEmit(it) }
@@ -496,7 +576,8 @@ class PlayerViewModel @Inject constructor(
         if (s.repeatMode == RepeatMode.Off && s.queueIndex == s.queue.lastIndex && s.userQueue.isEmpty()) {
             exo?.pause()
             exo?.seekTo(0)
-            _state.update { it.copy(isPlaying = false, progressMs = 0) }
+            // 进度归零并同步到 state，否则之后按「上一首」会用残留的进度误判。
+            _state.update { it.copy(isPlaying = false, progressMs = 0L) }
             return
         }
         val nextIndex = if (s.queueIndex < s.queue.lastIndex) s.queueIndex + 1 else 0
@@ -506,8 +587,13 @@ class PlayerViewModel @Inject constructor(
     fun prev() {
         val s = _state.value
         if (s.queue.isEmpty()) return
-        if ((exo?.currentPosition ?: 0L) > 3_000 && s.repeatMode != RepeatMode.One) {
+        // 用 state 里的 progressMs 判断，而不是 exo.currentPosition：
+        // 切歌后 ExoPlayer 还没 READY 时 currentPosition 仍残留上一首的进度值，
+        // 会把「回到上一首」误判成「重播当前曲」。progressMs 在 playQueueItem 里
+        // 会立刻归零，才是「当前这一首」的真实进度。
+        if (s.progressMs > 3_000 && s.repeatMode != RepeatMode.One) {
             exo?.seekTo(0)
+            _state.update { it.copy(progressMs = 0L) }
             return
         }
         val target = if (s.queueIndex > 0) s.queueIndex - 1 else s.queue.lastIndex
@@ -774,13 +860,21 @@ class PlayerViewModel @Inject constructor(
         prefs.edit().putString("np_background", mode.name).apply()
     }
 
-    fun stepOrbSpeed() {
-        val steps = listOf(0.6f, 1.0f, 1.6f)
-        val idx = steps.indexOfFirst { kotlin.math.abs(it - _state.value.orbSpeed) < 0.05f }
-        val next = steps[(if (idx < 0) 1 else idx + 1) % steps.size]
-        _state.update { it.copy(orbSpeed = next) }
-        prefs.edit().putFloat("orb_speed", next).apply()
+    /**
+     * 背景摆动速度（倍率）。同时作用于两件事：色块漂移的周期，和跟拍起伏的弹簧刚度。
+     *
+     * 0.1 倍 = 几乎静止的呼吸，2 倍 = 明显在流动。设置页一格 0.1，直接给数值，
+     * 不再用「慢/中/快」这种看不出差别的档位。
+     */
+    fun setOrbSpeed(speed: Float) {
+        val clamped = (speed.coerceIn(ORB_SPEED_MIN, ORB_SPEED_MAX) * 10f)
+            .roundToInt() / 10f
+        _state.update { it.copy(orbSpeed = clamped) }
+        prefs.edit().putFloat("orb_speed", clamped).apply()
     }
+
+    /** 步进 +/-，供设置页的减号/加号用。 */
+    fun nudgeOrbSpeed(delta: Float) = setOrbSpeed(_state.value.orbSpeed + delta)
 
     /**
      * 歌词字号：直接设数值，范围 [LYRIC_FONT_MIN_SP]..[LYRIC_FONT_MAX_SP]。
@@ -810,6 +904,19 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun nudgeLyricLineGapPct(delta: Int) = setLyricLineGapPct(_state.value.lyricLineGapPct + delta)
+
+    /**
+     * 播放页歌词字间距（em×100），范围 [LYRIC_TRACKING_MIN]..[LYRIC_TRACKING_MAX]。
+     *
+     * 和全屏歌词那套一样允许负数：负值收字，长句能在有限宽度里多放几个字。
+     */
+    fun setLyricTracking(v: Int) {
+        val clamped = v.coerceIn(LYRIC_TRACKING_MIN, LYRIC_TRACKING_MAX)
+        _state.update { it.copy(lyricTracking = clamped) }
+        prefs.edit().putInt("lyric_tracking", clamped).apply()
+    }
+
+    fun nudgeLyricTracking(delta: Int) = setLyricTracking(_state.value.lyricTracking + delta)
 
     // ── 全屏歌词（墨卷 / 声轨）的独立排版设置 ───────────────────────────────────
     // 与上面的普通歌词字号 / 行距分开存：全屏是「一张画面」，字号动辄 40sp，
@@ -885,6 +992,10 @@ class PlayerViewModel @Inject constructor(
     private fun readLyricLineGapPct(): Int =
         prefs.getInt("lyric_line_gap_pct", DEFAULT_LYRIC_GAP_PCT)
             .coerceIn(LYRIC_GAP_MIN_PCT, LYRIC_GAP_MAX_PCT)
+
+    private fun readLyricTracking(): Int =
+        prefs.getInt("lyric_tracking", DEFAULT_LYRIC_TRACKING)
+            .coerceIn(LYRIC_TRACKING_MIN, LYRIC_TRACKING_MAX)
 
     /**
      * 硬解 / 软解。

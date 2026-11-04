@@ -13,16 +13,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,6 +46,8 @@ import com.veil.music.ui.components.TrackRow
 import com.veil.music.ui.viewmodel.LibraryViewModel
 import com.veil.music.ui.viewmodel.PlayerViewModel
 import com.veil.music.ui.navigation.LocalNavBarFocus
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 我的。左侧歌单导航（我喜欢 / 播放历史 / 自建歌单），右侧曲目列表。
@@ -52,6 +63,13 @@ fun LibraryScreen(
     val state by vm.state.collectAsState()
     val playerState by playerVm.state.collectAsState()
     val navBarFocus = LocalNavBarFocus.current
+    // 右侧「播放全部」与第一首曲目之间的上下通道。
+    // LazyColumn 是独立的滚动容器，几何焦点搜索从列表往上出不去，
+    // 表现就是「第一首歌按上键没反应」—— 所以给两端各绑一个 requester，显式搬焦点。
+    val playAllFocus = remember { FocusRequester() }
+    val firstTrackFocus = remember { FocusRequester() }
+    val trackListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     Row(modifier.fillMaxSize().padding(top = 18.dp)) {
         // 左侧导航
@@ -107,6 +125,18 @@ fun LibraryScreen(
                 if (state.songs.isNotEmpty()) {
                     Surface(
                         onClick = { playerVm.playAlbum(state.songs, 0) },
+                        modifier = Modifier
+                            .focusRequester(playAllFocus)
+                            .onKeyEvent { e ->
+                                if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionDown) {
+                                    scope.launch {
+                                        runCatching { trackListState.animateScrollToItem(0) }
+                                        delay(60)
+                                        runCatching { firstTrackFocus.requestFocus() }
+                                    }
+                                    true
+                                } else false
+                            },
                         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
                         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFFFA233B)),
                     ) {
@@ -137,6 +167,7 @@ fun LibraryScreen(
             }
 
             LazyColumn(
+                state = trackListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(end = 48.dp, bottom = 110.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -146,6 +177,16 @@ fun LibraryScreen(
                         song = song,
                         index = index + 1,
                         isCurrent = playerState.currentSong?.id == song.id,
+                        modifier = if (index == 0) {
+                            Modifier
+                                .focusRequester(firstTrackFocus)
+                                .onKeyEvent { e ->
+                                    if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionUp) {
+                                        runCatching { playAllFocus.requestFocus() }
+                                        true
+                                    } else false
+                                }
+                        } else Modifier,
                         onClick = { playerVm.playAlbum(state.songs, index) },
                         onLongClick = { vm.removeFromSelected(song.id) },
                     )

@@ -44,6 +44,15 @@ class VeilMusicApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // QuickJS 的 native so（libquickjs-android-wrapper.so）必须在使用 QuickJSContext
+        // 之前显式 loadLibrary —— wrapper 3.2.3 不会自动加载。漏掉这一步的直接后果：
+        // createRuntime() 抛 UnsatisfiedLinkError，被包装成
+        // 「The so library must be initialized before createContext!」，
+        // 于是**所有** lx 音源脚本都「加载失败」，看起来像源全挂了，其实一个都没跑起来。
+        // 必须放在最前面，早于任何脚本加载。
+        runCatching { com.whl.quickjs.android.QuickJSLoader.init() }
+            .onFailure { android.util.Log.e("VeilMusicApp", "QuickJS so 加载失败：${it.message}") }
+
         com.veil.music.util.CrashReporter.install(this)
         GainProcessor.logger = { tag, msg -> webServer.addLog(tag, msg) }
         // 管理页（8080）：默认开启，用于在手机导入脚本。关掉后不再监听。

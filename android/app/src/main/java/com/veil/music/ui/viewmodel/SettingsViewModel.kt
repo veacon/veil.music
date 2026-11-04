@@ -13,8 +13,11 @@ import com.veil.music.media.InAppWebServer
 import com.veil.music.source.SourceManager
 import com.veil.music.util.DeviceInfo
 import com.veil.music.util.DeviceReport
+import com.veil.music.util.GithubProxy
 import com.veil.music.util.UpdateChecker
 import com.veil.music.util.UpdateInfo
+import com.veil.music.util.UpdatePreferences
+import com.veil.music.util.UpdateResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,6 +89,17 @@ class SettingsViewModel @Inject constructor(
         UpdateUiState(unconfigured = !UpdateChecker.isConfigured)
     )
     val update: StateFlow<UpdateUiState> = _update.asStateFlow()
+
+    /** 「检查更新」下面可选的 GitHub 加速线路，选过就记住（电视直连 GitHub 基本不通）。 */
+    private val _proxy = MutableStateFlow(UpdatePreferences.githubProxy(context))
+    val proxy: StateFlow<GithubProxy> = _proxy.asStateFlow()
+
+    fun setUpdateProxy(p: GithubProxy) {
+        _proxy.value = p
+        UpdatePreferences.setGithubProxy(context, p)
+        // 换线路后把上一次的结论清掉：留着「检查失败」会让人以为新线路也不行。
+        if (!_update.value.checking) _update.value = UpdateUiState()
+    }
 
     init {
         viewModelScope.launch {
@@ -170,8 +184,8 @@ class SettingsViewModel @Inject constructor(
     /**
      * 检查更新。
      *
-     * 仓库地址写在 [UpdateChecker.REPO]，现在还是空的，所以这里会直接给出「未配置」，
-     * 不会去请求任何网络 —— 等仓库填好，这条路径自动变成真的检查。
+     * 三种结论分开说：有新版本 / 已是最新 / 仓库还没发过 Release —— 最后一种不是错误，
+     * 老代码把它当「检查失败 HTTP 404」，看着像按钮坏了。
      */
     fun checkUpdate(includeBeta: Boolean = false) {
         if (_update.value.checking) return
@@ -184,19 +198,25 @@ class SettingsViewModel @Inject constructor(
         }
         _update.value = UpdateUiState(checking = true)
         viewModelScope.launch {
-            UpdateChecker.check(includeBeta).fold(
-                onSuccess = { info ->
-                    _update.value = if (info == null) {
-                        UpdateUiState(message = "已是最新版本 v${BuildConfig.VERSION_NAME}")
-                    } else {
-                        UpdateUiState(
-                            message = "发现新版本 v${info.version}",
-                            available = info,
+            UpdateChecker.check(includeBeta, _proxy.value).fold(
+                onSuccess = { result ->
+                    _update.value = when (result) {
+                        is UpdateResult.Newer -> UpdateUiState(
+                            message = "发现新版本 v${result.info.version}",
+                            available = result.info,
+                        )
+                        UpdateResult.UpToDate -> UpdateUiState(
+                            message = "已是最新版本 v${BuildConfig.VERSION_NAME}",
+                        )
+                        UpdateResult.NoRelease -> UpdateUiState(
+                            message = "仓库还没有发布 APK（${UpdateChecker.REPO} 暂无可下载版本）",
                         )
                     }
                 },
                 onFailure = { e ->
-                    _update.value = UpdateUiState(message = "检查失败：${e.message ?: "网络不可用"}")
+                    _update.value = UpdateUiState(
+                        message = "检查失败：${e.message ?: "网络不可用"}（当前线路 ${_proxy.value.label}，可换一条再试）",
+                    )
                 },
             )
         }

@@ -76,10 +76,37 @@ fun AppShell(modifier: Modifier = Modifier) {
     // 冷启动：恢复上次的队列（不出声），再让播放条显示当前曲目。
     LaunchedEffect(Unit) { playerVm.restoreState() }
 
+    // 遥控器 Menu 键触发进入播放页（MainActivity → navVm.navigateToNowPlaying）。
+    LaunchedEffect(Unit) {
+        navVm.goToNowPlaying.collect { go ->
+            if (go) {
+                navVm.consumeNowPlayingNavigation()
+                navController.navigateToNowPlaying()
+            }
+        }
+    }
+
+    // 手机管理页推来的搜索关键词：跳到搜索页（SearchViewModel 自己订阅同一个流去真正搜）。
+    LaunchedEffect(Unit) {
+        navVm.searchKeyword.collect { kw ->
+            if (kw != null) {
+                navVm.consumeSearchKeyword()
+                navController.navigateTab(TopNavTab.Search)
+            }
+        }
+    }
+
     // 遥控器够不着的错误（解析失败、换源）用 toast 提示。
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         playerVm.toasts.collect { msg ->
+            android.widget.Toast.makeText(context.applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // 手机管理页的副作用反馈（建歌单 / 导入歌单链接）同样走 toast。
+    LaunchedEffect(Unit) {
+        navVm.messages.collect { msg ->
             android.widget.Toast.makeText(context.applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
@@ -89,10 +116,15 @@ fun AppShell(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         while (true) {
             val beta = com.veil.music.util.UpdatePreferences.betaEnabled(context)
-            com.veil.music.util.UpdateChecker.check(beta).onSuccess { info ->
+            // 启动时的静默检查也用用户选定的加速线路（设置 → 关于 → GitHub 加速）。
+            val proxy = com.veil.music.util.UpdatePreferences.githubProxy(context)
+            com.veil.music.util.UpdateChecker.check(beta, proxy).onSuccess { result ->
                 val current = com.veil.music.BuildConfig.VERSION_NAME
-                // check() 返回 Result<UpdateInfo?>：没有新版本时是 success(null)，不能直接取字段。
-                updateAvailable = info?.version?.trimStart('v', 'V')?.let { it != current } ?: false
+                updateAvailable = when (result) {
+                    is com.veil.music.util.UpdateResult.Newer ->
+                        result.info.version.trimStart('v', 'V') != current
+                    else -> false
+                }
             }
             kotlinx.coroutines.delay(3 * 60 * 60 * 1000L)
         }
@@ -102,11 +134,11 @@ fun AppShell(modifier: Modifier = Modifier) {
 
     // 页面内容区按上键要回到的那个 tab（见 LocalNavBarFocus）。
     val navBarFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    // 播放页的「播放/暂停」键：顶栏在「正在播放」胶囊上按上下键要直接落到它上面。
-    // 由 NowPlayingScreen 绑到按钮上（播放页没显示时它没有节点，顶栏会自然退回几何搜索）。
+    // 播放页的「播放/暂停」键：进入播放页后，右上角胶囊按上/下键要直接落到它上面。
+    // 由 NowPlayingScreen 绑到按钮上（播放页没显示时它没有节点，会自然退回几何搜索）。
     val nowPlayingPlayFocus = remember { androidx.compose.ui.focus.FocusRequester() }
-    // 顶栏此刻是否持焦。顶栏持焦期间页面不许抢焦点，否则左右键切到「正在播放」时
-    // 会被播放按钮抓走焦点，后面的「设置」就按不过去了。
+    // 顶栏此刻是否持焦。顶栏持焦期间页面不许抢焦点，否则左右键切到「设置」时
+    // 会被播放按钮抓走焦点。
     val navBarHasFocus = remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Box(modifier.fillMaxSize().background(Color(0xFF08080A))) {
@@ -140,7 +172,6 @@ fun AppShell(modifier: Modifier = Modifier) {
                         SearchScreen(playerVm)
                     }
                     composable(Screen.NowPlaying.route) {
-                        selectedTab = TopNavTab.NowPlaying
                         NowPlayingScreen(playerVm = playerVm, navVm = navVm, playFocus = nowPlayingPlayFocus)
                     }
                     composable(Screen.Settings.route) {
@@ -162,19 +193,26 @@ fun AppShell(modifier: Modifier = Modifier) {
                 }
             }
 
-            if (!isOnNowPlaying) NowPlayingBar(playerVm)
+            // 底部播放信息栏已移除：它在 TV 上既抢不到焦点（点不到），又白占一条高度。
+            // 「现在在听什么」改由右上角胶囊显示歌名（见 TopNavBar 的 nowPlayingTitle）。
         }
 
-        TopNavBar(
-            selected = selectedTab,
-            onSelect = { tab -> navController.navigateTab(tab) },
-            isPlaying = playerVm.state.collectAsState().value.isPlaying,
-            updateAvailable = updateAvailable,
-            beatAnalyzer = playerVm.beatAnalyzer,
-            upEntryFocus = navBarFocus,
-            downTarget = if (selectedTab == TopNavTab.NowPlaying) nowPlayingPlayFocus else null,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
+        // 播放页是沉浸式全屏（自己铺满动态背景），不渲染顶栏 —— 顶栏的 4 个 tab
+        // 和右上角「正在播放」胶囊只在 4 个主页面出现。播放页退回用返回键（见 BackHandler）。
+        if (!isOnNowPlaying) {
+            val ps = playerVm.state.collectAsState().value
+            TopNavBar(
+                selected = selectedTab,
+                onSelect = { tab -> navController.navigateTab(tab) },
+                isPlaying = ps.isPlaying,
+                // 播放中显示歌名，没播放显示「未在播放」（胶囊内部兜底）。
+                nowPlayingTitle = ps.currentSong?.title,
+                updateAvailable = updateAvailable,
+                beatAnalyzer = playerVm.beatAnalyzer,
+                upEntryFocus = navBarFocus,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
 
         // 返回：发现页 → 退出确认；其它页 → 回发现页。
         BackHandler(enabled = !showExitDialog && currentRoute == Screen.Discover.route) {
@@ -219,22 +257,26 @@ private fun androidx.navigation.NavHostController.openCollection(album: Album) {
 
 private fun androidx.navigation.NavHostController.navigateTab(tab: TopNavTab) {
     val target = when (tab) {
+        TopNavTab.NowPlaying -> Screen.NowPlaying.route
         TopNavTab.Discover -> Screen.Discover.route
         TopNavTab.Library -> Screen.Library.route
         TopNavTab.Search -> Screen.Search.route
-        TopNavTab.NowPlaying -> Screen.NowPlaying.route
         TopNavTab.Settings -> Screen.Settings.route
     }
-    // 五个 tab 一律平级：先回到底（发现），再压入目标页。
-    //
-    // 「正在播放」以前是特例 —— 只 navigate 不 popUpTo，于是它会**叠在**别的 tab 上面
-    // （栈变成 发现 → 搜索 → 正在播放）。之后从播放页切回搜索时，popUpTo(saveState) 把
-    // 「搜索 + 正在播放」整段存了下来，再 restoreState 恢复的就是"搜索上面还压着播放页"
-    // —— 结果就是按了搜索/设置却仍停在播放页（用户看到的"往左进搜索不显示、往右进设置也不显示"）。
-    //
-    // 现在所有 tab 都走同一条规则，栈里播放页永远只直接压在「发现」上面，保存下来的片段
-    // 也永远只含一个页面，restoreState 不可能把播放页又还原到栈顶。
+    // 四个 tab 一律平级：先回到底（发现），再压入目标页。
     navigate(target) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+/**
+ * 进入「正在播放」页。它不再是顶部 tab，改由右上角独立胶囊或遥控器 Menu 键触发，
+ * 所以单独一条导航通道：直接压到「发现」上面，退回时回到发现页（见 BackHandler）。
+ */
+private fun androidx.navigation.NavHostController.navigateToNowPlaying() {
+    navigate(Screen.NowPlaying.route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true

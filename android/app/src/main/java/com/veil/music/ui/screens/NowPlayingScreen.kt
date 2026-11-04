@@ -209,6 +209,19 @@ fun NowPlayingScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // 当前这首实际拿到的音质 + 容器格式（如「无损 FLAC · FLAC」「高品 320k · MP3」）。
+            // 只在这一批流解析完之后才有值；解析中/本地文件没有就不显示。
+            // 注意它和时钟在同一个 Row、同一个 chromeAlpha 里：控件淡出时一起消失，不会留孤零零一个角标。
+            val qualityText = state.qualityLabel?.let { q ->
+                val f = state.qualityFormat
+                if (f.isNullOrBlank() || q.contains(f, ignoreCase = true)) q else "$q · $f"
+            }
+            if (qualityText != null) {
+                Text(
+                    qualityText,
+                    style = TextStyle(fontSize = 15.sp, color = Color(0xCCFFFFFF), shadow = Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 8f)),
+                )
+            }
             if (sleepLabel != null) {
                 Text(sleepLabel, style = TextStyle(fontSize = 15.sp, color = Color(0xCCFFFFFF), shadow = Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 8f)))
             }
@@ -238,6 +251,15 @@ fun NowPlayingScreen(
         var fullScreenLyrics by remember { mutableStateOf(false) }
         // 墨卷 / 声轨：全屏沉浸歌词，不含任何播放控件。null = 不进入。
         var fullscreenFx by remember { mutableStateOf<FullscreenLyricMode?>(null) }
+        /**
+         * 退出时要淡出的那一个「是哪一种」。
+         *
+         * Crossfade 在退场动画里仍会重组 targetState 那一分支的内容，而此时 [fullscreenFx]
+         * 已经被置成 null —— 分支里 `fullscreenFx ?: INK_SCROLL` 就会在最后 450ms 把声轨
+         * 闪成「墨卷」，取参数时 `FsStyle.of(null)` 又回落到 PLAIN 的默认字号，看起来就是
+         * 「返回时跳到墨卷默认字体版」。所以进入时把模式记在这里，退出时不清它。
+         */
+        var fxMode by remember { mutableStateOf(FullscreenLyricMode.INK_SCROLL) }
         // System Back exits full-screen lyrics (the 3-dots menu isn't reachable there).
         androidx.activity.compose.BackHandler(enabled = fullScreenLyrics || fullscreenFx != null) {
             fullScreenLyrics = false
@@ -274,9 +296,10 @@ fun NowPlayingScreen(
             2 -> AmbientScreensaver(song = song) { screensaverOn = false; lastInteractionMs = System.currentTimeMillis() }
             3 -> {
                 // 墨卷 / 声轨各用自己的那套排版（设置 → 全屏歌词 里分开调）。
-                val fxPrefs = state.fsPrefs(FsStyle.of(fullscreenFx))
+                // 用 fxMode 而不是 fullscreenFx：退场动画期间后者已经是 null 了。
+                val fxPrefs = state.fsPrefs(FsStyle.of(fxMode))
                 FullscreenLyricStage(
-                    mode = fullscreenFx ?: FullscreenLyricMode.INK_SCROLL,
+                    mode = fxMode,
                     lyrics = state.lyrics,
                     progressState = smoothProgress,
                     offsetMs = state.avLyricsMs,
@@ -520,9 +543,11 @@ fun NowPlayingScreen(
                                 NpMenuItem(repeatLabel, icon = if (state.repeatMode == RepeatMode.One) Glyph.REPEAT_ONE else Glyph.REPEAT, checked = state.repeatMode != RepeatMode.Off) { playerVm.toggleRepeat() }
                                 if (state.lyrics.isNotEmpty()) NpMenuItem("全屏歌词", icon = Glyph.LYRICS) { fullScreenLyrics = true; showOptionsMenu = false }
                                 if (state.lyrics.isNotEmpty()) NpMenuItem("墨卷（全屏）", icon = Glyph.LYRICS) {
+                                    fxMode = FullscreenLyricMode.INK_SCROLL
                                     fullscreenFx = FullscreenLyricMode.INK_SCROLL; showOptionsMenu = false
                                 }
                                 if (state.lyrics.isNotEmpty()) NpMenuItem("声轨（全屏）", icon = Glyph.MUSIC_NOTE) {
+                                    fxMode = FullscreenLyricMode.TRACK_BED
                                     fullscreenFx = FullscreenLyricMode.TRACK_BED; showOptionsMenu = false
                                 }
                                 NpMenuItem("添加到…", icon = Glyph.ADD_TO) { showAddTo = true; showOptionsMenu = false }
@@ -595,6 +620,8 @@ fun NowPlayingScreen(
                             playFocus = playFocus,
                             fontScale = state.lyricsScale,
                             lineGap = state.lyricLineGap,
+                            // 字间距（em×100）：设置 →「播放与外观」→ 歌词 里调，范围 -1.00–1.00em。
+                            tracking = state.lyricTracking,
                             accent = lyricAccent,
                         )
                     } else {
@@ -1230,13 +1257,26 @@ private fun DynamicBackground(artworkUrlTemplate: String?, songKey: String, beat
     // lists and brushes every frame, which was the app's main GC-churn source. Read in the draw lambda,
     // only the draw phase re-runs each frame; the composable recomposes only on song/palette change.
     val rawEnergy by beatAnalyzer.energy.collectAsState()
+    // 背景摆动速度（0.1–2.0 倍）：色块漂移周期与跟拍弹簧都按它缩放，两件事必须同步 ——
+    // 只改漂移会让色块慢下来、鼓点却还在抽，看着更卡。
+    val sp = orbSpeed.coerceIn(com.veil.music.ui.viewmodel.ORB_SPEED_MIN, com.veil.music.ui.viewmodel.ORB_SPEED_MAX)
     // Critically damped (dampingRatio 1.0), not the old 0.5: an underdamped spring overshoots and
     // rings after every hit, which read as the punch "bouncing all over the place". 1.0 gives a snappy
     // attack that settles cleanly with no wobble, so each beat lands once and decays.
-    val energyState = animateFloatAsState(rawEnergy.coerceIn(0f, 1f), androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow), label = "beat")
+    // 能量跟随：换成更软的弹簧（StiffnessLow），并去掉原本略微欠阻尼的 0.6。低刚度意味着
+    // 每个鼓点不会被「甩」一下再弹回来 —— 背景是陪衬，跟着节拍抽动比慢漂移更容易让人觉得卡。
+    // 刚度再乘 sp：0.1 倍时鼓点几乎只是缓一口气，2 倍时才接近原来那种利落的抽动。
+    val beatSpring = androidx.compose.animation.core.spring<Float>(
+        dampingRatio = 1f,
+        stiffness = androidx.compose.animation.core.Spring.StiffnessLow * sp,
+    )
+    val energyState = animateFloatAsState(rawEnergy.coerceIn(0f, 1f), beatSpring, label = "beat")
 
     val rawBands by beatAnalyzer.bands.collectAsState()
-    val bandSpring = androidx.compose.animation.core.spring<Float>(dampingRatio = 0.6f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+    val bandSpring = androidx.compose.animation.core.spring<Float>(
+        dampingRatio = 0.85f,
+        stiffness = androidx.compose.animation.core.Spring.StiffnessLow * sp,
+    )
     val band0State = animateFloatAsState(rawBands.getOrElse(0) { 0f }.coerceIn(0f, 1f), bandSpring, label = "bass")
     val band1State = animateFloatAsState(rawBands.getOrElse(1) { 0f }.coerceIn(0f, 1f), bandSpring, label = "vocal")
     val band2State = animateFloatAsState(rawBands.getOrElse(2) { 0f }.coerceIn(0f, 1f), bandSpring, label = "treble")
@@ -1247,12 +1287,16 @@ private fun DynamicBackground(artworkUrlTemplate: String?, songKey: String, beat
     }
 
     // Orb speed scales the drift periods (faster speed → shorter tween).
-    val sp = orbSpeed.coerceIn(0.4f, 2.0f)
+    //
+    // 基准周期是 38/52/66/28 秒（比早先的 20/27/34/15 慢了近一倍）：电视是三米外看的背景，
+    // 原来那组速度色块每分钟要横穿画面三四趟，眼睛会一直被迫跟着它走，看着就「快、还在抖」。
+    // 慢下来之后它是「呼吸」而不是「漂移」，同一帧率下也就看不出掉帧了。
+    // 用户现在可以在「设置 → 播放与外观」里用 0.1–2.0 倍继续调，这里只按倍率缩放周期。
     val infinite = rememberInfiniteTransition(label = "pool")
-    val t1s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((20_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t1")
-    val t2s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((27_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t2")
-    val t3s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((34_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t3")
-    val t4s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((15_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t4")
+    val t1s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((38_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t1")
+    val t2s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((52_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t2")
+    val t3s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((66_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t3")
+    val t4s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((28_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t4")
 
     // PERF + accessibility: freeze the perpetual drift while paused OR when Reduce Motion is on. We
     // snapshot the drift phase and read that in the draw instead of the live State, so the draw phase
@@ -1365,11 +1409,13 @@ private fun DynamicBackground(artworkUrlTemplate: String?, songKey: String, beat
                 band1State.value,   // bot-left  → vocal/mid
                 band0State.value,   // bot-right → bass
             )
-            val beatScale = 1f + eAmp * 0.25f
-            val beatAlpha = (0.60f + eAmp * 0.20f).coerceAtMost(0.95f)
+            // 节拍幅度收一半：原来半径靠 25%、透明度靠 20% 的整屏色块跟着鼓点一起放大缩小，
+            // 每一拍都是一次全屏重绘，观感上就是「一闪一闪 + 掉帧」。现在只是轻微起伏。
+            val beatScale = 1f + eAmp * 0.12f
+            val beatAlpha = (0.60f + eAmp * 0.10f).coerceAtMost(0.92f)
             // Smaller than the old 0.62 so blobs overlap less and stay recognisably separate colours.
             val r = maxOf(w, h) * 0.42f * beatScale
-            val nudge = eAmp * maxOf(w, h) * 0.02f
+            val nudge = eAmp * maxOf(w, h) * 0.008f
             val nudgeOffsets = listOf(
                 Offset( nudge,  nudge * 0.5f),
                 Offset(-nudge, -nudge * 0.7f),
@@ -1384,8 +1430,8 @@ private fun DynamicBackground(artworkUrlTemplate: String?, songKey: String, beat
             ).mapIndexed { i, c -> c + nudgeOffsets[i] }
             colors4.take(blobCount).forEachIndexed { i, color ->
                 val ride = (bandRide[i] * amp).coerceIn(0f, 1.6f)
-                val rr = r * (1f + ride * 0.30f)
-                val aa = (beatAlpha + ride * 0.18f).coerceAtMost(0.98f)
+                val rr = r * (1f + ride * 0.18f)
+                val aa = (beatAlpha + ride * 0.10f).coerceAtMost(0.96f)
                 drawCircle(
                     brush = Brush.radialGradient(
                         listOf(color.copy(alpha = aa), color.copy(alpha = 0f)),

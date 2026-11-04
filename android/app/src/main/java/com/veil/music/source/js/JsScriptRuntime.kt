@@ -55,6 +55,8 @@ class JsScriptRuntime(
 
     /** Create the context, evaluate preload + script, and wait for the script to report `init`. */
     suspend fun load(timeoutMs: Long = 10_000): ScriptCapabilities {
+        // 保险：确保 native so 已加载，否则 create() 会抛 UnsatisfiedLinkError。
+        ensureSoLoaded()
         val deferred = CompletableDeferred<ScriptCapabilities>()
         initDeferred = deferred
         withContext(jsDispatcher) {
@@ -278,5 +280,18 @@ class JsScriptRuntime(
 
     companion object {
         private const val TAG = "JsScriptRuntime"
+
+        /**
+         * so 加载兜底。正常路径是 [com.veil.music.VeilMusicApp.onCreate] 里调一次；
+         * 这里再兜一次是因为单测 / 其他进程（如播放服务冷启）可能先摸到本类。
+         * `System.loadLibrary` 对同一个库重复调用是安全的（第二次直接命中缓存）。
+         */
+        private val soReady: Unit by lazy {
+            runCatching { com.whl.quickjs.android.QuickJSLoader.init() }
+                .onFailure { Log.e(TAG, "QuickJS so 加载失败：${it.message}") }
+            Unit
+        }
+
+        internal fun ensureSoLoaded() = soReady
     }
 }

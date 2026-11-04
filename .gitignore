@@ -49,3 +49,6 @@ RowScan2.java
 hs_err_pid*.log
 replay_pid*.log
 *.png
+# Android TV launcher icon / banner are real app resources, not dev screenshots —
+# never let the blanket *.png rule above drop them from the repository.
+!android/app/src/main/res/**/*.png
