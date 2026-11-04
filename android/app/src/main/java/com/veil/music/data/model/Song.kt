@@ -1,0 +1,33 @@
+package com.veil.music.data.model
+
+data class Song(
+    val id:             String,
+    val title:          String,
+    val artistName:     String,
+    val albumName:      String,
+    val durationMs:     Long,
+    val artworkUrl:     String?      = null,
+    val artworkBgColor: String?      = null,
+    /** 平台试听片段地址。lx 音源没有试听概念，恒为 null，保留字段是为了兼容旧快照。 */
+    val previewUrl:     String?      = null,
+    val hasLyrics:      Boolean = false,
+    val trackNumber:    Int?    = null,
+    val genreNames:     List<String> = emptyList(),
+    val artistId:       String? = null,
+    val albumId:        String? = null,
+    val type:           String  = "songs",
+) {
+    /** Music-video rows (catalog `music-videos` / library `library-music-videos`)
+     *  play through the fullscreen video path, not the audio player. */
+    val isMusicVideo: Boolean get() = type.contains("music-video")
+
+    fun artworkUrl(size: Int) = artworkUrl
+        ?.replace("{w}", "$size")
+        ?.replace("{h}", "$size")
+        ?.replace("{f}", "jpg")
+
+    val durationFormatted: String get() {
+        val s = durationMs / 1000
+        return "%d:%02d".format(s / 60, s % 60)
+    }
+}

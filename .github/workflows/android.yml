@@ -1,0 +1,79 @@
+name: Android APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Needed by the "Publish dev release" step below — the default GITHUB_TOKEN is
+    # read-only, which fails with "Resource not accessible by integration".
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so the changelog step can diff this push's commit range.
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Run unit tests
+        run: ./gradlew :app:test --no-daemon --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      # Delete the previous dev release + tag first, so the re-created one gets a fresh
+      # creation date and sorts to the TOP of the Releases list (GitHub orders by created_at;
+      # an updated-in-place release keeps its old date and sinks below newer tags).
+      - name: Remove old dev release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: gh release delete dev --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish a rolling "dev" release on every push to main.
+      # Anyone with the repo URL can download the APK — no login required.
+      - name: Publish dev release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: "Latest dev build"
+          # The `commit <sha>` line is REQUIRED: the in-app Beta updater greps it
+          # (UpdateChecker.parseRelease) to tell this rolling build apart from the
+          # installed one. Without it, Beta never offers CI builds.
+          body: |
+            Auto-built from `main`. Sideload: `adb install -r app-debug.apk`
+
+            commit ${{ github.sha }}
+          prerelease: true
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

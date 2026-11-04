@@ -1,0 +1,68 @@
+{
+  "_comment": "随包随附音源清单。7 个脚本参考自上游项目（veacon/upstream），本文件只用于溯源与自检，运行时不读。",
+  "upstream": {
+    "repo": "https://github.com/veacon/upstream",
+    "branch": "main",
+    "path": "app/src/main/assets/builtin_scripts",
+    "commit": "72409fb8ba98",
+    "commitDate": "2026-11-02T10:37:38Z"
+  },
+  "scripts": [
+    {
+      "file": "lx_source_01.js",
+      "name": "独家音源",
+      "version": "7",
+      "author": "w",
+      "md5": "524c3933298fd1a2e54924336399a8ed",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    },
+    {
+      "file": "lx_source_02.js",
+      "name": "fish_music",
+      "version": "1.9.0",
+      "author": "大鱼吃小鱼",
+      "md5": "f1a0e1d1f23cb14f3815171930ff8a26",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    },
+    {
+      "file": "lx_source_03.js",
+      "name": "𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ",
+      "version": "260925",
+      "author": "hello world",
+      "md5": "43bec2edc7a75dfae0f5f990ab04cf41",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    },
+    {
+      "file": "lx_source_04.js",
+      "name": "HYWmusic_公益版",
+      "version": "v1.2.0",
+      "author": "Ryn",
+      "md5": "93a5659999d76337f359073f1102bb53",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    },
+    {
+      "file": "lx_source_05.js",
+      "name": "杰翔聚合音源",
+      "version": "2.3.0",
+      "author": "haonanren118",
+      "md5": "14ecab3e75fdedba3743558b4f7dac51",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    },
+    {
+      "file": "lx_source_06.js",
+      "name": "lx-玉宁熙-Pro",
+      "version": "v1.2.2",
+      "author": "ynx(2363768762)",
+      "md5": "f58b918c923a262fcdc2585da1fa97b2",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    },
+    {
+      "file": "lx_source_07.js",
+      "name": "星海音乐源",
+      "version": "v3.2.15",
+      "author": "万去了了 / 科学大魔王",
+      "md5": "2a556513ad4022eb7efb32682dcef34f",
+      "sources": ["kw", "kg", "tx", "wy", "mg"]
+    }
+  ]
+}
