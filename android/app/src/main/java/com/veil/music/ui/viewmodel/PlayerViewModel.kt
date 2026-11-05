@@ -143,6 +143,8 @@ data class FsStylePrefs(
     val light: Boolean = false,
     /** 背景来源：墨卷 / 声轨各自独立。 */
     val bg: LyricBgMode = LyricBgMode.DEFAULT,
+    /** 当前句字色：0 = 跟随界面默认，1–7 = 赤橙黄绿青蓝紫。墨卷 / 声轨用。 */
+    val accent: Int = 0,
 ) {
     companion object {
         /** 全屏歌词直接当正文铺满整屏，默认字号比墨卷/声轨小一档。 */
@@ -312,13 +314,19 @@ const val FS_GAP_STEP_PCT = 10
 /**
  * 墨卷竖距：竖排列与列之间的水平间距，100% 为原设计（1.85 倍字宽）。
  *
+ * 范围 -300% ~ 300%：负数能把两列压到重叠（-300% 在 [fsGapScale] 里正好收到 0 倍），
+ * 正数一路散开。竖排没有行距，这个值就是排版松紧的主要手段。
+ *
  * 竖排没有「行距」这个概念 —— 字是一列一列往下走的，能调的间距只有两处：
  * 列内字与字的垂直间隔（字距）与相邻两列之间的水平间距（竖距）。
  */
 const val DEFAULT_FS_COL_GAP_PCT = 100
-const val FS_COL_GAP_MIN_PCT = -100
+const val FS_COL_GAP_MIN_PCT = -300
 const val FS_COL_GAP_MAX_PCT = 300
 const val FS_COL_GAP_STEP_PCT = 10
+
+/** 当前句字色的档数：0 = 默认，1–7 = 赤橙黄绿青蓝紫（见 LyricAccent）。 */
+const val FS_ACCENT_MAX = 7
 
 /**
  * 字间距，单位 em×100：10 = 0.10em，0 = 完全贴紧，负数 = 收字。
@@ -1057,6 +1065,7 @@ class PlayerViewModel @Inject constructor(
                 lineGapPct = it.lineGapPct.coerceIn(FS_GAP_MIN_PCT, FS_GAP_MAX_PCT),
                 colGapPct = it.colGapPct.coerceIn(FS_COL_GAP_MIN_PCT, FS_COL_GAP_MAX_PCT),
                 letterSpacing = it.letterSpacing.coerceIn(FS_TRACKING_MIN, FS_TRACKING_MAX),
+                accent = it.accent.coerceIn(0, FS_ACCENT_MAX),
             )
         }
         _state.update { it.copy(fsStyles = it.fsStyles + (style to next)) }
@@ -1068,6 +1077,7 @@ class PlayerViewModel @Inject constructor(
             .putInt(fsKey(style, "tracking"), next.letterSpacing)
             .putBoolean(fsKey(style, "light"), next.light)
             .putString(fsKey(style, "bg"), next.bg.name)
+            .putInt(fsKey(style, "accent"), next.accent)
             .apply()
     }
 
@@ -1092,6 +1102,13 @@ class PlayerViewModel @Inject constructor(
 
     fun setFsLight(style: FsStyle, enabled: Boolean) =
         updateFsStyle(style) { it.copy(light = enabled) }
+
+    /** 当前句字色：0 默认，1–7 彩虹。只对墨卷 / 声轨生效。 */
+    fun setFsAccent(style: FsStyle, index: Int) =
+        updateFsStyle(style) { it.copy(accent = index) }
+
+    fun nudgeFsAccent(style: FsStyle, delta: Int) =
+        updateFsStyle(style) { it.copy(accent = it.accent + delta) }
 
     private fun fsKey(style: FsStyle, field: String) =
         "fs_${style.name.lowercase()}_$field"
@@ -1126,6 +1143,7 @@ class PlayerViewModel @Inject constructor(
                     .coerceIn(FS_TRACKING_MIN, FS_TRACKING_MAX),
                 light = prefs.getBoolean(fsKey(style, "light"), base.light),
                 bg = LyricBgMode.fromName(prefs.getString(fsKey(style, "bg"), base.bg.name)),
+                accent = prefs.getInt(fsKey(style, "accent"), base.accent).coerceIn(0, FS_ACCENT_MAX),
             )
         }
     }

@@ -14,10 +14,9 @@ import com.veil.music.source.SourceManager
 import com.veil.music.util.DeviceInfo
 import com.veil.music.util.DeviceReport
 import com.veil.music.util.GithubProxy
-import com.veil.music.util.UpdateChecker
-import com.veil.music.util.UpdateInfo
+import com.veil.music.util.UpdateManager
 import com.veil.music.util.UpdatePreferences
-import com.veil.music.util.UpdateResult
+import com.veil.music.util.UpdateState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,15 +53,6 @@ data class SettingsUiState(
     val device: DeviceReport? = null,
 )
 
-/** 「检查更新」的三态：闲着 / 正在查 / 查完了（带一条给人看的话）。 */
-data class UpdateUiState(
-    val checking: Boolean = false,
-    val message: String? = null,
-    val available: UpdateInfo? = null,
-    /** 仓库还没配置，UI 用灰色提示而不是报错——这是预留状态，不是故障。 */
-    val unconfigured: Boolean = false,
-)
-
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -70,6 +60,7 @@ class SettingsViewModel @Inject constructor(
     private val scripts: ScriptStore,
     private val sources: SourceManager,
     private val webServer: InAppWebServer,
+    private val updateManager: UpdateManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -85,10 +76,11 @@ class SettingsViewModel @Inject constructor(
     )
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
 
-    private val _update = MutableStateFlow(
-        UpdateUiState(unconfigured = !UpdateChecker.isConfigured)
-    )
-    val update: StateFlow<UpdateUiState> = _update.asStateFlow()
+    /**
+     * 更新状态由 [UpdateManager] 这个单例持有：启动时的静默检查和设置页手动检查共用一份，
+     * 且下载不会因为离开设置页被取消。这里只是把它转给 UI。
+     */
+    val update: StateFlow<UpdateState> = updateManager.state
 
     /** 「检查更新」下面可选的 GitHub 加速线路，选过就记住（电视直连 GitHub 基本不通）。 */
     private val _proxy = MutableStateFlow(UpdatePreferences.githubProxy(context))
@@ -96,9 +88,7 @@ class SettingsViewModel @Inject constructor(
 
     fun setUpdateProxy(p: GithubProxy) {
         _proxy.value = p
-        UpdatePreferences.setGithubProxy(context, p)
-        // 换线路后把上一次的结论清掉：留着「检查失败」会让人以为新线路也不行。
-        if (!_update.value.checking) _update.value = UpdateUiState()
+        updateManager.applyProxy(p)
     }
 
     init {
@@ -182,43 +172,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * 检查更新。
+     * 检查更新：发现新版本会**自动下载并调起安装器**，不用再点第二次。
      *
      * 三种结论分开说：有新版本 / 已是最新 / 仓库还没发过 Release —— 最后一种不是错误，
      * 老代码把它当「检查失败 HTTP 404」，看着像按钮坏了。
      */
     fun checkUpdate(includeBeta: Boolean = false) {
-        if (_update.value.checking) return
-        if (!UpdateChecker.isConfigured) {
-            _update.value = UpdateUiState(
-                unconfigured = true,
-                message = "更新源未配置（发布仓库填好之后可用）",
-            )
-            return
-        }
-        _update.value = UpdateUiState(checking = true)
-        viewModelScope.launch {
-            UpdateChecker.check(includeBeta, _proxy.value).fold(
-                onSuccess = { result ->
-                    _update.value = when (result) {
-                        is UpdateResult.Newer -> UpdateUiState(
-                            message = "发现新版本 v${result.info.version}",
-                            available = result.info,
-                        )
-                        UpdateResult.UpToDate -> UpdateUiState(
-                            message = "已是最新版本 v${BuildConfig.VERSION_NAME}",
-                        )
-                        UpdateResult.NoRelease -> UpdateUiState(
-                            message = "仓库还没有发布 APK（${UpdateChecker.REPO} 暂无可下载版本）",
-                        )
-                    }
-                },
-                onFailure = { e ->
-                    _update.value = UpdateUiState(
-                        message = "检查失败：${e.message ?: "网络不可用"}（当前线路 ${_proxy.value.label}，可换一条再试）",
-                    )
-                },
-            )
-        }
+        updateManager.check(autoInstall = true, includeBeta = includeBeta)
     }
+
+    /** 系统里授权「安装未知来源」之后，回来继续装已经下好的包。 */
+    fun installPendingUpdate() = updateManager.installPending()
 }

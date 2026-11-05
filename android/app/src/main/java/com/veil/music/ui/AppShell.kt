@@ -149,23 +149,26 @@ fun AppShell(modifier: Modifier = Modifier) {
     }.collectAsState(initial = 100 to 100)
 
     // 更新检查：启动一次 + 每 3 小时一次（TV 应用常驻，只查一次会错过滚动构建）。
-    var updateAvailable by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    // 发现新版本时**自动下载并调起系统安装器**，不再只是亮个小红点等人去点。
+    // 状态放在单例 UpdateManager 里，设置页看到的是同一份进度。
+    val updateManager = remember(context) {
+        dagger.hilt.android.EntryPointAccessors
+            .fromApplication(context, com.veil.music.util.UpdateEntryPoint::class.java)
+            .updateManager()
+    }
+    val updateState by updateManager.state.collectAsState()
+    LaunchedEffect(updateManager) {
         while (true) {
             val beta = com.veil.music.util.UpdatePreferences.betaEnabled(context)
-            // 启动时的静默检查也用用户选定的加速线路（设置 → 关于 → GitHub 加速）。
-            val proxy = com.veil.music.util.UpdatePreferences.githubProxy(context)
-            com.veil.music.util.UpdateChecker.check(beta, proxy).onSuccess { result ->
-                val current = com.veil.music.BuildConfig.VERSION_NAME
-                updateAvailable = when (result) {
-                    is com.veil.music.util.UpdateResult.Newer ->
-                        result.info.version.trimStart('v', 'V') != current
-                    else -> false
-                }
-            }
+            // 静默检查也用用户选定的加速线路（设置 → 关于 → GitHub 加速）。
+            updateManager.applyProxy(com.veil.music.util.UpdatePreferences.githubProxy(context))
+            updateManager.check(autoInstall = true, includeBeta = beta)
             kotlinx.coroutines.delay(3 * 60 * 60 * 1000L)
         }
     }
+    val updateAvailable = updateState.available?.version?.trimStart('v', 'V')?.let {
+        it != com.veil.music.BuildConfig.VERSION_NAME
+    } ?: false
 
     var showExitDialog by remember { mutableStateOf(false) }
 

@@ -29,8 +29,8 @@ android {
         targetSdk = 35
         // versionCode 必须单调递增（覆盖安装时系统会比对），所以对外叫 1.1.1 之后它继续往上走，
         // 否则从旧版本升级会直接报 INSTALL_FAILED_VERSION_DOWNGRADE。
-        versionCode = 21
-        versionName = "1.1.1"
+        versionCode = 22
+        versionName = "1.1.2"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         ndk { abiFilters += "arm64-v8a" }
     }

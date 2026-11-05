@@ -25,12 +25,16 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -195,6 +199,8 @@ class InAppWebServer @Inject constructor(
         "/settings" -> html(pageSettings())
         "/lyric-look" -> html(pageLyricLook())
         "/debug" -> debugDownload()
+        "/backup" -> backupDownload()
+        "/backup-page" -> html(pageBackup())
         "/logs" -> html(pageLogs())
         "/api/hotsearch" -> json(hotSearchJson())
         "/api/status" -> json(statusJson())
@@ -257,6 +263,17 @@ class InAppWebServer @Inject constructor(
                 val enabled = (params["enabled"]?.firstOrNull() ?: "1") == "1"
                 scope?.launch(Dispatchers.IO) { scripts.setEnabled(id, enabled) }
                 html(donePage(if (enabled) "已启用" else "已停用"))
+            }
+            "/api/restore" -> {
+                val tmp = files["file"]
+                val n = tmp?.let { runCatching { restoreBackup(File(it)) }.getOrNull() }
+                addLog(if (n != null) "INFO" else "ERROR", "恢复备份：" + (n?.let { "$it 个文件" } ?: "失败"))
+                html(
+                    donePage(
+                        if (n == null) "未收到备份文件或文件损坏"
+                        else "已恢复 $n 个文件。请回到电视重启薄音，音源 / 歌单 / 设置 / 字体才会全部生效。"
+                    )
+                )
             }
             "/api/delete" -> {
                 val id = params["id"]?.firstOrNull().orEmpty()
@@ -354,6 +371,7 @@ class InAppWebServer @Inject constructor(
         <div class="card"><a href="/import"><h3>📜 提交音源</h3></a><p>粘贴 URL / 文本，或上传 .js 文件。</p></div>
         <div class="card"><a href="/scripts"><h3>🧩 管理已装音源</h3></a><p>启用 / 停用 / 删除已装脚本。</p></div>
         <div class="card"><a href="/settings"><h3>⚙️ 数据源与音质</h3></a><p>切换首页数据源、默认音质。</p></div>
+        <div class="card"><a href="/backup-page"><h3>💾 备份与恢复</h3></a><p>音源、歌单、设置、歌词字体与背景打包下载，重装后可恢复。</p></div>
         <div class="card"><a href="/debug"><h3>🐞 下载调试文件</h3></a><p>设备信息 + 设置 + 脚本 + 日志 + 崩溃记录。</p></div>
         <div class="card"><a href="/logs"><h3>📋 解析日志</h3></a><p>看最近音源解析发生了什么。</p></div>
         """,
@@ -495,6 +513,104 @@ class InAppWebServer @Inject constructor(
      * 内容：构建信息 → 设备 → 偏好 → 已装脚本（含 loadError）→ 最近日志 → 最近一次崩溃。
      * 手机上点开链接即可保存后回传，比在电视上截图靠谱得多。
      */
+    /**
+     * 备份用户数据：音源、歌单、曲目表、设置、歌词字体与背景。
+     *
+     * 覆盖安装本来就保留这些数据（都在私有目录，安装器不会碰）。这个备份是为一种例外
+     * 准备的：新包与旧包签名不一致时，系统只允许卸载重装，数据会被清掉 —— 安装器检测到
+     * 签名不一致时也会提示先来这里备份。
+     */
+    private fun backupDownload(): Response {
+        val bytes = runCatching { buildBackup() }.getOrElse {
+            return internalError("备份生成失败：${it.message}")
+        }
+        val name = "veil-backup-${LocalDateTime.now().format(FILE_TIME_FMT)}.zip"
+        val res = NanoHTTPD.newFixedLengthResponse(
+            Response.Status.OK,
+            "application/zip",
+            bytes.inputStream(),
+            bytes.size.toLong(),
+        )
+        res.addHeader("Content-Disposition", "attachment; filename=\"$name\"")
+        res.addHeader("Cache-Control", "no-store")
+        return res
+    }
+
+    private fun buildBackup(): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            fun add(file: File, entry: String) {
+                if (!file.isFile) return
+                zip.putNextEntry(ZipEntry(entry))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+            // files/ 根目录：scripts.json / library.json / tracks.json / removed_builtins.json
+            context.filesDir.listFiles()?.filter { it.isFile }?.forEach {
+                add(it, "files/" + it.name)
+            }
+            // files/lyric_look：歌词字体与三张背景图
+            File(context.filesDir, "lyric_look").listFiles()?.forEach {
+                add(it, "files/lyric_look/" + it.name)
+            }
+            // shared_prefs：音源偏好、播放页排版、更新线路等全部设置
+            File(context.applicationInfo.dataDir, "shared_prefs").listFiles()?.forEach {
+                add(it, "shared_prefs/" + it.name)
+            }
+        }
+        return out.toByteArray()
+    }
+
+    /** 恢复备份，返回写入的文件数。只认 files/ 与 shared_prefs/ 两个前缀。 */
+    private fun restoreBackup(zipFile: File): Int {
+        var count = 0
+        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs").apply { mkdirs() }
+        ZipInputStream(zipFile.inputStream()).use { zin ->
+            var entry: ZipEntry? = zin.nextEntry
+            while (entry != null) {
+                val name = entry.name
+                val target = when {
+                    name.startsWith("files/lyric_look/") ->
+                        File(context.filesDir, name.removePrefix("files/"))
+                    name.startsWith("files/") && !name.removePrefix("files/").contains('/') ->
+                        File(context.filesDir, name.removePrefix("files/"))
+                    name.startsWith("shared_prefs/") && !name.removePrefix("shared_prefs/").contains('/') ->
+                        File(prefsDir, name.removePrefix("shared_prefs/"))
+                    else -> null
+                }
+                if (target != null && !entry.isDirectory) {
+                    target.parentFile?.mkdirs()
+                    target.outputStream().use { zin.copyTo(it) }
+                    count++
+                }
+                zin.closeEntry()
+                entry = zin.nextEntry
+            }
+        }
+        return count
+    }
+
+    private fun pageBackup(): String = shell(
+        "备份与恢复 · 薄音",
+        """
+        <h2>备份与恢复</h2>
+        <p>备份内容：<b>音源脚本</b>、<b>歌单与曲目</b>、<b>全部设置</b>、<b>歌词字体与背景图</b>。</p>
+        <div class="card">
+          <h3>① 下载备份</h3>
+          <p>存到手机里。重装应用后回到本页上传即可恢复。</p>
+          <a href="/backup" style="display:block;text-align:center;padding:14px;background:#4ADE80;color:#0A0D14;border-radius:8px;font-weight:700;text-decoration:none;">下载备份 (.zip)</a>
+        </div>
+        <div class="card">
+          <h3>② 恢复备份</h3>
+          <form method="POST" action="/api/restore" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".zip,application/zip" required>
+            <button type="submit">上传并恢复</button>
+          </form>
+          <p style="opacity:.7">恢复完成后需要重启电视上的薄音。</p>
+        </div>
+        """,
+    )
+
     private fun debugDownload(): Response {
         val text = runCatching { buildDebugReport() }.getOrElse {
             return internalError("调试信息生成失败：${it.message}")

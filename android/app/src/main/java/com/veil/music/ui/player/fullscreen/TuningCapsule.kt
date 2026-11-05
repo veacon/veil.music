@@ -45,7 +45,7 @@ import com.veil.music.ui.viewmodel.NowPlayingBackground
 import com.veil.music.ui.viewmodel.ORB_SPEED_STEP
 
 /** 胶囊展开后显示哪一页子面板。 */
-enum class CapsulePanel { NONE, FONT, SIZE, BG }
+enum class CapsulePanel { NONE, FONT, SIZE, ACCENT, BG }
 
 /**
  * 「大小」页里的每一行。
@@ -123,6 +123,8 @@ class TuningCapsuleController(
     private val onSetPlayerBg: (NowPlayingBackground) -> Unit = {},
     /** 「背景」页第 4 行的摆动速度步进，正负一个 [ORB_SPEED_STEP]。 */
     private val onNudgeOrbSpeed: (Float) -> Unit = {},
+    /** 「字色」页：选中第几档（0 = 默认，1–7 = 彩虹）。墨卷 / 声轨用。 */
+    private val onSetAccent: (Int) -> Unit = {},
     /** 「背景」页讲的是页面背景还是歌词底图 —— 播放页与三个歌词界面共用同一枚胶囊，靠它区分。 */
     val bgPanel: CapsuleBgPanel = CapsuleBgPanel.LYRIC,
 ) {
@@ -138,6 +140,15 @@ class TuningCapsuleController(
 
     /** 长按触发后，同一次按住产生的重复 DOWN 事件要吞掉，否则会立刻又把面板收起。 */
     private var suppressDownUntilUp = false
+
+    /**
+     * 当前界面能用的页签。
+     *
+     * 「字色」只对墨卷 / 声轨有意义（全屏歌词是整屏正文，彩虹色会破坏可读性），
+     * 所以在 PLAIN 上空不出现，左右切换时也不会停在一页调不动的面板上。
+     */
+    private fun tabsFor(style: FsStyle): List<CapsuleTab> =
+        CapsuleTab.entries.filter { it != CapsuleTab.ACCENT || style != FsStyle.PLAIN }
 
     private fun applyVisible(v: Boolean) {
         visible = v
@@ -163,7 +174,17 @@ class TuningCapsuleController(
                 suppressDownUntilUp = false
                 return visible
             }
-            return false
+            // 胶囊展开时，导航键 / OK 的「抬起」也必须吃掉。
+            //
+            // 原因：Compose 的 clickable 是在 KeyUp 上触发点击的。只吞 KeyDown 时，
+            // 底下仍然持有焦点的播放键会收到这次 KeyUp —— 于是「长按下键呼出胶囊」
+            // 之后按一次 OK，胶囊打开面板的同时歌被暂停了。返回 [visible] 让它
+            // 只在胶囊开着时生效，收起来之后按键照常落到控件上。
+            return visible && (
+                k == Key.DirectionCenter || k == Key.Enter || k == Key.NumPadEnter ||
+                    k == Key.DirectionLeft || k == Key.DirectionRight || k == Key.DirectionUp ||
+                    k == Key.Back
+                )
         }
         if (e.type != KeyEventType.KeyDown) return false
 
@@ -182,7 +203,7 @@ class TuningCapsuleController(
 
         if (k == Key.DirectionDown && suppressDownUntilUp) return true
 
-        val tabs = CapsuleTab.entries
+        val tabs = tabsFor(style)
         return when (panel) {
             CapsulePanel.NONE -> when (k) {
                 Key.DirectionLeft -> {
@@ -192,7 +213,7 @@ class TuningCapsuleController(
                     tab = tabs[(tab.ordinal + 1) % tabs.size]; true
                 }
                 Key.DirectionUp, Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                    activateTab()
+                    activateTab(pref)
                     true
                 }
                 Key.DirectionDown, Key.Back -> {
@@ -225,6 +246,29 @@ class TuningCapsuleController(
                     Key.DirectionLeft -> { adjustSize(style, item, -1); true }
                     Key.DirectionRight -> { adjustSize(style, item, 1); true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Back -> { panel = CapsulePanel.NONE; true }
+                    else -> false
+                }
+            }
+
+            CapsulePanel.ACCENT -> {
+                val n = LyricAccent.entries.size
+                when (k) {
+                    Key.DirectionUp, Key.DirectionLeft -> {
+                        item = (item + n - 1) % n
+                        onSetAccent(item)   // 边选边预览，不用按确定才知道什么颜色
+                        true
+                    }
+                    Key.DirectionDown, Key.DirectionRight -> {
+                        item = (item + 1) % n
+                        onSetAccent(item)
+                        true
+                    }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        onSetAccent(item)
+                        panel = CapsulePanel.NONE
+                        true
+                    }
+                    Key.Back -> { panel = CapsulePanel.NONE; true }
                     else -> false
                 }
             }
@@ -272,11 +316,12 @@ class TuningCapsuleController(
         }
     }
 
-    private fun activateTab() {
+    private fun activateTab(pref: FsStylePrefs) {
         when (tab) {
             CapsuleTab.CYCLE -> { applyVisible(false); onCycleEffect() }
             CapsuleTab.FONT -> { panel = CapsulePanel.FONT; item = 0 }
             CapsuleTab.SIZE -> { panel = CapsulePanel.SIZE; item = 0 }
+            CapsuleTab.ACCENT -> { panel = CapsulePanel.ACCENT; item = pref.accent }
             CapsuleTab.BG -> { panel = CapsulePanel.BG; item = 0 }
             CapsuleTab.QR -> { applyVisible(false); onOpenQr() }
         }
@@ -327,13 +372,13 @@ fun TuningCapsule(
                 CapsulePanelCard(controller, style, pref, hasCustomFont, hasCustomBg, playerBg, orbSpeed)
                 Spacer(Modifier.height(12.dp))
             }
-            CapsulePill(controller.tab)
+            CapsulePill(controller.tab, style)
         }
     }
 }
 
 @Composable
-private fun CapsulePill(selected: CapsuleTab) {
+private fun CapsulePill(selected: CapsuleTab, style: FsStyle) {
     Row(
         Modifier
             .clip(RoundedCornerShape(50))
@@ -342,7 +387,7 @@ private fun CapsulePill(selected: CapsuleTab) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CapsuleTab.entries.forEach { t ->
+        CapsuleTab.entries.filter { it != CapsuleTab.ACCENT || style != FsStyle.PLAIN }.forEach { t ->
             val on = t == selected
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -389,11 +434,42 @@ private fun CapsulePanelCard(
         when (controller.panel) {
             CapsulePanel.FONT -> FontPanel(controller.item, hasCustomFont)
             CapsulePanel.SIZE -> SizePanel(controller.item, pref, style)
+            CapsulePanel.ACCENT -> AccentPanel(controller.item)
             CapsulePanel.BG -> when (controller.bgPanel) {
                 CapsuleBgPanel.PLAYER -> PlayerBgPanel(controller.item, playerBg, orbSpeed)
                 CapsuleBgPanel.LYRIC -> BgPanel(controller.item, pref.bg, hasCustomBg)
             }
             CapsulePanel.NONE -> {}
+        }
+    }
+}
+
+@Composable
+private fun AccentPanel(item: Int) {
+    Column(Modifier.fillMaxWidth()) {
+        PanelTitle("当前句字色")
+        LyricAccent.entries.forEachIndexed { i, accent ->
+            val on = i == item
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (on) Color(0xFF2A2A31) else Color.Transparent)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (accent == LyricAccent.DEFAULT) Color(0xFF8E8E93) else accent.color
+                        ),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(accent.label, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                if (on) ChevronRight(Color(0xFF7CFFB2), Modifier.size(16.dp))
+            }
         }
     }
 }

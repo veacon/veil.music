@@ -400,6 +400,7 @@ fun NowPlayingScreen(
                     onNudgeTrack = { playerVm.nudgeFsLetterSpacing(fxStyle, it) },
                     onSetBg = { playerVm.setFsBg(fxStyle, it) },
                     onClearBg = { LyricLookStore.clearBackground(lookCtx, fxStyle.bgSlot) },
+                    onSetAccent = { playerVm.setFsAccent(fxStyle, it) },
                     onCycleEffect = { cycleLyricView() },
                     onExit = { exitLayer() },
                 )
@@ -829,6 +830,7 @@ private fun FullscreenLyricStage(
     onNudgeTrack: (Int) -> Unit,
     onSetBg: (LyricBgMode) -> Unit,
     onClearBg: () -> Unit,
+    onSetAccent: (Int) -> Unit,
     onCycleEffect: () -> Unit,
     onExit: () -> Unit,
 ) {
@@ -860,6 +862,7 @@ private fun FullscreenLyricStage(
             onClearBg = onClearBg,
             onOpenQr = { showQr = true },
             onCycleEffect = onCycleEffect,
+            onSetAccent = onSetAccent,
         )
     }
 
@@ -890,6 +893,7 @@ private fun FullscreenLyricStage(
                 fontFamily = fontFamily,
                 colGapPct = pref.colGapPct,
                 letterSpacingPct = pref.letterSpacing,
+                accentIndex = pref.accent,
                 trackName = song.title,
                 artist = song.artistName,
                 light = pref.light,
@@ -902,6 +906,7 @@ private fun FullscreenLyricStage(
                 fontSizeSp = pref.fontSp,
                 fontFamily = fontFamily,
                 letterSpacingPct = pref.letterSpacing,
+                accentIndex = pref.accent,
                 trackName = song.title,
                 artist = song.artistName,
                 light = pref.light,

@@ -73,6 +73,8 @@ fun InkScrollFx(
     colGapPct: Int = 100,
     /** 字间距，单位 em × 100（10 = 0.10em）。竖排里它是列内字与字的垂直间隔。 */
     letterSpacingPct: Int = 10,
+    /** 当前句字色（0 = 跟随墨色，1–7 = 赤橙黄绿青蓝紫）。只染正在唱的这一句。 */
+    accentIndex: Int = 0,
     trackName: String,
     artist: String,
     /** 浅色纸面（宣纸）/ 深色纸面（夜墨）。仅对「默认背景」生效。 */
@@ -92,6 +94,8 @@ fun InkScrollFx(
     // 墨色由底决定：浅纸用焦墨，深纸 / 纯黑 / 图片一律米白。
     val onLightPaper = mode == LyricBgMode.DEFAULT && light
     val ink = if (onLightPaper) InkNightInk else InkNightInkLight
+    // 当前句的字色：选了彩虹色才替换，其余句仍然用墨色 —— 一眼就能看到唱到哪。
+    val accent = LyricAccent.resolve(accentIndex, ink)
     val faint = ink.copy(alpha = 0.32f)
     val seal = if (onLightPaper) InkSeal else InkSealLight
 
@@ -287,7 +291,7 @@ fun InkScrollFx(
                             drawText(
                                 textLayoutResult = layout,
                                 topLeft = Offset(cx - w / 2f, cy),
-                                color = ink,
+                                color = if (isCur && accentIndex != 0) accent else ink,
                                 alpha = alpha,
                             )
                         }

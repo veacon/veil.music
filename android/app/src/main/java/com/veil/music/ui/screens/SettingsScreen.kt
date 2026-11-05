@@ -377,17 +377,40 @@ fun SettingsScreen(
                         item("update") {
                             IOSGroup(
                                 title = "更新",
-                                footer = "应用不提供、不存储任何音频内容；播放地址由脚本与平台公开接口即时解析。",
+                                footer = "发现新版本会自动下载并弹出系统安装界面，覆盖安装不会清掉音源、字体、设置与歌单；" +
+                                    "只有签名不一致（包不是同一把钥匙签的）才需要先备份再卸载重装。",
                             ) {
+                                val busy = update.checking || update.downloading
                                 ActionRow(
                                     label = "检查更新",
                                     value = update.message ?: "当前 v${BuildConfig.VERSION_NAME}",
-                                    action = if (update.checking) "检查中…" else "检查",
-                                    enabled = !update.checking,
-                                ) { vm.checkUpdate() }
+                                    action = when {
+                                        update.checking -> "检查中…"
+                                        update.downloading -> "下载 ${(update.progress * 100).toInt()}%"
+                                        update.installing -> "安装中…"
+                                        update.needsPermission -> "去授权"
+                                        update.apk != null -> "安装"
+                                        else -> "检查"
+                                    },
+                                    enabled = !busy,
+                                ) {
+                                    when {
+                                        update.needsPermission -> vm.installPendingUpdate()
+                                        update.apk != null && !update.installing -> vm.installPendingUpdate()
+                                        else -> vm.checkUpdate()
+                                    }
+                                }
+                                if (update.downloading) {
+                                    IOSDivider()
+                                    InfoRow("下载进度", "${(update.progress * 100).toInt()}%", null)
+                                }
                                 if (update.available != null) {
                                     IOSDivider()
-                                    InfoRow("新版本", "已发布，可在发布页下载 APK 覆盖安装", null)
+                                    InfoRow(
+                                        "新版本",
+                                        "v${update.available!!.version} · 自动下载后直接调起安装",
+                                        null,
+                                    )
                                 }
                             }
                         }

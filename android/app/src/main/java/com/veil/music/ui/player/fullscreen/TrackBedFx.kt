@@ -54,6 +54,8 @@ fun TrackBedFx(
     fontFamily: FontFamily?,
     /** 字间距，单位 em × 100（10 = 0.10em）。 */
     letterSpacingPct: Int = 10,
+    /** 当前句字色（0 = 跟随前景色，1–7 = 赤橙黄绿青蓝紫）。只染当前播放的那一块。 */
+    accentIndex: Int = 0,
     trackName: String,
     artist: String,
     /** 浅色（工程纸）/ 深色（机房）。仅对「默认背景」生效。 */
@@ -73,6 +75,8 @@ fun TrackBedFx(
     val fg = if (dark) Color(0xFFF2F4F7) else Color(0xFF12151A)
     val muted = fg.copy(alpha = 0.45f)
     val accent = if (dark) Color(0xFF85B7EB) else Color(0xFF185FA5)
+    // 当前句（播放头所在的那一块）用选中的彩虹色，其余块保持前景色 / 淡出。
+    val activeColor = LyricAccent.resolve(accentIndex, fg)
     // 块高不再有「行距」可调（这个界面只留字号与字距），按原设计固定比例。
     val ls = (letterSpacingPct / 100f).coerceIn(-1f, 3f)
 
@@ -194,7 +198,9 @@ fun TrackBedFx(
                 drawText(
                     textLayoutResult = layout,
                     topLeft = Offset(x0 + 14f, trackTop + 12f),
-                    color = if (isActive) fg else if (past) fg.copy(alpha = 0.45f) else fg.copy(alpha = 0.28f),
+                    color = if (isActive) {
+                        if (accentIndex != 0) activeColor else fg
+                    } else if (past) fg.copy(alpha = 0.45f) else fg.copy(alpha = 0.28f),
                 )
 
                 // 当前块：音节格（每格 = 一个音节，按时间填充）

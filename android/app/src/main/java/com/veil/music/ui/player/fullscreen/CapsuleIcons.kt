@@ -25,6 +25,7 @@ enum class CapsuleTab(val label: String) {
     CYCLE("换效"),
     FONT("字体"),
     SIZE("大小"),
+    ACCENT("字色"),
     BG("背景"),
     QR("上传"),
 }
@@ -40,11 +41,20 @@ fun CapsuleIcon(tab: CapsuleTab, tint: Color, modifier: Modifier = Modifier) {
                 CapsuleTab.CYCLE -> drawCycle(tint)
                 CapsuleTab.FONT -> drawTypeface(tint)
                 CapsuleTab.SIZE -> drawScale(tint)
+                CapsuleTab.ACCENT -> drawPalette(tint)
                 CapsuleTab.BG -> drawPicture(tint)
                 CapsuleTab.QR -> drawQr(tint)
             }
         }
     }
+}
+
+/** 调色盘：一个圆环 + 三个色点（当前句字色）。 */
+private fun DrawScope.drawPalette(tint: Color) {
+    drawCircle(tint, radius = 8.6f, center = Offset(12f, 12f), style = Stroke(width = 1.7f))
+    drawCircle(tint, radius = 1.9f, center = Offset(12f, 7.6f))
+    drawCircle(tint, radius = 1.9f, center = Offset(7.8f, 14.4f))
+    drawCircle(tint, radius = 1.9f, center = Offset(16.2f, 14.4f))
 }
 
 /** 加减号徽标（数值调节行用）。 */
