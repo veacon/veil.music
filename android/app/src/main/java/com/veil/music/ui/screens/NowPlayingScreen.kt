@@ -2147,7 +2147,7 @@ private fun TransportButton(
     // forward.fill/backward.fill pad even more than play.fill, so the non-large size is generous.
     val canvasSize = if (large) 34.dp else 31.dp
     val noBorder = Border(BorderStroke(0.dp, Color.Transparent))
-    // 焦点态参考 upstream：用一圈细边 + 很轻的底，而不是一大团白色光晕。
+    // 焦点态参考通用做法：用一圈细边 + 很轻的底，而不是一大团白色光晕。
     // 原来 alpha 0.3 / 10dp 的光晕在电视上看是一块发白的毛边，久了刺眼。
     val focusBorder = Border(
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.38f)),

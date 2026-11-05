@@ -36,7 +36,7 @@ APK 为 debug 签名，可直接侧载；安装时系统可能提示「未知来
 ## 二、它是什么
 
 - **遥控器优先**：整屏按 D-pad 设计 —— 顶部一排胶囊标签（正在播放 / 发现 / 我的 / 搜索 / 设置），左右切换、上下进出列表，没有需要鼠标的控件。
-- **LX 音源**：兼容 lx-music v4 脚本协议（`musicUrl` / `lyric` / `pic`），脚本跑在 QuickJS 里；随包内置 7 个可用音源，也可自己导入。
+- **LX 音源**：兼容 lx-music v4 脚本协议（`musicUrl` / `lyric` / `pic`），脚本跑在 QuickJS 里；可自行导入音源脚本。
 - **四个首页数据源**：酷我 / 网易云 / 酷狗 / QQ 音乐，设置里单选，切换后歌单与榜单整页重载。
 - **三种全屏歌词**：全屏歌词 / 墨卷 / 声轨，各自一套字体与排版，互不影响。
 - **纯本地**：没有账号体系。「我喜欢」「播放历史」「自建歌单」都存在本机。
@@ -61,7 +61,7 @@ APK 为 debug 签名，可直接侧载；安装时系统可能提示「未知来
 
 1. 装上 APK，首次进入「发现」页就能看到当前数据源的推荐歌单与榜单（默认网易云）。
 2. 想听别的平台，去 **设置 → 首页数据源** 切换，返回「发现」即刷新。
-3. 某个歌搜不到 / 放不出，去 **设置 → 音源脚本** 看内置脚本是否启用，或在手机管理端导入新的 `.js`。
+3. 某个歌搜不到 / 放不出，去 **设置 → 音源脚本** 看已启用的脚本，或在手机管理端导入新的 `.js`。
 4. 播放页按 OK 展开控制条，长按左右快退快进；返回键退回发现页。
 
 ## 五、手机管理端（局域网）
@@ -86,25 +86,7 @@ http://<电视IP>:8666
 > 端口从早期的 8080 改成 8666，是因为 8080 经常被「Android Debug Database」等调试工具占用，
 > 服务会绑不上而白屏。
 
-## 六、随附音源
-
-随包的 7 个脚本参考自 [veacon/upstream](https://github.com/veacon/upstream)，身份以脚本头部的 `@name` / `@author` 为准（清单见
-`android/app/src/main/assets/builtin_scripts/MANIFEST.json`）：
-
-| 脚本 | 名称 | 作者 |
-|---|---|---|
-| `lx_source_01.js` | 独家音源 | w |
-| `lx_source_02.js` | fish_music | 大鱼吃小鱼 |
-| `lx_source_03.js` | Hello World 音源 | hello world |
-| `lx_source_04.js` | HYWmusic_公益版 | Ryn |
-| `lx_source_05.js` | 杰翔聚合音源 | 杰翔 |
-| `lx_source_06.js` | lx-玉宁熙-Pro | ynx |
-| `lx_source_07.js` | 星海音乐源 | 万去了了 / 科学大魔王 |
-
-取流顺序：**脚本（多脚本 + 音质级联）→ 同名换源 → 内置直连兜底**。判定规则照搬 lx-music，
-详见 `docs/SOURCES.md`。
-
-## 七、播放页与外观
+## 六、播放页与外观
 
 - **正在播放胶囊**：顶栏第一枚。空闲时显示「未在播放」，播放时显示当前歌名。
 - **音质标签**：播放页右上角时间旁边显示当前实际音质（可能低于设置里的期望值），随界面缩放一起淡出。
@@ -112,7 +94,7 @@ http://<电视IP>:8666
   **背景摆动速度** 可在 0.1×–2.0× 之间以 0.1 步进调节，一个滑杆同时控制漂移快慢与跟拍力度。
 - **全屏歌词**：字号 20–80sp、行距 40–300%、字间距 −1~1em；全屏歌词 / 墨卷 / 声轨各存一套，设置页顶部有实时预览。
 
-## 八、检查更新
+## 七、检查更新
 
 「设置 → 关于 → 检查更新」读本仓库的 GitHub Releases。电视一般连不上 GitHub，所以提供
 **4 条加速线路 + 直连**，选中的那条排最前，失败会自动依次换下一条：
@@ -128,7 +110,7 @@ http://<电视IP>:8666
 发布页只有一个 `app-debug.apk`（64 位 `arm64-v8a`）。更新器优先挑名字带 `arm64` 的包，
 并跳过可能残留的 32 位 `armeabi` 包，避免误装旧架构构建。v1.1 起不再发布任何 32 位包。
 
-## 九、构建
+## 八、构建
 
 需要 JDK 17、Android SDK 35：
 
@@ -159,8 +141,8 @@ android/app/src/main/java/com/veil/music/
 ├── source/
 │   ├── js/            QuickJS 运行时、脚本 HTTP / 加密桥（lx v4 协议宿主）
 │   ├── catalog/       歌单广场 / 榜单 / 搜索 / 热词 直连（kw·wy·kg·tx）
-│   ├── builtin/       内置直连取流与歌词兜底
-│   ├── SourceManager  解析顺序：脚本 → 换源 → 内置兜底
+│   ├── builtin/       平台直连取流与歌词兜底
+│   ├── SourceManager  解析顺序：脚本 → 换源 → 平台直连兜底
 │   └── OtherSourceFinder  同名跨源匹配
 ├── lyrics/            LRC / QRC / KRC / TTML 解析 + 逐字估算
 ├── media/             ExoPlayer 渲染链（节拍、音量均衡）、手机管理页（NanoHTTPD）
@@ -185,6 +167,5 @@ android/app/src/main/java/com/veil/music/
 
 - 本项目沿用 **GPL-3.0**（见 `LICENSE`）。
 - 界面与播放内核源自 [JObersi10/apple-music-tv](https://github.com/JObersi10/apple-music-tv)（GPL-3.0）。
-- 音源层与内置脚本来自 [veacon/upstream](https://github.com/veacon/upstream)（Apache-2.0）。
 - LX 脚本协议规范来自 [lyswhut/lx-music-mobile](https://github.com/lyswhut/lx-music-mobile)（Apache-2.0）。
 - 第三方组件清单见 `THIRD_PARTY_NOTICES.md`。

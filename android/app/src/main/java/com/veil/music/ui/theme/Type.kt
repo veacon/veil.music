@@ -22,7 +22,7 @@ import com.veil.music.R
 val PingFang = FontFamily(Font(R.font.pingfang, FontWeight.Normal))
 
 /**
- * 「Aa祝你我明媚向春天」—— 上游项目内置的标题/歌词字体。
+ * 「Aa祝你我明媚向春天」—— 标题/歌词字体。
  *
  * 原字体 14.4 MB（2.2 万字形），这里做了 GB2312 + 拉丁/标点子集（4.1 MB / 7.4 千字形）。
  * 只用于全屏歌词，不参与界面排版：装饰字体在小字号下笔画会糊，界面还是苹方。

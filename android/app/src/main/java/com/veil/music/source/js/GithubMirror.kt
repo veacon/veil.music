@@ -3,8 +3,8 @@ package com.veil.music.source.js
 /**
  * GitHub 加速前缀。
  *
- * 随附音源脚本（以及它们在初始化阶段拉的配置）有不少托管在 GitHub 上。大陆直连
- * `raw.githubusercontent.com` 经常是几十 KB/s 甚至直接超时，于是「随附音源加载失败」
+ * 音源脚本（以及它们在初始化阶段拉的配置）有不少托管在 GitHub 上。大陆直连
+ * `raw.githubusercontent.com` 经常是几十 KB/s 甚至直接超时，于是「随包音源脚本加载失败」
  * 看起来像脚本坏了。这里把一条 GitHub 链接展开成「加速前缀优先、直连兜底」的候选表。
  *
  * 只改写**仓库内文件 / release 附件**这类链接；`api.github.com` 之类保持原样 ——

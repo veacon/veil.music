@@ -41,7 +41,7 @@ class ScriptHttpClient(private val client: OkHttpClient) {
     ) {
         val binary = options.optBoolean("binary", false)
         val timeoutMs = options.optLong("timeout", 0L)
-        // GitHub 链接走加速前缀：随附音源初始化要拉 GitHub 上的配置，直连在大陆经常超时。
+        // GitHub 链接走加速前缀：随包音源脚本初始化要拉 GitHub 上的配置，直连在大陆经常超时。
         val candidates = GithubMirror.candidates(url)
         var attempt = 0
 

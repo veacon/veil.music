@@ -1,11 +1,4 @@
 {
-  "_comment": "随包随附音源清单 —— 与上游项目（upstream）完全一致的 7 个源，参考自其 app/src/main/assets/builtin_scripts（2026-11-04）。本文件只用于溯源与自检，运行时不读；身份以脚本自身头部 @name/@author 为准。",
-  "upstream": {
-    "repo": "https://github.com/veacon/upstream",
-    "branch": "main",
-    "path": "app/src/main/assets/builtin_scripts/lx_source_0*.js",
-    "note": "仅改动 03 的 @name（原名为数学字母，电视字体缺字形）与 05 的 @author（原为整条 QQ 群链接），其余字节未动。"
-  },
   "scripts": [
     {
       "file": "lx_source_01.js",

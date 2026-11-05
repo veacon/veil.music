@@ -21,7 +21,7 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
     )
 
     /**
-     * 被用户主动删掉的随附音源（`name||author`）。
+     * 被用户主动删掉的随包音源脚本（`name||author`）。
      *
      * 内置脚本每次启动都会由 [ensureBuiltInScripts] 补齐，所以「删掉」必须留痕，
      * 否则重启就回来了 —— 用户删它多半是因为这个源已经失效，一重启复活等于白删。
@@ -191,7 +191,7 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
     }
 
     /**
-     * 删除音源。随附音源也可以删 —— 一个失效的源留在列表里只会让解析每次先撞一次墙；
+     * 删除音源。随包音源脚本也可以删 —— 一个失效的源留在列表里只会让解析每次先撞一次墙；
      * 删掉之后记进 [removedStore]，重启不会再被 [ensureBuiltInScripts] 补回来。
      * 想找回就用 [restoreBuiltIns]。
      */
@@ -216,7 +216,7 @@ class ScriptStore(private val context: Context, private val sourceManager: Sourc
     private suspend fun persist() = withContext(Dispatchers.IO) { store.save(_scripts.value) }
 
     companion object {
-        /** assets 下存放随包随附音源脚本的目录。 */
+        /** assets 下存放随包音源脚本的目录。 */
         private const val BUILTIN_DIR = "builtin_scripts"
 
         /** 内置源的身份键：同名的不同作者算两个源，和 [import] 的去重口径保持一致。 */

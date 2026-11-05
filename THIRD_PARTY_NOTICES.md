@@ -7,13 +7,6 @@ licenses apply to those components, not to the rest of this project.
 
 ## Adapted code
 
-- **upstream** — Apache-2.0 — https://github.com/veacon/upstream
-  The on-device lx-music v4 script host (`source/js/JsScriptRuntime.kt`,
-  `ScriptHttpClient.kt`, `CryptoBridge.kt`), the four-platform catalog clients
-  (`source/catalog/*`), the lyric parsers (`lyrics/LyricParser.kt`,
-  `LyricWordParser.kt`), and the AES/RSA bridges (`crypto/*`) were ported from this
-  project's `upstream-tv` codebase. Apache-2.0 is compatible with GPL-3.0; the
-  combined work is distributed under GPL-3.0.
 - **lx-music-mobile** — Apache-2.0 — https://github.com/lyswhut/lx-music-mobile
   Behavioural reference for the source-resolution flow: the quality cascade
   (`master → atmos_plus → atmos → hires → flac24bit → flac → 320k → 128k`),
@@ -35,10 +28,7 @@ licenses apply to those components, not to the rest of this project.
   UI toolkit (`androidx.tv:tv-material:1.0.0`) for the Android / Fire TV app.
 - **Media3 (ExoPlayer) 1.4.1** — Apache-2.0 — https://developer.android.com/media/media3
   Playback stack (`media3-exoplayer`, `media3-exoplayer-hls`, `media3-session`,
-  `media3-ui`), including the FFmpeg audio decoder extension built from the media3
-  1.4.1 sources (`android/app/libs/media3-ffmpeg.jar`).
-- **FFmpeg** — LGPL-2.1+ / GPL-2.0 (depending on build flags) — https://ffmpeg.org
-  Audio decoding via the Media3 FFmpeg extension.
+  `media3-ui`).
 - **Hilt / Dagger 2.56** — Apache-2.0 — https://dagger.dev/hilt
   Dependency injection.
 - **OkHttp** — Apache-2.0 — https://square.github.io/okhttp
@@ -70,11 +60,9 @@ from the built-in direct resolvers, which talk to the platforms' public web endp
 
 This project is not affiliated with, endorsed by, or sponsored by any of these
 platforms. Users are responsible for complying with the terms of service of the
-platforms they access and with the copyright laws of their jurisdiction. The bundled
-scripts under `android/app/src/main/assets/builtin_scripts/` are third-party
-community scripts whose upstream authors retain all rights; they are included only
-as a convenience and can be disabled or deleted at any time from Settings or the
-on-device management page.
+platforms they access and with the copyright laws of their jurisdiction. Audio URLs are resolved through user-imported scripts or the platform public
+endpoints above. User scripts can be disabled or removed at any time from Settings
+or the on-device management page.
 
 - **LRCLIB** — public domain / CC0 — https://lrclib.net
   Optional line-synced lyrics fallback.

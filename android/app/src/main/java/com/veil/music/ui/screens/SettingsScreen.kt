@@ -414,7 +414,7 @@ fun SettingsScreen(
                                         sub = when (choice) {
                                             LyricFontChoice.SYSTEM -> "跟随界面（苹方）"
                                             LyricFontChoice.PINGFANG -> "界面的默认字体，最稳、最清晰"
-                                            LyricFontChoice.MINGMEI -> "上游项目内置的标题字体，笔画更软"
+                                            LyricFontChoice.MINGMEI -> "标题字体，笔画更软"
                                         },
                                         selected = pref.font == choice,
                                     ) { playerVm.setFsFont(fsStyle, choice) }

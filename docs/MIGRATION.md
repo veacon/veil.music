@@ -44,7 +44,7 @@ Compose 屏幕 → LxRepository → Songlists / Boards / Catalogs（四平台公
 | `source/js/ScriptHttpClient.kt` | 脚本发起的 HTTP（默认 UA、JSON 自动解析、请求取消、超时） |
 | `source/js/CryptoBridge.kt` | 脚本需要的 md5 / base64 / AES / RSA，交给 `crypto/AES.java`、`crypto/RSA.java` |
 | `assets/script/user-api-preload.js` | 协议胶水层（与 lx 的 preload 对应），定义 `lx.on/ lx.send` |
-| `assets/builtin_scripts/*.js` | 随包的 7 个音源脚本（可在设置里停用 / 删除） |
+| `assets/builtin_scripts/*.js` | 音源脚本（可在设置里停用 / 删除） |
 | `source/catalog/SonglistCatalog.kt` | 歌单广场：四个平台的「推荐 / 分类 / 详情」 |
 | `source/catalog/BoardCatalog.kt` | 排行榜：四个平台的榜单列表与分页曲目 |
 | `source/catalog/SearchCatalog.kt` | 搜索：四平台（`Catalogs: MusicSearcher`，供换源复用） |
@@ -61,7 +61,7 @@ Compose 屏幕 → LxRepository → Songlists / Boards / Catalogs（四平台公
 | `data/store/LibraryStore.kt` | 本地「我喜欢 / 播放历史 / 自建歌单」 |
 | `data/VeilPreferences.kt` | 首页数据源（单选）、默认音质、自动换源、内置兜底等 |
 | `ui/discover/HomeStore.kt` | 首页聚合：英雄位 + 推荐歌单 + 榜单；切源取消旧请求、按源缓存 |
-| `ui/discover/DiscoverScreen.kt` | 首页 UI（结构参考 upstream 的推荐页） |
+| `ui/discover/DiscoverScreen.kt` | 首页 UI（结构参考通用推荐页） |
 | `ui/collection/CollectionScreen.kt` | 歌单 / 榜单共用的详情页 |
 | `ui/screens/SettingsScreen.kt` | **四个首页数据源切换**、音质、换源开关、脚本管理、播放外观 |
 
@@ -86,7 +86,7 @@ Compose 屏幕 → LxRepository → Songlists / Boards / Catalogs（四平台公
 | `ui/AppShell.kt` | 重写导航：发现 / 我的 / 搜索 / 正在播放 / 设置 + 歌单详情；去掉 onboarding、MV、电台、分类路由；保留退出确认、更新红点、toast |
 | `media/InAppWebServer.kt` | 从「MUT 配对页」改成「音源管理台」：导入 / 启停 / 删除脚本、切首页源与音质、看解析日志 |
 | `ui/components/NowPlayingBar.kt`、`ui/screens/NowPlayingScreen.kt` | 仅修歌词模型的 import；播放页的歌词引擎、动态背景、节拍、队列面板整套保留 |
-| `lyrics/LyricParser.kt` + `LyricWordParser.kt` | 从 upstream 移植：LRC/QRC/KRC/TTML 统一解析；行级 LRC 按标点权重估算逐字时间 |
+| `lyrics/LyricParser.kt` + `LyricWordParser.kt` | LRC/QRC/KRC/TTML 统一解析；行级 LRC 按标点权重估算逐字时间 |
 | `lyrics/LyricsMapper.kt` | 解析结果 → 播放页毫秒级 `LyricLine`（补 `endMs`、逐字切片） |
 | `media/BeatAwareRenderersFactory.kt` | 移除 `GapConcealProcessor`，保留节拍 + 音量均衡 |
 | `util/UpdateChecker.kt` | 断开车祸点：`REPO` 置空，避免把上游 Apple TV 的包当成本应用更新推下来 |
@@ -101,8 +101,8 @@ Compose 屏幕 → LxRepository → Songlists / Boards / Catalogs（四平台公
 
 ## 7. 已知差异与限制
 
-- **酷狗 / QQ 的取流依赖脚本**：内置直连只实现了酷我 / 网易云的地址解析（与 upstream 一致）。
-  随包的 7 个脚本覆盖了四平台；脚本失效时需要更新脚本，不需要发新版本。
+- **酷狗 / QQ 的取流依赖脚本**：内置直连只实现了酷我 / 网易云的地址解析。
+  音源脚本覆盖了四平台；脚本失效时需要更新脚本，不需要发新版本。
 - **首页没有「专辑」板块**：lx 侧没有统一的新碟接口，按确认结论只做歌单 + 榜单。
 - **crossfade 简化为淡入**：上游的双播放器交叉淡出与 Apple 的解密预取强耦合，直链模型下收益小、风险高；
   队列衔接保持「提前解析下一首 URL」，切歌不再等待。

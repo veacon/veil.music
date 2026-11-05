@@ -50,7 +50,7 @@ lx.on('request', async ({ source, action, info }, { status, message, result }) =
 
 ## 4. 内置直连兜底
 
-`BuiltInResolver` 只实现两家（与 upstream 一致）：
+`BuiltInResolver` 只实现两家：
 
 - 酷我：`antiserver.kuwo.cn/anti.s` 的 `convert_url3` / `convert_url`，按音质映射 `br`，
   遇到 DRM 标记继续降级；
@@ -82,38 +82,3 @@ lx.on('request', async ({ source, action, info }, { status, message, result }) =
 - 脚本超时是体验杀手：一次 15s 的等待比换源失败更糟，所以超时后不再试更低音质。
 - 内置直连的酷我 `convert_url` 在部分曲目上返回 DRM 流，已被识别并继续降级。
 
-## 8. 随包内置的 7 个音源（取自上游项目）
-
-`app/src/main/assets/builtin_scripts/` 下的 7 个 `.js` 参考自
-[`veacon/upstream`](https://github.com/veacon/upstream) 的
-`app/src/main/assets/builtin_scripts`（main 分支，commit `72409fb8ba98`）。
-同目录的 `MANIFEST.json` 记录了每个文件的 md5 与声明的平台，仅用于溯源，运行时不读取。
-
-| 文件 | 名称 | 版本 | 作者 |
-|---|---|---|---|
-| `lx_source_01.js` | 独家音源 | 7 | w |
-| `lx_source_02.js` | fish_music | 1.9.0 | 大鱼吃小鱼 |
-| `lx_source_03.js` | 𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ | 260925 | hello world |
-| `lx_source_04.js` | HYWmusic_公益版 | v1.2.0 | Ryn |
-| `lx_source_05.js` | 杰翔聚合音源 | 2.3.0 | haonanren118 |
-| `lx_source_06.js` | lx-玉宁熙-Pro | v1.2.2 | ynx(2363768762) |
-| `lx_source_07.js` | 星海音乐源 | v3.2.15 | 万去了了 / 科学大魔王 |
-
-**这 7 个脚本只提供 `musicUrl`**（`lx_source_03` 额外声明了 `local` 的 lyric/pic），
-歌词与封面走 §6 的 `BuiltInLyricResolver` + 跨平台兜底，不是脚本给的。这一点在换掉内置脚本时
-要注意：新的脚本集如果同样不带 `lyric`，歌词依赖的仍是直连解析。
-
-### 验证方式
-
-宿主是 `user-api-preload.js` + `JsScriptRuntime`，与上游项目同源（该文件也逐字节一致），
-所以「能不能跑」不需要靠实机逐个试。仓库里有一份等价的 node 版宿主模拟
-（`tools/lx-source-check.js`），它按 `JsScriptRuntime.load()` 的同一顺序执行
-preload → `lx_setup(...)` → 脚本本体，并实现 `__lx_native_call__` 的 init / request /
-response / set_timeout，因此能拿到每个脚本真实上报的能力表：
-
-```bash
-node tools/lx-source-check.js
-```
-
-2026-11-04 的结果：7/7 初始化成功，6 个平台覆盖齐全（酷我/酷狗/QQ/网易/咪咕），
-最高音质从无损到母带不等（`lx_source_03`、`lx_source_06` 覆盖到母带）。

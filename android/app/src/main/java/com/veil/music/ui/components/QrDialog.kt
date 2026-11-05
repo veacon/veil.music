@@ -34,7 +34,7 @@ import kotlinx.coroutines.delay
 /**
  * 手机扫码进管理页。
  *
- * 结构参照 upstream 的 QrDialog：标题 + 一句话说明 + 白底二维码 + 地址 + 关闭。
+ * 结构参照通用二维码弹窗：标题 + 一句话说明 + 白底二维码 + 地址 + 关闭。
  * 二维码由 [QrCodeImage] 直接画，不 ahead-of-time 生成 Bitmap，所以弹窗一出来就是成品，
  * 不会先闪一个「正在生成」的空白框。
  */

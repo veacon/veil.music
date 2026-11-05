@@ -15,7 +15,7 @@ data class UserScript(
     val rawScript: String,
     val importedAt: Long = System.currentTimeMillis(),
     val enabled: Boolean = true,
-    /** true = 随包内置（assets/builtin_scripts）的音源。随附音源升级时会被新版覆盖；用户自己
+    /** true = 随包（assets/builtin_scripts）的音源。随包音源脚本升级时会被新版覆盖；用户自己
      *  导入的同名音源不会被内置版本顶掉。旧数据缺该字段时默认 false（即用户导入）。 */
     val builtin: Boolean = false,
     /**

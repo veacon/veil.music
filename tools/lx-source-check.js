@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * 随附音源自检：用 node 模拟 lx 宿主，把 assets/builtin_scripts 下的脚本按
+ * 音源自检：用 node 模拟 lx 宿主，把 assets/builtin_scripts 下的脚本按
  * JsScriptRuntime.load() 的真实顺序跑一遍（preload → lx_setup → 脚本本体），
  * 拿到每个脚本上报的能力表，确认「随包的这几个源现在还能不能起来」。
  *

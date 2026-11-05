@@ -163,7 +163,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { scripts.remove(id) }
     }
 
-    /** 把被删掉的随附音源全部装回来。 */
+    /** 把被删掉 / 停用的音源脚本全部装回来。 */
     fun restoreBuiltIns() {
         viewModelScope.launch { scripts.restoreBuiltIns() }
     }

@@ -66,7 +66,7 @@ enum class NowPlayingBackground(val label: String, val desc: String) {
     }
 }
 
-/** 全屏歌词的两种沉浸样式（上游项目移植）。 */
+/** 全屏歌词的两种沉浸样式。 */
 enum class FullscreenLyricMode(val label: String) {
     INK_SCROLL("墨卷"),
     TRACK_BED("声轨"),

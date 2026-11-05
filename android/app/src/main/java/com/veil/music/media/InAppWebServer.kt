@@ -40,10 +40,10 @@ private val FILE_TIME_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Local
 private val REPORT_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 
 /**
- * 手机端管理页（默认 **8666**），完整复刻上游项目（upstream）的「手机助手」：手机通过局域网
+ * 手机端管理页（默认 **8666**），完整复刻「手机助手」：手机通过局域网
  * 打开这个网页，把遥控器上做不了的输入推给电视。
  *
- * 页面结构（与上游项目逐页对齐）：
+ * 页面结构（逐页对齐）：
  *   GET  /                首页导航卡片
  *   GET  /search          搜索歌曲（含 4 平台热搜词，点词直接推给电视）
  *   POST /api/search      提交关键词 → [searchRequests]
@@ -389,7 +389,7 @@ class InAppWebServer @Inject constructor(
     // ── 搜索歌词 ───────────────────────────────────────────────────────────
 
     /**
-     * 歌词查询页。上游项目是「把关键词推给电视去搜」，veil 这边做成**手机端直接出结果**：
+     * 歌词查询页。原方案是「把关键词推给电视去搜」，veil 这边做成**手机端直接出结果**：
      * 手机屏比电视更适合阅读长歌词，也不打断电视上正在播的歌。
      *
      * 链路复用播放页：搜歌 → 取第一首 → 走 [LxRepository.lyrics]（脚本 → 内置 → 跨平台兜底）。
@@ -465,7 +465,7 @@ class InAppWebServer @Inject constructor(
     // ── 调试文件下载 ───────────────────────────────────────────────────────
 
     /**
-     * 生成并下载一份纯文本调试报告（对应上游项目的 `/debug`）。
+     * 生成并下载一份纯文本调试报告（对应 `/debug`）。
      *
      * 内容：构建信息 → 设备 → 偏好 → 已装脚本（含 loadError）→ 最近日志 → 最近一次崩溃。
      * 手机上点开链接即可保存后回传，比在电视上截图靠谱得多。
