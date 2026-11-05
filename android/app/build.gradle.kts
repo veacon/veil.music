@@ -27,10 +27,10 @@ android {
         // 产物是单一 app-debug.apk（CI 与更新器都按这个名字找包）。
         minSdk = 26
         targetSdk = 35
-        // versionCode 必须单调递增（覆盖安装时系统会比对），所以对外叫 1.1 之后它继续往上走，
+        // versionCode 必须单调递增（覆盖安装时系统会比对），所以对外叫 1.1.1 之后它继续往上走，
         // 否则从旧版本升级会直接报 INSTALL_FAILED_VERSION_DOWNGRADE。
-        versionCode = 20
-        versionName = "1.1"
+        versionCode = 21
+        versionName = "1.1.1"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         ndk { abiFilters += "arm64-v8a" }
     }
