@@ -98,8 +98,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** DIAGNOSTIC: off = don't spin up the motion-artwork video decoder (CPU test). */
@@ -187,9 +187,9 @@ fun NowPlayingScreen(
         // System clock — top-left
         var clockText by remember { mutableStateOf("") }
         LaunchedEffect(Unit) {
-            val fmt = SimpleDateFormat("h:mm a", Locale.getDefault())
+            val fmt = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
             while (isActive) {
-                clockText = fmt.format(Date())
+                clockText = LocalDateTime.now().format(fmt)
                 kotlinx.coroutines.delay(1_000)
             }
         }

@@ -33,10 +33,8 @@ object DeviceInfo {
 
     fun collect(context: Context): DeviceReport {
         val dm = context.resources.displayMetrics
-        val abis = Build.SUPPORTED_ABIS
-            .takeIf { it.isNotEmpty() }
-            ?.joinToString(" / ")
-            ?: Build.CPU_ABI.orEmpty()
+        // minSdk 26 起 SUPPORTED_ABIS 恒非空；Build.CPU_ABI 是已废弃的单值 API，不再兜底。
+        val abis = Build.SUPPORTED_ABIS.joinToString(" / ")
 
         return DeviceReport(
             model = listOf(Build.MANUFACTURER, Build.MODEL)
@@ -87,7 +85,8 @@ object DeviceInfo {
         val hardware = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             audio.count { it.isHardwareAccelerated }
         } else {
-            // API 29 之前拿不到硬件标记，用命名约定判断（平台解码器都是 omx.google / c2.android）。
+            // isHardwareAccelerated() 是 API 29 才有的，26–28 仍按命名约定估算
+            //（平台解码器都是 omx.google / c2.android）。
             audio.count { info ->
                 info.name.startsWith("OMX.google", true) || info.name.startsWith("c2.android", true)
             }.let { software -> audio.size - software }

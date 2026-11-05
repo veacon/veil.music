@@ -2,7 +2,6 @@ package com.veil.music.util
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.content.FileProvider
 import com.veil.music.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -106,9 +105,8 @@ object UpdateChecker {
         val notes = obj.optString("body").trim()
         var apkUrl = ""
         var size = 0L
-        // 发布包按 ABI 拆成两个（app-arm64-v8a… / app-armeabi-v7a…）。装错架构系统会直接拒装，
-        // 所以先挑名字里带本机 ABI 的那个；没有（例如只发了合并包）才退回第一个 .apk。
-        val abis = Build.SUPPORTED_ABIS.map { it.lowercase() }
+        // 只发布 arm64-v8a 单包：优先名字带 arm64 的，且绝不选 32 位 armeabi 包
+        //（64 位系统虽能兼容运行 32 位包，但本项目已不再提供/支持）。
         val apks = buildList {
             obj.optJSONArray("assets")?.let { assets ->
                 for (i in 0 until assets.length()) {
@@ -117,10 +115,9 @@ object UpdateChecker {
                 }
             }
         }
-        val apk = apks.firstOrNull { a ->
-            val name = a.optString("name").lowercase()
-            abis.any { name.contains(it) }
-        } ?: apks.firstOrNull()
+        val apk = apks.firstOrNull { it.optString("name").contains("arm64", ignoreCase = true) }
+            ?: apks.firstOrNull { !it.optString("name").contains("armeabi", ignoreCase = true) }
+            ?: apks.firstOrNull()
         if (apk != null) {
             apkUrl = apk.optString("browser_download_url")
             size = apk.optLong("size")
@@ -157,12 +154,9 @@ object UpdateChecker {
             val dir = File(context.cacheDir, "updates").apply { mkdirs() }
             val out = File(dir, "update.apk")
             val conn = openFirstOk(info.apkUrl, preferred)
-            // contentLengthLong 是 API 24；走响应头自己解析，老系统也能拿到总长度。
-            val total = if (info.sizeBytes > 0) {
-                info.sizeBytes
-            } else {
-                conn.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
-            }
+            // minSdk 26 直接用平台 API（API 24 起）：由 HttpURLConnection 解析
+            // Content-Length / chunked，比手写响应头更可靠。
+            val total = if (info.sizeBytes > 0) info.sizeBytes else conn.contentLengthLong
             conn.inputStream.use { input ->
                 out.outputStream().use { output ->
                     val buf = ByteArray(64 * 1024)

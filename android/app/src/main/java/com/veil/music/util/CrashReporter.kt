@@ -6,9 +6,11 @@ import com.veil.music.BuildConfig
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private val CRASH_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 
 /**
  * Records the last uncaught exception to a file so it can be bundled into a bug report.
@@ -37,7 +39,7 @@ object CrashReporter {
     private fun write(context: Context, thread: Thread, ex: Throwable) {
         val sw = StringWriter()
         ex.printStackTrace(PrintWriter(sw))
-        val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        val ts = LocalDateTime.now().format(CRASH_TIME_FMT)
         val text = buildString {
             appendLine("=== CRASH $ts ===")
             appendLine("App v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")

@@ -27,9 +27,17 @@ import org.json.JSONObject
 import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+
+// minSdk 26 起用 java.time：DateTimeFormatter 线程安全且可复用（SimpleDateFormat 不是），
+// 高频日志不再每次新建格式化器。
+private val LOG_TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.US)
+private val FILE_TIME_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.US)
+private val REPORT_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 
 /**
  * 手机端管理页（默认 **8666**），完整复刻上游项目（upstream）的「手机助手」：手机通过局域网
@@ -141,7 +149,7 @@ class InAppWebServer @Inject constructor(
     }
 
     fun addLog(level: String, message: String) {
-        val line = "[${java.text.SimpleDateFormat("HH:mm:ss", Locale.US).format(java.util.Date())}] $level $message"
+        val line = "[${LocalDateTime.now().format(LOG_TIME_FMT)}] $level $message"
         synchronized(logs) {
             logs.addLast(line)
             while (logs.size > 300) logs.removeFirst()
@@ -467,7 +475,7 @@ class InAppWebServer @Inject constructor(
             return internalError("调试信息生成失败：${it.message}")
         }
         val bytes = text.toByteArray(Charsets.UTF_8)
-        val name = "veil-debug-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(java.util.Date())}.txt"
+        val name = "veil-debug-${LocalDateTime.now().format(FILE_TIME_FMT)}.txt"
         val res = NanoHTTPD.newFixedLengthResponse(
             Response.Status.OK,
             "text/plain; charset=utf-8",
@@ -484,7 +492,7 @@ class InAppWebServer @Inject constructor(
         val scriptsNow = scripts.scripts.value
         return buildString {
             appendLine("薄音 · 调试信息")
-            appendLine("生成时间：${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(java.util.Date())}")
+            appendLine("生成时间：${LocalDateTime.now().format(REPORT_TIME_FMT)}")
             appendLine("版本：${com.veil.music.BuildConfig.VERSION_NAME} (${com.veil.music.BuildConfig.VERSION_CODE})")
             appendLine("提交：${com.veil.music.BuildConfig.GIT_SHA}")
             appendLine("管理页：${serverUrl()}")

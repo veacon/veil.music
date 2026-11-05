@@ -9,14 +9,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
-import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -45,22 +44,17 @@ class MainActivity : ComponentActivity() {
         }
         // 必须放在 setContent 之后：Activity 的窗口在 setContentView 之前还没有 DecorView，
         // 此时访问 window.insetsController 会在 PhoneWindow 内部对 mDecor 取方法 → NPE。
-        // 2.2.0 把这一行写在 setContent 之前，导致任何设备一启动就闪退。
         applyImmersiveMode()
         lifecycleScope.launch {
             playerVm.state.map { it.isPlaying }.distinctUntilChanged().collect {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+                if (isInPictureInPictureMode) {
                     runCatching { setPictureInPictureParams(pipParams()) }
                 }
             }
         }
     }
 
-    /**
-     * 只在 API 26+ 调用（`enterPip()` 已做版本判断）。
-     * `PictureInPictureParams.Builder` / `RemoteAction` 都是 O 才引入的。
-     */
-    @RequiresApi(Build.VERSION_CODES.O)
+    /** minSdk 26 起 PictureInPictureParams / RemoteAction 都是平台原生 API，无需版本守卫。 */
     private fun pipParams(): PictureInPictureParams {
         val playing = playerVm.state.value.isPlaying
         val icon = Icon.createWithResource(
@@ -80,16 +74,8 @@ class MainActivity : ComponentActivity() {
     }
 
     fun enterPip() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         runCatching { enterPictureInPictureMode(pipParams()) }
     }
-
-    /**
-     * `Activity.isInPictureInPictureMode` 是 API 24 才有的；minSdk 23 的老设备上直接调用会
-     * NoSuchMethodError。API 23 上 PiP 本来就不存在，恒为 false 即可。
-     */
-    private fun isInPipCompat(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
 
     /**
      * 全屏：隐藏状态栏与导航栏。
@@ -118,13 +104,13 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         // 画中画是个独立的窗口，这时候别去动系统栏，否则小窗里会出现一条黑边。
-        if (hasFocus && !isInPipCompat()) applyImmersiveMode()
+        if (hasFocus && !isInPictureInPictureMode) applyImmersiveMode()
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // 只有真的在放的时候才进 PiP —— 暂停状态弹个静止小窗没有意义。
-        if (navVm.isOnNowPlaying && playerVm.state.value.isPlaying && !isInPipCompat()) enterPip()
+        if (navVm.isOnNowPlaying && playerVm.state.value.isPlaying && !isInPictureInPictureMode) enterPip()
     }
 
     override fun onPictureInPictureModeChanged(isInPip: Boolean, newConfig: Configuration) {
@@ -132,23 +118,22 @@ class MainActivity : ComponentActivity() {
         playerVm.setPipMode(isInPip)
         if (isInPip) {
             if (pipReceiver == null) {
-                pipReceiver = object : BroadcastReceiver() {
+                val receiver = object : BroadcastReceiver() {
                     override fun onReceive(c: Context?, i: Intent?) {
                         if (i?.action == pipActionName) {
                             playerVm.togglePlayPause()
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+                            if (isInPictureInPictureMode) {
                                 runCatching { setPictureInPictureParams(pipParams()) }
                             }
                         }
                     }
                 }
-                val filter = IntentFilter(pipActionName)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    registerReceiver(pipReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-                } else {
-                    @Suppress("UnspecifiedRegisterReceiverFlag")
-                    registerReceiver(pipReceiver, filter)
-                }
+                pipReceiver = receiver
+                // ContextCompat 内部处理 API 33 的 exported 标志要求，不再需要 SDK_INT 分支。
+                ContextCompat.registerReceiver(
+                    this, receiver, IntentFilter(pipActionName),
+                    ContextCompat.RECEIVER_NOT_EXPORTED,
+                )
             }
         } else {
             pipReceiver?.let { runCatching { unregisterReceiver(it) } }
@@ -159,7 +144,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // 后台播放由设置项决定：关掉时离开应用即暂停。
-        if (!isInPipCompat() && !playerVm.state.value.backgroundPlayEnabled) playerVm.pause()
+        if (!isInPictureInPictureMode && !playerVm.state.value.backgroundPlayEnabled) playerVm.pause()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -75,9 +75,9 @@ class PlaybackResolver @Inject constructor(
     private fun trimCache() {
         if (cache.size <= MAX_ENTRIES) return
         val now = System.currentTimeMillis()
-        // 用 Kotlin 的 removeAll(predicate) 而不是 Collection.removeIf：后者是 API 24 才有的
-        // 默认方法，在 Android 6/7 上会 NoSuchMethodError（Fire OS 6 就是 7.1）。
-        cache.entries.removeAll { now - it.value.at > TTL_MS }
+        // minSdk 26 起直接用 java.util.Collection.removeIf（API 24 的 default method），
+        // 不再需要 Kotlin removeAll(predicate) 的迭代器包装。
+        cache.entries.removeIf { now - it.value.at > TTL_MS }
         if (cache.size > MAX_ENTRIES) {
             cache.entries.sortedBy { it.value.at }.take(cache.size - MAX_ENTRIES).forEach { cache.remove(it.key) }
         }
