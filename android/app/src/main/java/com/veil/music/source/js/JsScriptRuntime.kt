@@ -47,6 +47,7 @@ class JsScriptRuntime(
 
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Any?>>()
     private var initDeferred: CompletableDeferred<ScriptCapabilities>? = null
+    private val destroyed = java.util.concurrent.atomic.AtomicBoolean(false)
 
     open class ScriptException(message: String) : Exception(message)
     /** The script never answered (vs. answered with an error) — retrying it at another quality
@@ -112,6 +113,8 @@ class JsScriptRuntime(
     }
 
     fun destroy() {
+        // 幂等：executor.shutdown() 之后再次 launch 会抛 RejectedExecutionException。
+        if (!destroyed.compareAndSet(false, true)) return
         scope.launch {
             runCatching { ctx?.destroy() }
             ctx = null

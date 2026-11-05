@@ -39,13 +39,20 @@ class SourceManager(
     class SourceException(message: String) : Exception(message)
 
     suspend fun load(script: UserScript): Result<ScriptCapabilities> {
+        val previous = _loaded.value.firstOrNull { it.script.id == script.id }
+        val runtime = JsScriptRuntime(script, preload, http)
         return try {
-            val runtime = JsScriptRuntime(script, preload, http)
             val caps = runtime.load()
+            // 同 id 重新载入时先释放旧 runtime：它的专属线程和 native QuickJSContext
+            // 否则会一直挂着（旧实现直接覆盖列表项，泄漏一条线程）。
+            previous?.runtime?.destroy()
             _loaded.value = _loaded.value.filter { it.script.id != script.id } +
                 LoadedScript(script, runtime, caps)
             Result.success(caps)
         } catch (e: Exception) {
+            // 失败路径同样要销毁：load() 里已经建好线程、可能已创建 native context。
+            // 以前只有成功才进 _loaded，失败的 runtime 无人引用也无人 destroy。
+            runtime.destroy()
             Log.e(TAG, "load failed: ${e.message}")
             Result.failure(e)
         }
