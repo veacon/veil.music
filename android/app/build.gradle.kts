@@ -21,15 +21,16 @@ android {
 
     defaultConfig {
         applicationId = "com.veil.music"
-        // 仅适配 Android 8.0（API 26）及以上的 64 位系统：过滤掉依赖 AAR 自带的
+        // v1.1 起明确放弃 32 位设备与 Android 8.0 以下系统：只支持
+        // 64 位 arm64-v8a + Android 8.0（API 26）及以上。过滤掉依赖 AAR 自带的
         // armeabi-v7a / x86 / x86_64 版本 QuickJS，只打一份 arm64-v8a native 库。
         // 产物是单一 app-debug.apk（CI 与更新器都按这个名字找包）。
         minSdk = 26
         targetSdk = 35
-        // versionCode 必须单调递增（覆盖安装时系统会比对），所以对外叫 1.0 之后它继续往上走，
-        // 否则从 2.2.x 升级会直接报 INSTALL_FAILED_VERSION_DOWNGRADE。
-        versionCode = 19
-        versionName = "1.0"
+        // versionCode 必须单调递增（覆盖安装时系统会比对），所以对外叫 1.1 之后它继续往上走，
+        // 否则从旧版本升级会直接报 INSTALL_FAILED_VERSION_DOWNGRADE。
+        versionCode = 20
+        versionName = "1.1"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         ndk { abiFilters += "arm64-v8a" }
     }

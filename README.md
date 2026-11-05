@@ -5,14 +5,21 @@
 > 应用不提供、不存储、不分发任何音频内容。所有播放地址都由用户自行导入的音源脚本、
 > 或各平台公开接口即时解析。仅供个人学习与技术研究。
 
+> **当前版本 v1.1 · 平台基线已收紧**
+> **明确放弃 32 位设备与 Android 8.0 以下系统**：自 v1.1 起只支持
+> **64 位 `arm64-v8a` + Android 8.0（API 26）及以上**。Android 6.x / 7.x（含 Fire OS 6 的老款
+> Fire TV）、`armeabi-v7a` / `x86` 等 32 位架构均不再提供安装包，也无法安装；相关兼容代码、
+> 双 ABI 拆包与 32 位原生库已全部移除。旧设备只能停留在 v1.0 及更早版本。
+
 ---
 
 ## 一、下载与安装
 
 发布页：[Releases](https://github.com/veacon/veil.music/releases)
 
-每个版本只有一个包 `app-debug.apk`，**仅支持 Android 8.0（API 26）及以上的 64 位系统**。
-32 位盒子、Android 6/7 设备（含 Fire OS 6 的老款 Fire TV）无法安装。
+v1.1 起每个版本只有一个包 `app-debug.apk`（`arm64-v8a`）。
+**已放弃 32 位设备与 Android 8.0 以下系统**：Android 6.x / 7.x（含 Fire OS 6 的老款 Fire TV）
+与所有 32 位架构均不再支持，安装时系统会直接拒绝；**没有兼容包，也没有降级路径**。
 
 安装方式（任选其一）：
 
@@ -39,14 +46,16 @@ APK 为 debug 签名，可直接侧载；安装时系统可能提示「未知来
 
 | 项目 | 值 | 说明 |
 |---|---|---|
-| minSdk | 26（Android 8.0） | 声明的最低安装版本 |
+| 当前版本 | 1.1（versionCode 20） | 本次起正式收紧平台基线 |
+| minSdk | 26（Android 8.0） | 低于 8.0 一律无法安装 |
 | targetSdk / compileSdk | 35 | |
-| ABI | arm64-v8a | 单一 APK，只打一份 64 位 QuickJS 原生库 |
+| 支持的架构 | 仅 `arm64-v8a`（64 位） | 单一 APK，只打一份 64 位 QuickJS 原生库 |
+| 已放弃支持 | 32 位（`armeabi-v7a` / `x86`）、Android 7.1 及以下 | 不再构建、不再发布、不再兼容 |
 
-只保留 64 位 / Android 8.0+ 之后，低版本兼容代码全部移除：PiP 直接调用平台 API、
-动态广播注册统一走 `ContextCompat`、时间格式化改用 `java.time`（线程安全、可复用）、
-缓存清理用 `Collection.removeIf`、下载长度用 `HttpURLConnection.contentLengthLong`。
-`./gradlew :app:lintDebug` 的 `NewApi` 检查基线同步提到 26。
+**v1.1 的取舍**：32 位与 Android 8.0 以下设备的兼容代码、双 ABI 拆包、32 位原生库全部删除，
+换来更小的包体与更直接的平台 API 调用（PiP 直接用平台 API、动态广播走 `ContextCompat`、
+时间格式化用 `java.time`、缓存清理用 `Collection.removeIf`、下载长度用
+`HttpURLConnection.contentLengthLong`）。`./gradlew :app:lintDebug` 的 `NewApi` 基线同步为 26。
 
 ## 四、快速开始
 
@@ -116,8 +125,8 @@ http://<电视IP>:8666
 | gh-proxy.net | 备用 |
 | 直连 | 网络本身能通 GitHub 时最快 |
 
-发布页只有一个 `app-debug.apk`（arm64-v8a）。更新器优先挑名字带 `arm64` 的包，
-并跳过残留的 32 位 `armeabi` 包，避免误装旧架构构建。
+发布页只有一个 `app-debug.apk`（64 位 `arm64-v8a`）。更新器优先挑名字带 `arm64` 的包，
+并跳过可能残留的 32 位 `armeabi` 包，避免误装旧架构构建。v1.1 起不再发布任何 32 位包。
 
 ## 九、构建
 
@@ -129,8 +138,8 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 ./gradlew assembleDebug
 ```
 
-产物只有一个（构建脚本里 `defaultConfig.ndk.abiFilters` 只保留 `arm64-v8a`，同时把依赖
-AAR 自带的 32 位 / x86 QuickJS 库过滤掉）：
+产物只有一个（v1.1 起 `defaultConfig.ndk.abiFilters` 只保留 `arm64-v8a`，同时把依赖
+AAR 自带的 32 位 / x86 QuickJS 库全部过滤掉，**不再生成任何 32 位包**）：
 
 ```
 android/app/build/outputs/apk/debug/app-debug.apk

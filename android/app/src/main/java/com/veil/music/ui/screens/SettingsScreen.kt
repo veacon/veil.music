@@ -481,7 +481,11 @@ fun SettingsScreen(
                                 IOSDivider()
                                 InfoRow("音源协议", "lx-music v4 用户脚本", null)
                                 IOSDivider()
-                                InfoRow("最低系统", "Android 8.0（API 26）· 仅 64 位", null)
+                                InfoRow("最低系统", "Android 8.0（API 26）及以上", null)
+                                IOSDivider()
+                                InfoRow("支持架构", "仅 64 位 arm64-v8a", null)
+                                IOSDivider()
+                                InfoRow("已放弃支持", "32 位设备 / Android 7.1 及以下", null)
                             }
                         }
                         item("device") {

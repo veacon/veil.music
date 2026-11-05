@@ -73,6 +73,9 @@ jobs:
           body: |
             Auto-built from `main`. Sideload: `adb install -r app-debug.apk`
 
+            **仅支持 Android 8.0（API 26）及以上的 64 位 arm64-v8a 设备。**
+            v1.1 起已放弃 32 位设备与 Android 7.1 及以下系统，不再提供兼容包。
+
             commit ${{ github.sha }}
           prerelease: true
           files: android/app/build/outputs/apk/debug/app-debug.apk

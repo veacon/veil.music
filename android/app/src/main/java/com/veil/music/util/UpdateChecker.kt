@@ -105,7 +105,8 @@ object UpdateChecker {
         val notes = obj.optString("body").trim()
         var apkUrl = ""
         var size = 0L
-        // 只发布 arm64-v8a 单包：优先名字带 arm64 的，且绝不选 32 位 armeabi 包
+        // v1.1 起只发布 arm64-v8a 单包、已放弃 32 位与 Android 8.0 以下设备：
+        // 优先名字带 arm64 的，且绝不选 32 位 armeabi 包
         //（64 位系统虽能兼容运行 32 位包，但本项目已不再提供/支持）。
         val apks = buildList {
             obj.optJSONArray("assets")?.let { assets ->
