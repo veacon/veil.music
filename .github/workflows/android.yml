@@ -45,6 +45,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
+          # 单包产物：构建脚本只保留 arm64-v8a，文件名固定为 app-debug.apk
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

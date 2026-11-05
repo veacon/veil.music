@@ -21,30 +21,22 @@ android {
 
     defaultConfig {
         applicationId = "com.veil.music"
-        minSdk = 23
+        // 仅适配 Android 8.0（API 26）及以上的 64 位系统：过滤掉依赖 AAR 自带的
+        // armeabi-v7a / x86 / x86_64 版本 QuickJS，只打一份 arm64-v8a native 库。
+        // 产物是单一 app-debug.apk（CI 与更新器都按这个名字找包）。
+        minSdk = 26
         targetSdk = 35
         // versionCode 必须单调递增（覆盖安装时系统会比对），所以对外叫 1.0 之后它继续往上走，
         // 否则从 2.2.x 升级会直接报 INSTALL_FAILED_VERSION_DOWNGRADE。
-        versionCode = 18
+        versionCode = 19
         versionName = "1.0"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    // 按 ABI 拆包：电视盒子只有 arm64-v8a（64 位系统）与 armeabi-v7a（老 32 位盒子）两种。
-    // 拆开之后每个包只带自己那一份 QuickJS 原生库，体积更小；两种都装不了才会用到合并包，
-    // 所以这里不生成 universal APK（要生成把 isUniversalApk 改成 true）。
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = false
-        }
     }
 
     compileOptions {
@@ -56,7 +48,7 @@ android {
     lint {
         // 只跑 NewApi：Compose 自带的检测器在 Kotlin 2.1 的 analysis API 上会抛
         // IncompatibleClassChangeError，把整个分析带崩（lint 侧兼容问题，非代码缺陷）。
-        // NewApi 正是本项目要守住的底线 —— minSdk 23 / Android 8 兼容。
+        // NewApi 正是本项目要守住的底线 —— minSdk 26 / Android 8.0 兼容。
         checkOnly += "NewApi"
         abortOnError = false
     }
@@ -93,11 +85,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
-    // FFmpeg audio decoder extension, built from media3 1.4.1 source for armeabi-v7a.
-    // Native lib lives in src/main/jniLibs; these are just the FfmpegAudioRenderer
-    // classes. Gives on-device HE-AAC decoding that matches the proxy (kills chop).
-    implementation(files("libs/media3-ffmpeg.jar"))
-
     // LX 音源：脚本在 QuickJS 里跑（lx-music v4 协议）
     implementation("wang.harlon.quickjs:wrapper-android:3.2.3")
     // 音源模型 / 脚本清单的 JSON 持久化
