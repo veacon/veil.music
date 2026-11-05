@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalDensity
@@ -39,6 +40,8 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.veil.music.data.model.LyricLine
 import com.veil.music.lyrics.LyricWordParser
+import com.veil.music.ui.viewmodel.LyricBgMode
+import com.veil.music.ui.viewmodel.fsGapScale
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.max
@@ -52,6 +55,8 @@ import kotlin.math.sin
  * 依次排在左边，一直到屏幕放不下才出画；一句太长、一列装不下时，剩下的部分作为「续列」
  * 排在它的右边，所以从旧到新、从句首到句尾，方向始终一致。
  *
+ * 竖排的两种间距：字距 = 列内字与字的垂直间隔；竖距 = 相邻两列的水平间隔。
+ *
  * 逐字不是「颜色扫过」，而是落笔：字从淡到浓、微微缩放，字心洇开一圈墨晕。
  * 背景是宣纸纹（不用封面实拍图），封面只以朱砂方章落在左下角。
  *
@@ -64,20 +69,31 @@ fun InkScrollFx(
     positionProvider: () -> Long,
     fontSizeSp: Int,
     fontFamily: FontFamily?,
-    /** 行距百分比（100 = 原设计 1.46 字高）。 */
-    lineGapPct: Int = 100,
-    /** 字间距，单位 em × 100（10 = 0.10em）。 */
+    /** 竖距百分比：两竖列之间的水平间距（100 = 原设计 1.85 倍字宽）。 */
+    colGapPct: Int = 100,
+    /** 字间距，单位 em × 100（10 = 0.10em）。竖排里它是列内字与字的垂直间隔。 */
     letterSpacingPct: Int = 10,
     trackName: String,
     artist: String,
-    /** 浅色纸面（宣纸）/ 深色纸面（夜墨）。 */
+    /** 浅色纸面（宣纸）/ 深色纸面（夜墨）。仅对「默认背景」生效。 */
     light: Boolean,
+    /** 背景来源：默认纸面 / 纯黑 / 自定义图。 */
+    bgMode: LyricBgMode = LyricBgMode.DEFAULT,
+    /** 自定义背景图（[bgMode] 为 CUSTOM 时使用，缺失则回落默认纸面）。 */
+    background: ImageBitmap? = null,
     modifier: Modifier = Modifier,
 ) {
-    val paper = if (light) InkPaper else InkNight
-    val ink = if (light) InkNightInk else InkNightInkLight
+    // 选了自定义图却没传图 → 回落默认底，不把整屏刷黑。
+    val mode = bgMode.effective(background != null)
+    val paper = when (mode) {
+        LyricBgMode.DEFAULT -> if (light) InkPaper else InkNight
+        else -> Color.Black
+    }
+    // 墨色由底决定：浅纸用焦墨，深纸 / 纯黑 / 图片一律米白。
+    val onLightPaper = mode == LyricBgMode.DEFAULT && light
+    val ink = if (onLightPaper) InkNightInk else InkNightInkLight
     val faint = ink.copy(alpha = 0.32f)
-    val seal = if (light) InkSeal else InkSealLight
+    val seal = if (onLightPaper) InkSeal else InkSealLight
 
     if (lyrics.isEmpty()) {
         Box(modifier.fillMaxSize().background(paper), contentAlignment = Alignment.Center) {
@@ -100,28 +116,32 @@ fun InkScrollFx(
         val hPx = constraints.maxHeight.toFloat()
         val measurer = rememberTextMeasurer(cacheSize = 512)
 
-        // 字号：**完全跟用户的设置走**（20sp 就是 20sp，80sp 就是 80sp）。
+        // 字号：**完全跟用户的设置走**（1sp 就是 1sp，80sp 就是 80sp）。
         // 早先这里是「以屏高 5.2% 为基准、再用设置值当上下限」，设置值只起夹取作用，
         // 于是调字号几乎看不出来；现在只压一个物理上限 —— 一列至少要站得下 5 个字，
         // 否则竖排根本读不成句。
         val userPx = with(density) { fontSizeSp.sp.toPx() }
-        val fontPx = userPx.coerceIn(12f, hPx * 0.18f)
+        val fontPx = userPx.coerceIn(1f, hPx * 0.18f)
         val fontSp = fontPx / density.density
         val histFontPx = fontPx * 0.82f
-        // 字距：-1.00em ~ +1.00em，负数收字、正数散排。
-        val ls = (letterSpacingPct / 100f).coerceIn(-1f, 1f)
-        val gapScale = (lineGapPct / 100f).coerceIn(0.4f, 3f)
-        // 字距（竖排 = 行内字与字的垂直间距）：1.46 字高为基准，再叠加用户的行距与字距。
-        // 下限压在 0.5 字高：负字距 + 紧行距叠加后不能变成 0 或负数，否则整列会倒着排。
-        val charH = fontPx * (1.46f * gapScale + ls).coerceAtLeast(0.5f)
+        // 字距：-1.00em ~ +3.00em，负数收字、正数散排。
+        val ls = (letterSpacingPct / 100f).coerceIn(-1f, 3f)
+        // 竖距：列与列之间的水平间距。竖排没有「行距」，能调的只有字距与竖距。
+        // 百分比 → 倍数走 fsGapScale：负值确实能把两列压到一起（0.5 倍），不会倒排。
+        val colGap = fsGapScale(colGapPct)
+        // 列内字与字的垂直间隔：1.46 字高为基准，只受字距影响。
+        // 下限压在 0.5 字高：负字距不能把整列压成倒着排。
+        val charH = fontPx * (1.46f + ls).coerceAtLeast(0.5f)
         val padH = wPx * 0.055f
         val padV = hPx * 0.10f
         val contentH = (hPx - padV * 2f).coerceAtLeast(fontPx * 4f)
-        val charsPerCol = max(4, floor(contentH / charH).toInt())
+        // 1sp 时 charH 不到 2px，一列能塞几百个字：这里压一个上限，免得每帧量测几百个
+        // 字形把整卷拖慢 —— 屏幕上本来也显示不下那么多。
+        val charsPerCol = max(4, floor(contentH / charH).toInt()).coerceAtMost(320)
 
-        // 列间距：1.85 倍字宽，两组之间再留一道空隙。
-        val slotCur = fontPx * (1.85f + ls)
-        val slotHist = histFontPx * (1.85f + ls)
+        // 列间距：1.85 倍字宽 × 竖距倍率。
+        val slotCur = fontPx * 1.85f * colGap
+        val slotHist = histFontPx * 1.85f * colGap
         // 句子之间的空隙（比列距更宽），用来区分「同一句的续列」和「下一句」。
         val groupGap = fontPx * 0.85f
 
@@ -152,34 +172,41 @@ fun InkScrollFx(
             val active = activeIndex(lyrics, now)
             if (active < 0) return
 
-            // ---- 纸纹：细噪点 + 极淡横向纤维 ------------------------------------------------
-            for (s in speckles) {
-                drawCircle(
-                    color = ink.copy(alpha = s[3]),
-                    radius = s[2],
-                    center = Offset(s[0] * size.width, s[1] * size.height),
-                )
+            // ---- 底：自定义图铺满 + 压暗（纯黑/默认底由外层 background 画好）---------------
+            if (mode == LyricBgMode.CUSTOM && background != null) {
+                drawCustomBackdrop(background)
             }
-            for (i in 1..7) {
-                val y = size.height * (i / 8f)
-                drawRect(
-                    color = ink.copy(alpha = 0.018f),
-                    topLeft = Offset(0f, y),
-                    size = Size(size.width, 1f),
-                )
-            }
-            // 四周压一点点，中心透出来（宣纸的「受光」感）。半径必须 > 0。
-            val vignetteR = size.maxDimension * 0.75f
-            if (vignetteR > 1f) {
-                drawRect(
-                    brush = Brush.radialGradient(
-                        0f to Color.Transparent,
-                        0.72f to Color.Transparent,
-                        1f to ink.copy(alpha = 0.10f),
-                        center = Offset(size.width / 2f, size.height / 2f),
-                        radius = vignetteR,
-                    ),
-                )
+
+            // ---- 纸纹：只有真纸面才叠（纯黑与照片上撒噪点显脏）------------------------------
+            if (mode == LyricBgMode.DEFAULT) {
+                for (s in speckles) {
+                    drawCircle(
+                        color = ink.copy(alpha = s[3]),
+                        radius = s[2],
+                        center = Offset(s[0] * size.width, s[1] * size.height),
+                    )
+                }
+                for (i in 1..7) {
+                    val y = size.height * (i / 8f)
+                    drawRect(
+                        color = ink.copy(alpha = 0.018f),
+                        topLeft = Offset(0f, y),
+                        size = Size(size.width, 1f),
+                    )
+                }
+                // 四周压一点点，中心透出来（宣纸的「受光」感）。半径必须 > 0。
+                val vignetteR = size.maxDimension * 0.75f
+                if (vignetteR > 1f) {
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            0f to Color.Transparent,
+                            0.72f to Color.Transparent,
+                            1f to ink.copy(alpha = 0.10f),
+                            center = Offset(size.width / 2f, size.height / 2f),
+                            radius = vignetteR,
+                        ),
+                    )
+                }
             }
 
             // ---- 列排布：统一「从左往右」读 ------------------------------------------------

@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.veil.music.data.model.LyricLine
+import com.veil.music.ui.viewmodel.LyricBgMode
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -50,24 +52,29 @@ fun TrackBedFx(
     positionProvider: () -> Long,
     fontSizeSp: Int,
     fontFamily: FontFamily?,
-    /** 行距百分比：轨道块高度与块内留白一起缩放。 */
-    lineGapPct: Int = 100,
     /** 字间距，单位 em × 100（10 = 0.10em）。 */
     letterSpacingPct: Int = 10,
     trackName: String,
     artist: String,
-    /** 浅色（工程纸）/ 深色（机房）。 */
+    /** 浅色（工程纸）/ 深色（机房）。仅对「默认背景」生效。 */
     light: Boolean,
+    /** 背景来源：默认底 / 纯黑 / 自定义图（与墨卷各自独立）。 */
+    bgMode: LyricBgMode = LyricBgMode.DEFAULT,
+    /** 自定义背景图（[bgMode] 为 CUSTOM 时使用，缺失则回落默认底）。 */
+    background: ImageBitmap? = null,
     modifier: Modifier = Modifier,
 ) {
-    val bg = if (light) TrackPaper else TrackRoom
-    val grid = if (light) Color(0xFF101418).copy(alpha = 0.08f) else Color.White.copy(alpha = 0.06f)
-    val fg = if (light) Color(0xFF12151A) else Color(0xFFF2F4F7)
+    // 选了自定义图却没传图 → 回落默认底。
+    val mode = bgMode.effective(background != null)
+    // 纯黑 / 自定义图都按深底处理：文字与高亮统一走亮色系。
+    val dark = mode != LyricBgMode.DEFAULT || !light
+    val bg = if (mode == LyricBgMode.DEFAULT) (if (light) TrackPaper else TrackRoom) else Color.Black
+    val grid = if (dark) Color.White.copy(alpha = 0.06f) else Color(0xFF101418).copy(alpha = 0.08f)
+    val fg = if (dark) Color(0xFFF2F4F7) else Color(0xFF12151A)
     val muted = fg.copy(alpha = 0.45f)
-    val accent = if (light) Color(0xFF185FA5) else Color(0xFF85B7EB)
-    // 与设置页滑杆同一组范围：行距 40–300%、字距 -1.00–+1.00em，不再二次夹取。
-    val gap = (lineGapPct / 100f).coerceIn(0.4f, 3f)
-    val ls = (letterSpacingPct / 100f).coerceIn(-1f, 1f)
+    val accent = if (dark) Color(0xFF85B7EB) else Color(0xFF185FA5)
+    // 块高不再有「行距」可调（这个界面只留字号与字距），按原设计固定比例。
+    val ls = (letterSpacingPct / 100f).coerceIn(-1f, 3f)
 
     val beat = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
@@ -84,14 +91,13 @@ fun TrackBedFx(
         val topH = hPx * 0.13f
         val rulerH = hPx * 0.17f
         val rulerY = hPx - rulerH * 0.62f
-        // 歌词字号：跟用户的「全屏歌词字号」设置走（20–80sp，全部生效）。
-        val blockSp = fontSizeSp.coerceIn(20, 80)
+        // 歌词字号：跟用户的「全屏歌词字号」设置走（1–80sp，全部生效）。
+        val blockSp = fontSizeSp.coerceIn(1, 80)
         // sp → px：块高和大字号得用同一套单位，否则「字号变大、块不动」文字就溢出去了。
         val spPx = with(androidx.compose.ui.platform.LocalDensity.current) { blockSp.sp.toPx() }
-        // 块高：行距决定基本高度，但**字号撑开的量必须算进去** —— 否则把字号调到 60sp
-        // 时块还是原来那么高，文字溢出去、看起来「调了没反应」。上限压在屏高 55%，
-        // 免得行距拉满 + 大字号把轨道撑到标尺外面。
-        val blockH = (hPx * 0.22f * gap)
+        // 块高：字号撑开的量必须算进去 —— 否则把字号调到 60sp 时块还是原来那么高，
+        // 文字溢出去、看起来「调了没反应」。上限压在屏高 55%，免得大字号把轨道撑到标尺外面。
+        val blockH = (hPx * 0.22f)
             .coerceAtLeast(spPx * 2.6f)
             .coerceIn(96f, hPx * 0.55f)
         val trackTop = ((topH + rulerY) / 2f - blockH / 2f).coerceAtLeast(topH)
@@ -108,6 +114,11 @@ fun TrackBedFx(
             if (size.minDimension < 2f) return@Canvas
             val now = positionProvider()
             val active = activeIndex(lyrics, now)
+
+            // ---- 自定义背景图（铺满 + 压暗）------------------------------------------------
+            if (mode == LyricBgMode.CUSTOM && background != null) {
+                drawCustomBackdrop(background)
+            }
 
             // ---- 网格（每 2 秒一条竖线）----------------------------------------------------
             var t = ((now - 10_000) / 1000) * 1000

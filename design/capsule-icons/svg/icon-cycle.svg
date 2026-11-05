@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" color="#1A1F27">
+  <title>icon-cycle</title>
+  <path d="M 12 7.6 L 12 16.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 12 5.70 L 14.50 8.70 L 9.50 8.70 Z" fill="currentColor"/>
+  <path d="M 12 18.30 L 9.50 15.30 L 14.50 15.30 Z" fill="currentColor"/>
+  <path d="M 3.84 8.20 A 9.0 9.0 0 1 1 5.11 17.79" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+  <path d="M 3.88 16.33 L 8.37 17.79 L 4.54 21 Z" fill="currentColor"/>
+</svg>

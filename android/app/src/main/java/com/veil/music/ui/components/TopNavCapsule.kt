@@ -25,51 +25,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import kotlinx.coroutines.launch
-import kotlin.math.pow
 import com.veil.music.ui.navigation.TopNavTab
 import com.veil.music.ui.navigation.LocalNavBarHasFocus
 import com.veil.music.ui.components.Glyph
 import com.veil.music.ui.components.Icon
 
-/** Beat-reactive 3-bar equalizer beside the Now Playing tab. A gentle per-bar wobble keeps it alive
- *  between beats; the live [BeatAnalyzer] energy punches all three up on each beat (Apple-style). */
-@Composable
-private fun EqBars(beatAnalyzer: com.veil.music.media.BeatAnalyzer?) {
-    val energy by (beatAnalyzer?.energy?.collectAsState() ?: remember { mutableStateOf(0f) })
-    // Sensitivity: bass-onset energy peaks low, so lift small values (gamma < 1) and add gain
-    // before clamping — a quiet beat should still visibly punch the bars.
-    val sens = (energy.coerceIn(0f, 1f).pow(0.55f) * 1.6f).coerceIn(0f, 1f)
-    // Snappy attack, graceful fall.
-    val punch by animateFloatAsState(sens, tween(55, easing = LinearEasing), label = "eqPunch")
-    val inf = rememberInfiniteTransition(label = "eq")
-    val w1 by inf.animateFloat(0.30f, 0.70f, infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Reverse), label = "w1")
-    val w2 by inf.animateFloat(0.65f, 0.28f, infiniteRepeatable(tween(310, easing = LinearEasing), RepeatMode.Reverse), label = "w2")
-    val w3 by inf.animateFloat(0.38f, 0.72f, infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Reverse), label = "w3")
-    // 三条柱子显式写出，避免每帧（无限动画 ~30fps）分配 List / lambda / 3 次装箱。
-    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(12.dp)) {
-        Box(Modifier.width(2.dp).fillMaxHeight((w1 * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
-        Box(Modifier.width(2.dp).fillMaxHeight((w2 * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
-        Box(Modifier.width(2.dp).fillMaxHeight((w3 * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
-    }
-}
-
 /**
- * 顶部胶囊栏：正在播放 / 发现 / 我的 / 搜索 / 设置。
+ * **顶栏胶囊**（TopNavCapsule）：发现 / 我的 / 搜索 / 设置。
  *
- * 「正在播放」是**第一枚胶囊**，和其余 tab 完全同构 —— 左右键走到它就切到播放页，
- * 不再有右上角那枚独立胶囊（那是上一版的形态，用户要求收回胶囊链里）。
- * 它显示当前歌名（没播放时「未在播放」），播放中右侧跟一条 EQ 动效。
+ * 三枚浮动胶囊之一：顶栏胶囊（这一枚，切页）／迷你胶囊（MiniPlayerCapsule，底部播放条）／
+ * 调节胶囊（TuningCapsule，播放页长按下键呼出）。三者都画在内容层与播放层之上，
+ * 不参与返回栈 —— 见 AppShell 顶部的层级说明。
+ *
+ * 原本这里第一枚是「正在播放」，显示当前歌名 + EQ 动效，左右键走到它就直接切到
+ * 播放页。那一枚的问题在于：它是一枚**导航**胶囊，却要承担「播放状态显示」的职责，
+ * 于是切页时经常被顺手带过去、焦点也来回跳。现在这些信息与操作全部搬到屏幕底部的
+ * 迷你播放条（见 MiniPlayerCapsule），顶栏只负责四个内容页之间的切换。
  */
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-fun TopNavBar(
+fun TopNavCapsule(
     selected: TopNavTab,
     onSelect: (TopNavTab) -> Unit,
-    isPlaying: Boolean = false,
-    /** 第一枚胶囊上的文字：播放中显示歌名，否则「未在播放」。 */
-    nowPlayingTitle: String? = null,
     updateAvailable: Boolean = false,
-    beatAnalyzer: com.veil.music.media.BeatAnalyzer? = null,
     /**
      * 页面按上键回到导航栏时落在哪个节点上。
      *
@@ -171,19 +149,6 @@ fun TopNavBar(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             when {
-                                // 第一枚：正在播放。文字跟着当前歌名走，播放中再跟一条 EQ。
-                                tab == TopNavTab.NowPlaying -> {
-                                    Text(
-                                        text = nowPlayingTitle?.takeIf { it.isNotBlank() } ?: "未在播放",
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                        color = textColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.widthIn(max = 200.dp),
-                                    )
-                                    if (isPlaying) EqBars(beatAnalyzer)
-                                }
                                 // Settings tab is a gear (with a badge when an update is available).
                                 tab == TopNavTab.Settings -> {
                                     Icon(

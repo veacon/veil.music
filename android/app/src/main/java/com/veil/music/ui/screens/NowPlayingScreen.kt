@@ -82,10 +82,20 @@ import com.veil.music.data.model.LyricLine
 import com.veil.music.data.model.LyricWord
 import com.veil.music.ui.navigation.LocalNavBarHasFocus
 import com.veil.music.ui.viewmodel.FsStyle
+import com.veil.music.ui.viewmodel.FsStylePrefs
+import com.veil.music.ui.viewmodel.fsGapScale
 import com.veil.music.ui.viewmodel.FullscreenLyricMode
+import com.veil.music.ui.viewmodel.LyricBgMode
 import com.veil.music.ui.viewmodel.LyricFontChoice
 import com.veil.music.ui.player.fullscreen.InkScrollFx
 import com.veil.music.ui.player.fullscreen.TrackBedFx
+import com.veil.music.ui.player.fullscreen.TuningCapsule
+import com.veil.music.ui.player.fullscreen.CapsuleBgPanel
+import com.veil.music.ui.player.fullscreen.TuningCapsuleController
+import com.veil.music.ui.player.fullscreen.bgSlot
+import com.veil.music.data.store.LyricLookStore
+import com.veil.music.ui.components.QrDialog
+import androidx.compose.foundation.Image
 import com.veil.music.ui.theme.MingMeiSpring
 import com.veil.music.ui.theme.PingFang
 import com.veil.music.ui.viewmodel.NavigationViewModel
@@ -117,6 +127,13 @@ fun NowPlayingScreen(
      * 而不是按几何位置掉进右侧播放队列。默认自己造一个，供单独预览时使用。
      */
     playFocus: FocusRequester = remember { FocusRequester() },
+    /**
+     * 退出播放层（L2）回到内容层（L1）。
+     *
+     * 由 AppShell 提供：标准播放页、墨卷、声轨、全屏歌词**同层**，返回键在四者中
+     * 任何一处都走这一条出口，落点都是发现页。见 AppShell 文件头的层级模型。
+     */
+    onExitLayer: () -> Unit = {},
     onArtistClick: (String) -> Unit = {},
     onAlbumClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -140,11 +157,6 @@ fun NowPlayingScreen(
     // 控件行末位「⋯」的 requester：右侧的队列列表在几何上够不着，得靠它点名。
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Screensaver state is declared here (not lower down) so the backdrop can react to it: when
-        // idle mode kicks in and the user hasn't opted to keep the beat, the backdrop drops to plain
-        // black regardless of the chosen mode.
-        var screensaverOn by remember { mutableStateOf(false) }
-        var lastInteractionMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
         // Auto-hide chrome (clock, controls, queue) after a short idle so a steady state is just
         // artwork + orbs. Only D-pad NAVIGATION brings it back — the media transport keys deliberately
         // don't, so play/pause/skip from across the room leaves the clean view alone.
@@ -169,8 +181,7 @@ fun NowPlayingScreen(
             label = "idle",
         )
         val chromeAlpha = 1f - idle
-        val backgroundMode = if (screensaverOn && !state.screensaverKeepBackground)
-            NowPlayingBackground.BLACK else state.nowPlayingBackground
+        val backgroundMode = state.nowPlayingBackground
         // 专辑取色只算一次：背景的水光、当前歌词的字色都从这里拿，避免同一张封面被解码两遍。
         val paletteUrl = song?.artworkUrl?.replace("{w}", "300")?.replace("{h}", "300")?.replace("{f}", "jpg")
         val albumPalette = rememberArtworkPalette(paletteUrl, seed = song?.id ?: "")
@@ -216,6 +227,18 @@ fun NowPlayingScreen(
                 val f = state.qualityFormat
                 if (f.isNullOrBlank() || q.contains(f, ignoreCase = true)) q else "$q · $f"
             }
+            // 音源名单独做成一个胶囊贴在音质前面：同一首歌可能由不同脚本解析成功，
+            // 出杂音/播不动时先看这里 —— 白字＋黑底比混在一行灰字里更容易一眼认出来。
+            state.sourceLabel?.let { source ->
+                Text(
+                    source,
+                    style = TextStyle(fontSize = 12.sp, color = Color(0xF2FFFFFF)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(Color(0xB3000000))
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+            }
             if (qualityText != null) {
                 Text(
                     qualityText,
@@ -232,11 +255,16 @@ fun NowPlayingScreen(
         // 抓到播放按钮上 —— 否则焦点离开顶栏，右边的「设置」就永远按不到了。
         val navBarHasFocus = LocalNavBarHasFocus.current
         val navBarFocus = com.veil.music.ui.navigation.LocalNavBarFocus.current
-        // 「上键回顶栏」的出口。顶栏的 requester 绑在当前 tab 的胶囊上；万一它此刻没有节点
-        // （顶栏正在淡出/重组），requestFocus 会抛异常 —— 返回 false 让事件继续走默认几何搜索。
+        // 「上键往上走」的出口。分两级：
+        //  1) 顶栏在的话先回顶栏（发现/我的/搜索/设置 四页需要这条路径）；
+        //  2) 顶栏不在（**播放页本身就不渲染顶栏**）或它此刻没有节点（正在淡出/重组），
+        //     回落到播放控件行。
+        // 之前只有第 1 级、且失败后直接返回 false —— 播放页里顶栏恒不存在，于是进度条上
+        // 按上键既不消费事件、几何搜索又找不到上方节点，焦点就死死卡在时长栏上出不来。
         val upToNavBar: () -> Boolean = {
-            val req = navBarFocus
-            if (req == null) false else runCatching { req.requestFocus() }.isSuccess
+            val toBar = navBarFocus?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+            if (toBar) true
+            else runCatching { playFocus.requestFocus() }.isSuccess
         }
         // 播放队列第一行。这块布局的几何焦点搜索到不了右侧列表，由「列表」键的右键点名进入。
         val queueEntryFocus = remember { FocusRequester() }
@@ -249,6 +277,7 @@ fun NowPlayingScreen(
             }
         }
         var fullScreenLyrics by remember { mutableStateOf(false) }
+        val lookCtx = LocalContext.current
         // 墨卷 / 声轨：全屏沉浸歌词，不含任何播放控件。null = 不进入。
         var fullscreenFx by remember { mutableStateOf<FullscreenLyricMode?>(null) }
         /**
@@ -260,30 +289,88 @@ fun NowPlayingScreen(
          * 「返回时跳到墨卷默认字体版」。所以进入时把模式记在这里，退出时不清它。
          */
         var fxMode by remember { mutableStateOf(FullscreenLyricMode.INK_SCROLL) }
-        // System Back exits full-screen lyrics (the 3-dots menu isn't reachable there).
-        androidx.activity.compose.BackHandler(enabled = fullScreenLyrics || fullscreenFx != null) {
+
+        /**
+         * 退出整个播放层：先把四张脸复位，再交给外壳回 L1。
+         *
+         * 复位不能省：退出时若还停在墨卷，下次点迷你胶囊进播放页会直接落在墨卷上 ——
+         * 而"进入播放页"的语义永远是进标准播放页。
+         */
+        val exitLayer: () -> Unit = {
             fullScreenLyrics = false
             fullscreenFx = null
+            onExitLayer()
         }
 
-        // Ambient screensaver: after 10 min of no input while playing, drop to just the
-        // drifting background + a small now-playing chip. Any key wakes it.
-        // (screensaverOn / lastInteractionMs are declared above so the backdrop can read them.)
-        LaunchedEffect(state.screensaverTimeoutMin, state.isPlaying) {
-            if (state.screensaverTimeoutMin <= 0) { screensaverOn = false; return@LaunchedEffect }
-            val thresholdMs = state.screensaverTimeoutMin * 60_000L
-            while (isActive) {
-                kotlinx.coroutines.delay(15_000)
-                if (state.isPlaying && !screensaverOn &&
-                    System.currentTimeMillis() - lastInteractionMs > thresholdMs) screensaverOn = true
+        // 返回键：墨卷 / 声轨 / 全屏歌词都在播放层里，按返回就是退出这一层（不回标准播放页）。
+        // 注意这是**兜底**：调节胶囊展开时它会先吃键（onPreviewKeyEvent 预览阶段），
+        // 胶囊收起来之后返回键才落到这里。
+        androidx.activity.compose.BackHandler(enabled = fullScreenLyrics || fullscreenFx != null) {
+            exitLayer()
+        }
+
+        // ── 「换效」的循环顺序 ────────────────────────────────────────────────────
+        // 标准播放页 → 墨卷 → 声轨 → 全屏歌词 → 标准播放页。
+        //
+        // 四个界面都在同一个环里：早先从播放页按「换效」直接跳墨卷，绕一圈也回不到标准界面，
+        // 想回播放页只能另按返回键。现在把标准播放页作为环上的一站，一路按下去总会回到它。
+        val cycleLyricView: () -> Unit = {
+            when {
+                fullscreenFx == FullscreenLyricMode.INK_SCROLL -> {
+                    fxMode = FullscreenLyricMode.TRACK_BED
+                    fullscreenFx = FullscreenLyricMode.TRACK_BED
+                }
+                fullscreenFx == FullscreenLyricMode.TRACK_BED -> {
+                    // fxMode 停在声轨上：退场动画还要靠它画最后一帧（见上面的说明）。
+                    fullscreenFx = null
+                    fullScreenLyrics = true
+                }
+                fullScreenLyrics -> fullScreenLyrics = false
+                // 没有歌词时进入那三套界面只会看到一片空白 —— 留在播放页，不白按一下。
+                state.lyrics.isEmpty() -> Unit
+                else -> {
+                    fxMode = FullscreenLyricMode.INK_SCROLL
+                    fullscreenFx = FullscreenLyricMode.INK_SCROLL
+                }
             }
         }
 
-        // Cross-dissolve between the player, full-screen lyrics and the screensaver so every
+        // ── 播放页的歌词胶囊 ──────────────────────────────────────────────────────
+        // 调的是一套「普通歌词」排版（FsStyle.PLAIN）：播放页右栏的歌词面板与
+        // 全屏普通歌词读同一份参数，所以在胶囊里一改，两处立刻一致 —— 不再像以前那样
+        // 面板一套值、全屏另一套值，设置里还藏着第三处入口。
+        val plainPref = state.fsPrefs(FsStyle.PLAIN)
+        val pageCtx = androidx.compose.ui.platform.LocalContext.current
+        val lookVersion by LyricLookStore.version.collectAsState()
+        val pageCustomFont = remember(lookVersion) { LyricLookStore.loadFontFamily(pageCtx) }
+        val pageHasCustomFont = pageCustomFont != null
+        var pageQr by remember { mutableStateOf(false) }
+        val pageCapsule = remember {
+            TuningCapsuleController(
+                onFont = { playerVm.setFsFont(FsStyle.PLAIN, it) },
+                onNudgeSize = { playerVm.nudgeFsFontSp(FsStyle.PLAIN, it) },
+                onNudgeLine = { playerVm.nudgeFsLineGapPct(FsStyle.PLAIN, it) },
+                onNudgeColGap = { playerVm.nudgeFsColGapPct(FsStyle.PLAIN, it) },
+                onNudgeTrack = { playerVm.nudgeFsLetterSpacing(FsStyle.PLAIN, it) },
+                onSetBg = { playerVm.setFsBg(FsStyle.PLAIN, it) },
+                onClearBg = { LyricLookStore.clearBackground(pageCtx, FsStyle.PLAIN.bgSlot) },
+                onOpenQr = { pageQr = true },
+                onCycleEffect = { cycleLyricView() },
+                // 播放页这枚胶囊的「背景」页讲的是页面背景，不是歌词底图（见 CapsuleBgPanel）。
+                onSetPlayerBg = { playerVm.setNowPlayingBackground(it) },
+                onNudgeOrbSpeed = { playerVm.nudgeOrbSpeed(it) },
+                bgPanel = CapsuleBgPanel.PLAYER,
+            )
+        }
+        // 进全屏歌词 / 墨卷 / 声轨时把播放页这枚胶囊收起来，免得两套叠在一起。
+        LaunchedEffect(fullScreenLyrics, fullscreenFx) {
+            if (fullScreenLyrics || fullscreenFx != null) pageCapsule.close()
+        }
+
+        // Cross-dissolve between the player, full-screen lyrics and the FX stages so every
         // switch (and back) animates instead of hard-cutting.
         val npMode = when {
-            screensaverOn -> 2
-            fullscreenFx != null && state.lyrics.isNotEmpty() -> 3
+            fullscreenFx != null && state.lyrics.isNotEmpty() -> 2
             fullScreenLyrics && state.lyrics.isNotEmpty() -> 1
             else -> 0
         }
@@ -293,39 +380,50 @@ fun NowPlayingScreen(
             modifier = Modifier.fillMaxSize(),
             label = "npMode",
         ) { mode -> when (mode) {
-            2 -> AmbientScreensaver(song = song) { screensaverOn = false; lastInteractionMs = System.currentTimeMillis() }
-            3 -> {
-                // 墨卷 / 声轨各用自己的那套排版（设置 → 全屏歌词 里分开调）。
+            2 -> {
+                // 墨卷 / 声轨各用自己的那套排版与背景；胶囊里调的就是当前这一套。
                 // 用 fxMode 而不是 fullscreenFx：退场动画期间后者已经是 null 了。
-                val fxPrefs = state.fsPrefs(FsStyle.of(fxMode))
+                val fxStyle = FsStyle.of(fxMode)
+                val fxPrefs = state.fsPrefs(fxStyle)
                 FullscreenLyricStage(
                     mode = fxMode,
                     lyrics = state.lyrics,
                     progressState = smoothProgress,
                     offsetMs = state.avLyricsMs,
                     song = song,
-                    fontChoice = fxPrefs.font,
-                    fontSizeSp = fxPrefs.fontSp,
-                    lineGapPct = fxPrefs.lineGapPct,
-                    tracking = fxPrefs.letterSpacing,
-                    light = fxPrefs.light,
-                    onExit = { fullscreenFx = null },
+                    pref = fxPrefs,
+                    webServerUrl = playerVm.webServerUrl(),
+                    onFont = { playerVm.setFsFont(fxStyle, it) },
+                    onNudgeSize = { playerVm.nudgeFsFontSp(fxStyle, it) },
+                    onNudgeLine = { playerVm.nudgeFsLineGapPct(fxStyle, it) },
+                    onNudgeColGap = { playerVm.nudgeFsColGapPct(fxStyle, it) },
+                    onNudgeTrack = { playerVm.nudgeFsLetterSpacing(fxStyle, it) },
+                    onSetBg = { playerVm.setFsBg(fxStyle, it) },
+                    onClearBg = { LyricLookStore.clearBackground(lookCtx, fxStyle.bgSlot) },
+                    onCycleEffect = { cycleLyricView() },
+                    onExit = { exitLayer() },
                 )
             }
             1 -> {
-                // 普通全屏歌词也有自己那套参数：字号 → 相对 24sp 的缩放，行距 → 倍数。
+                // 普通全屏歌词：字号 → 相对 24sp 的缩放，行距 → 倍数。
                 val plain = state.fsPrefs(FsStyle.PLAIN)
                 FullScreenLyrics(
                     lyrics = state.lyrics,
                     progressState = smoothProgress,
                     offsetMs = state.avLyricsMs,
                     onSeek = { ms -> playerVm.player.seekTo(ms) },
-                    onExit = { fullScreenLyrics = false },
-                    fontScale = plain.fontSp / 24f,
-                    lineGap = plain.lineGapPct / 100f,
-                    letterSpacing = plain.letterSpacing,
-                    fontChoice = plain.font,
+                    onExit = { exitLayer() },
+                    pref = plain,
                     lyricAccent = lyricAccent,
+                    webServerUrl = playerVm.webServerUrl(),
+                    onFont = { playerVm.setFsFont(FsStyle.PLAIN, it) },
+                    onNudgeSize = { playerVm.nudgeFsFontSp(FsStyle.PLAIN, it) },
+                    onNudgeLine = { playerVm.nudgeFsLineGapPct(FsStyle.PLAIN, it) },
+                    onNudgeColGap = { playerVm.nudgeFsColGapPct(FsStyle.PLAIN, it) },
+                    onNudgeTrack = { playerVm.nudgeFsLetterSpacing(FsStyle.PLAIN, it) },
+                    onSetBg = { playerVm.setFsBg(FsStyle.PLAIN, it) },
+                    onClearBg = { LyricLookStore.clearBackground(lookCtx, FsStyle.PLAIN.bgSlot) },
+                    onCycleEffect = { cycleLyricView() },
                 )
             }
             else -> {
@@ -334,12 +432,13 @@ fun NowPlayingScreen(
             // 外壳不再为播放页让位，所以这 56dp 挪到这里，视觉位置与之前完全一致。
             modifier = Modifier.fillMaxSize().padding(start = 72.dp, end = 72.dp, top = 96.dp, bottom = 40.dp)
                 .onPreviewKeyEvent { e ->
-                    // Navigation only: media keys don't count as activity, so they neither wake the
-                    // chrome nor postpone the screensaver.
+                    // 胶囊优先吃键：长按下键呼出、左右切换、上下调节，都不该同时唤醒/惊动别的东西。
+                    if (pageCapsule.onKey(e, plainPref, pageHasCustomFont, FsStyle.PLAIN)) {
+                        return@onPreviewKeyEvent true
+                    }
+                    // Navigation only: media keys don't count as activity, so they don't wake the chrome.
                     if (e.type == KeyEventType.KeyDown && isNavKey(e.key)) {
-                        val now = System.currentTimeMillis()
-                        lastInteractionMs = now
-                        lastNavMs = now
+                        lastNavMs = System.currentTimeMillis()
                         // First nav press just reveals the chrome — consume it so focus doesn't also
                         // jump while everything's still invisible.
                         if (!chromeVisible) { chromeVisible = true; return@onPreviewKeyEvent true }
@@ -551,7 +650,6 @@ fun NowPlayingScreen(
                                     fullscreenFx = FullscreenLyricMode.TRACK_BED; showOptionsMenu = false
                                 }
                                 NpMenuItem("添加到…", icon = Glyph.ADD_TO) { showAddTo = true; showOptionsMenu = false }
-                                NpMenuItem("开始屏保", icon = Glyph.STAR) { lastInteractionMs = System.currentTimeMillis(); screensaverOn = true; showOptionsMenu = false }
                                 if (song.artistId != null) NpMenuItem("查看歌手", icon = Glyph.ARTIST) { onArtistClick(song.artistId); showOptionsMenu = false }
                                 if (song.albumId != null) NpMenuItem("查看专辑", icon = Glyph.ALBUM) { onAlbumClick(song.albumId); showOptionsMenu = false }
                             }
@@ -618,10 +716,14 @@ fun NowPlayingScreen(
                             offsetMs = state.avLyricsMs,
                             onSeek = { ms -> playerVm.player.seekTo(ms) },
                             playFocus = playFocus,
-                            fontScale = state.lyricsScale,
-                            lineGap = state.lyricLineGap,
-                            // 字间距（em×100）：设置 →「播放与外观」→ 歌词 里调，范围 -1.00–1.00em。
-                            tracking = state.lyricTracking,
+                            // 与全屏普通歌词、胶囊共用同一份排版参数（FsStyle.PLAIN）：
+                            // 以前这里是 state.lyricsScale/lyricLineGap/lyricTracking 另一套值，
+                            // 结果是「胶囊调了面板不跟着动」。
+                            fontScale = plainPref.fontSp / 24f,
+                            // 与全屏歌词同一套换算：负行距要压到 0.5 倍而不是给出负行高。
+                            lineGap = fsGapScale(plainPref.lineGapPct),
+                            tracking = plainPref.letterSpacing,
+                            fontFamily = lyricFontFamily(plainPref.font, pageCustomFont),
                             accent = lyricAccent,
                         )
                     } else {
@@ -641,7 +743,26 @@ fun NowPlayingScreen(
         }
             }
         } }
-        if (!screensaverOn) NextUpToast(
+        // 播放页的歌词胶囊（长按下键呼出）。画在最上层，位置与全屏歌词里那枚一致。
+        TuningCapsule(
+            controller = pageCapsule,
+            style = FsStyle.PLAIN,
+            pref = plainPref,
+            hasCustomFont = pageHasCustomFont,
+            hasCustomBg = remember(lookVersion) {
+                LyricLookStore.hasBackground(pageCtx, FsStyle.PLAIN.bgSlot)
+            },
+            modifier = Modifier.fillMaxSize(),
+            playerBg = state.nowPlayingBackground,
+            orbSpeed = state.orbSpeed,
+        )
+        if (pageQr) QrDialog(
+            url = playerVm.webServerUrl().trimEnd('/') + "/lyric-look",
+            title = "上传歌词外观",
+            subtitle = "手机扫码后可上传字体文件（.ttf/.otf）与背景图片，回到电视即生效",
+            onDismiss = { pageQr = false },
+        )
+        NextUpToast(
             progressState = smoothProgress,
             durationMs = song.durationMs,
             nextTitle = (state.userQueue.firstOrNull() ?: state.queue.getOrNull(state.queueIndex + 1))?.title,
@@ -687,43 +808,6 @@ private fun BoxScope.NextUpToast(progressState: androidx.compose.runtime.State<L
 }
 
 /**
- * Ambient screensaver — the drifting background (rendered behind) plus a small
- * now-playing chip bottom-left. Grabs focus so any key wakes it back to the player.
- */
-@Composable
-private fun AmbientScreensaver(song: com.veil.music.data.model.Song, onWake: () -> Unit) {
-    val fr = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
-    Box(
-        Modifier.fillMaxSize()
-            .focusRequester(fr)
-            .focusable()
-            .onKeyEvent { onWake(); true },
-    ) {
-        // Heavy dim over the drifting background — colours + motion still faintly show.
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.68f)))
-        Row(
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 64.dp, bottom = 56.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            if (song.artworkUrl != null) {
-                AsyncImage(
-                    model = song.artworkUrl(160),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)),
-                )
-            }
-            Column {
-                Text(song.title, maxLines = 1, style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White, shadow = Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 10f)))
-                Text(song.artistName, maxLines = 1, style = TextStyle(fontSize = 14.sp, color = Color(0xCCFFFFFF), shadow = Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 10f)))
-            }
-        }
-    }
-}
-
-/**
  * 墨卷 / 声轨全屏舞台。
  *
  * 刻意**不含任何播放控件**：没有封面、没有播放条、没有按钮，整屏只有歌词本身。
@@ -736,19 +820,47 @@ private fun FullscreenLyricStage(
     progressState: androidx.compose.runtime.State<Long>,
     offsetMs: Long,
     song: com.veil.music.data.model.Song,
-    fontChoice: LyricFontChoice,
-    fontSizeSp: Int,
-    lineGapPct: Int,
-    tracking: Int,
-    light: Boolean,
+    pref: FsStylePrefs,
+    webServerUrl: String,
+    onFont: (LyricFontChoice) -> Unit,
+    onNudgeSize: (Int) -> Unit,
+    onNudgeLine: (Int) -> Unit,
+    onNudgeColGap: (Int) -> Unit,
+    onNudgeTrack: (Int) -> Unit,
+    onSetBg: (LyricBgMode) -> Unit,
+    onClearBg: () -> Unit,
+    onCycleEffect: () -> Unit,
     onExit: () -> Unit,
 ) {
     val stageFocus = remember { FocusRequester() }
     val position: () -> Long = { (progressState.value + offsetMs).coerceAtLeast(0L) }
-    val fontFamily: androidx.compose.ui.text.font.FontFamily? = when (fontChoice) {
+    val context = LocalContext.current
+    val style = FsStyle.of(mode)
+    val lookVersion by LyricLookStore.version.collectAsState()
+    val customFont = remember(lookVersion) { LyricLookStore.loadFontFamily(context) }
+    val hasCustomFont = customFont != null
+    // 背景图按界面取：墨卷与声轨各存一份，互不覆盖。
+    val slot = style.bgSlot
+    val background = remember(lookVersion, slot) { LyricLookStore.loadBackground(context, slot) }
+    val fontFamily: androidx.compose.ui.text.font.FontFamily? = when (pref.font) {
         LyricFontChoice.SYSTEM -> null
         LyricFontChoice.PINGFANG -> PingFang
         LyricFontChoice.MINGMEI -> MingMeiSpring
+        LyricFontChoice.CUSTOM -> customFont
+    }
+    var showQr by remember { mutableStateOf(false) }
+    val capsule = remember(mode) {
+        TuningCapsuleController(
+            onFont = onFont,
+            onNudgeSize = onNudgeSize,
+            onNudgeLine = onNudgeLine,
+            onNudgeColGap = onNudgeColGap,
+            onNudgeTrack = onNudgeTrack,
+            onSetBg = onSetBg,
+            onClearBg = onClearBg,
+            onOpenQr = { showQr = true },
+            onCycleEffect = onCycleEffect,
+        )
     }
 
     LaunchedEffect(mode) {
@@ -764,6 +876,8 @@ private fun FullscreenLyricStage(
             .focusRequester(stageFocus)
             .focusable()
             .onPreviewKeyEvent { e ->
+                // 胶囊优先吃按键；它没消费的（如未呼出时的返回）才交给舞台退出。
+                if (capsule.onKey(e, pref, hasCustomFont, style)) return@onPreviewKeyEvent true
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (e.key == Key.Back) { onExit(); true } else false
             },
@@ -772,27 +886,47 @@ private fun FullscreenLyricStage(
             FullscreenLyricMode.INK_SCROLL -> InkScrollFx(
                 lyrics = lyrics,
                 positionProvider = position,
-                fontSizeSp = fontSizeSp,
+                fontSizeSp = pref.fontSp,
                 fontFamily = fontFamily,
-                lineGapPct = lineGapPct,
-                letterSpacingPct = tracking,
+                colGapPct = pref.colGapPct,
+                letterSpacingPct = pref.letterSpacing,
                 trackName = song.title,
                 artist = song.artistName,
-                light = light,
+                light = pref.light,
+                bgMode = pref.bg,
+                background = background,
             )
             FullscreenLyricMode.TRACK_BED -> TrackBedFx(
                 lyrics = lyrics,
                 positionProvider = position,
-                fontSizeSp = fontSizeSp,
+                fontSizeSp = pref.fontSp,
                 fontFamily = fontFamily,
-                lineGapPct = lineGapPct,
-                letterSpacingPct = tracking,
+                letterSpacingPct = pref.letterSpacing,
                 trackName = song.title,
                 artist = song.artistName,
-                light = light,
+                light = pref.light,
+                bgMode = pref.bg,
+                background = background,
             )
         }
+
+        TuningCapsule(
+            controller = capsule,
+            style = style,
+            pref = pref,
+            hasCustomFont = hasCustomFont,
+            hasCustomBg = background != null,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
+
+    if (showQr) QrDialog(
+        // 带锚点：手机打开后直接跳到当前界面那一栏。
+        url = webServerUrl.trimEnd('/') + "/lyric-look#" + style.name.lowercase(),
+        title = "上传歌词外观",
+        subtitle = "手机扫码后可上传字体文件（.ttf/.otf）与背景图片，回到电视即生效",
+        onDismiss = { showQr = false },
+    )
 }
 
 /**
@@ -806,19 +940,78 @@ private fun FullScreenLyrics(
     offsetMs: Long,
     onSeek: (Long) -> Unit,
     onExit: () -> Unit,
-    fontScale: Float = 1f,
-    lineGap: Float = 1f,
-    /** 字间距（em × 100）。0 = 原设计的紧缩排版。 */
-    letterSpacing: Int = 0,
-    fontChoice: LyricFontChoice = LyricFontChoice.SYSTEM,
+    pref: FsStylePrefs,
     lyricAccent: Color = Color.White,
+    webServerUrl: String = "",
+    onFont: (LyricFontChoice) -> Unit = {},
+    onNudgeSize: (Int) -> Unit = {},
+    onNudgeLine: (Int) -> Unit = {},
+    onNudgeColGap: (Int) -> Unit = {},
+    onNudgeTrack: (Int) -> Unit = {},
+    onSetBg: (LyricBgMode) -> Unit = {},
+    onClearBg: () -> Unit = {},
+    onCycleEffect: () -> Unit = {},
 ) {
-    // 纯歌词展示：无播放控件、无焦点目标，只吃返回键退出。
+    val context = LocalContext.current
+    val lookVersion by LyricLookStore.version.collectAsState()
+    val customFont = remember(lookVersion) { LyricLookStore.loadFontFamily(context) }
+    val customBg = remember(lookVersion) { LyricLookStore.loadBackground(context, FsStyle.PLAIN.bgSlot) }
+    val hasCustomFont = customFont != null
+    val hasCustomBg = customBg != null
+
+    val fontScale = pref.fontSp / 24f
+    // 行距百分比 → 倍数（见 fsGapScale）：-100% 压到 0.5 倍，0% 基本贴住，300% 散开。
+    // 直接拿百分比当倍数用会在负数区间给出负行高，Compose 的 Text 会直接崩。
+    val lineGap = fsGapScale(pref.lineGapPct)
+    val letterSpacing = pref.letterSpacing
+
+    // 纯歌词展示：外部 Box 必须是焦点根，否则遥控器按键根本进不到这里（内部没有可聚焦控件）。
+    val focus = remember { FocusRequester() }
+    var showQr by remember { mutableStateOf(false) }
+    val capsule = remember {
+        TuningCapsuleController(
+            onFont = onFont,
+            onNudgeSize = onNudgeSize,
+            onNudgeLine = onNudgeLine,
+            onNudgeColGap = onNudgeColGap,
+            onNudgeTrack = onNudgeTrack,
+            onSetBg = onSetBg,
+            onClearBg = onClearBg,
+            onOpenQr = { showQr = true },
+            onCycleEffect = onCycleEffect,
+        )
+    }
+    LaunchedEffect(Unit) {
+        repeat(10) {
+            if (runCatching { focus.requestFocus() }.isSuccess) return@LaunchedEffect
+            kotlinx.coroutines.delay(50)
+        }
+    }
+
     Box(
-        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
-            if (e.type == KeyEventType.KeyDown && e.key == Key.Back) { onExit(); true } else false
-        },
+        Modifier
+            .fillMaxSize()
+            .focusRequester(focus)
+            .focusable()
+            .onPreviewKeyEvent { e ->
+                if (capsule.onKey(e, pref, hasCustomFont, FsStyle.PLAIN)) return@onPreviewKeyEvent true
+                if (e.type == KeyEventType.KeyDown && e.key == Key.Back) { onExit(); true } else false
+            },
     ) {
+        // 纯黑底最省电，也最不抢注意力。
+        if (pref.bg == LyricBgMode.BLACK) {
+            Box(Modifier.fillMaxSize().background(Color.Black))
+        }
+        // 自定义背景图（扫码上传）：铺满 + 一层压暗，保证浅色图上歌词依然清楚。
+        if (customBg != null && pref.bg != LyricBgMode.BLACK) {
+            Image(
+                bitmap = customBg,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(Color(0x73000000)))
+        }
         Column(Modifier.fillMaxSize().padding(start = 72.dp, end = 128.dp, top = 92.dp, bottom = 120.dp)) {
             LyricsPanel(
                 lyrics = lyrics,
@@ -830,11 +1023,25 @@ private fun FullScreenLyrics(
                 autoReturnMs = 5_000L,
                 lineGap = lineGap,
                 tracking = letterSpacing,
-                fontFamily = lyricFontFamily(fontChoice),
+                fontFamily = lyricFontFamily(pref.font, customFont),
                 accent = lyricAccent,
             )
         }
+        TuningCapsule(
+            controller = capsule,
+            style = FsStyle.PLAIN,
+            pref = pref,
+            hasCustomFont = hasCustomFont,
+            hasCustomBg = hasCustomBg,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
+    if (showQr) QrDialog(
+        url = webServerUrl.trimEnd('/') + "/lyric-look#plain",
+        title = "上传歌词外观",
+        subtitle = "手机扫码后可上传字体文件（.ttf/.otf）与背景图片，回到电视即生效",
+        onDismiss = { showQr = false },
+    )
 }
 
 /**
@@ -933,11 +1140,15 @@ private fun PlayerProgressBar(
 /** 字间距：0 = 原设计的紧缩排版（-0.02em ≈ -0.4sp），调大后按 em 放开。 */
 private fun lyricTracking(tracking: Int, base: Float) = (base + tracking / 100f).em
 
-/** 全屏歌词字体：系统 / 苹方 → null（跟随主题，本就是苹方），明媚 → 内置字体。 */
-private fun lyricFontFamily(choice: LyricFontChoice): androidx.compose.ui.text.font.FontFamily? =
+/** 全屏歌词字体：系统 / 苹方 → null（跟随主题，本就是苹方），明媚 → 内置字体，自定义 → 上传字体。 */
+private fun lyricFontFamily(
+    choice: LyricFontChoice,
+    custom: androidx.compose.ui.text.font.FontFamily? = null,
+): androidx.compose.ui.text.font.FontFamily? =
     when (choice) {
         LyricFontChoice.SYSTEM, LyricFontChoice.PINGFANG -> null
-        LyricFontChoice.MINGMEI -> com.veil.music.ui.theme.MingMeiSpring
+        LyricFontChoice.MINGMEI -> MingMeiSpring
+        LyricFontChoice.CUSTOM -> custom
     }
 
 /** Looping, muted motion album-art video layered over the static cover. */
@@ -2062,13 +2273,6 @@ private fun QueuePanel(
             }
         }
     }
-}
-
-/** "Off" / "5 min" / "1 h" / "2 h" for a screensaver timeout in minutes. */
-internal fun screensaverLabel(min: Int): String = when {
-    min <= 0    -> "关闭"
-    min % 60 == 0 -> "${min / 60} 小时"
-    else        -> "$min 分钟"
 }
 
 private enum class TransportIcon { Play, Pause, Prev, Next, Panel }

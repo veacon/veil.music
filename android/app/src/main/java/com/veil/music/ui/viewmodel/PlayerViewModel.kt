@@ -21,6 +21,7 @@ import com.veil.music.data.playback.PlaybackResolver
 import com.veil.music.data.repository.LxRepository
 import com.veil.music.data.store.LibraryState
 import com.veil.music.data.store.LibraryStore
+import com.veil.music.source.ResolveOrigin
 import com.veil.music.media.BeatAnalyzer
 import com.veil.music.media.BeatAwareRenderersFactory
 import com.veil.music.media.DecoderSelectors
@@ -77,11 +78,32 @@ enum class LyricFontChoice(val label: String) {
     SYSTEM("系统字体"),
     PINGFANG("苹方"),
     MINGMEI("Aa祝你我明媚向春天"),
+    /** 用户通过手机扫码上传的字体（.ttf/.otf），落在应用私有目录。 */
+    CUSTOM("自定义字体"),
     ;
 
     companion object {
         fun fromName(name: String?): LyricFontChoice =
             entries.firstOrNull { it.name == name } ?: SYSTEM
+    }
+}
+
+/**
+ * 全屏歌词的背景来源。墨卷 / 声轨各自独立存一份，互不影响。
+ *
+ * - [DEFAULT]：各界面原来的底（墨卷=夜墨/宣纸，声轨=机房/工程纸）
+ * - [BLACK]：纯黑，最省电、也最不抢注意力
+ * - [CUSTOM]：手机扫码上传的图片（铺满 + 压暗）
+ */
+enum class LyricBgMode(val label: String) {
+    DEFAULT("默认背景"),
+    BLACK("纯黑背景"),
+    CUSTOM("自定义图片"),
+    ;
+
+    companion object {
+        fun fromName(name: String?): LyricBgMode =
+            entries.firstOrNull { it.name == name } ?: DEFAULT
     }
 }
 
@@ -109,13 +131,18 @@ enum class FsStyle(val label: String, val desc: String) {
     }
 }
 
-/** 一套全屏歌词排版参数。字号/行距/字间距都是数值，不做「紧凑/标准/宽松」三档。 */
+/** 一套全屏歌词排版参数。字号/行距/竖距/字间距都是数值，不做「紧凑/标准/宽松」三档。 */
 data class FsStylePrefs(
     val font: LyricFontChoice = LyricFontChoice.SYSTEM,
     val fontSp: Int = DEFAULT_FS_FONT_SP,
+    /** 行距：只对横排的「全屏歌词」有意义（墨卷竖排用 [colGapPct]，声轨已固定）。 */
     val lineGapPct: Int = DEFAULT_FS_GAP_PCT,
+    /** 竖距：竖排时两列之间的水平间距（墨卷专用）。 */
+    val colGapPct: Int = DEFAULT_FS_COL_GAP_PCT,
     val letterSpacing: Int = DEFAULT_FS_TRACKING,
     val light: Boolean = false,
+    /** 背景来源：墨卷 / 声轨各自独立。 */
+    val bg: LyricBgMode = LyricBgMode.DEFAULT,
 ) {
     companion object {
         /** 全屏歌词直接当正文铺满整屏，默认字号比墨卷/声轨小一档。 */
@@ -155,9 +182,16 @@ data class PlayerState(
     val beatIntensity: Float = 1.0f,
     val userQueue: List<Song> = emptyList(),
     val crossfadeEnabled: Boolean = true,
-    val screensaverTimeoutMin: Int = 10,
     val nowPlayingBackground: NowPlayingBackground = NowPlayingBackground.DYNAMIC,
-    val screensaverKeepBackground: Boolean = false,
+    /**
+     * 底部迷你播放条（音乐胶囊）的缩放，百分比，100 = 设计稿原始尺寸。
+     *
+     * 高度和宽度分开调：电视屏幕从 32 寸到 85 寸都有，同一条胶囊小屏上顶到边、大屏上又细得
+     * 像根线；只给一个「整体缩放」会连比例一起改，反而更难对齐到喜欢的样子。
+     * 高度同时决定内部图标/封面/文字的缩放，宽度只改它占屏幕的比例。
+     */
+    val miniCapsuleHeightPct: Int = 100,
+    val miniCapsuleWidthPct: Int = 100,
     val showNowPlayingInfo: Boolean = true,
     val motionArtworkEnabled: Boolean = false,
     val orbSpeed: Float = DEFAULT_ORB_SPEED,
@@ -197,6 +231,14 @@ data class PlayerState(
     val qualityLabel: String? = null,
     /** 实际拿到的那条流是什么容器（FLAC / MP3 / M4A…）。从地址后缀读，读不出就是 null。 */
     val qualityFormat: String? = null,
+    /**
+     * 这条流是谁给的：脚本名 / 内置直连 / 换源到的平台 / 本地文件。
+     *
+     * 一台电视上通常装了好几个音源脚本，同一首歌可能由任意一个解析成功，出了杂音、播不动
+     * 时第一件事就是确认「现在用的是哪个源」。以前这条信息只在换源提示里一闪而过，
+     * 现在和音质一起常驻播放页右上角。
+     */
+    val sourceLabel: String? = null,
 ) {
     /**
      * 相对缩放。播放页的历史排版全部按「1.0 = 24sp」写死，这里换算一次，
@@ -217,8 +259,8 @@ data class PlayerState(
 /**
  * 歌词基准字号：24sp 时 [PlayerState.lyricsScale] == 1.0，与播放页原设计一致。
  *
- * 范围 20–80sp，与「全屏歌词」那三套对齐：同一组滑杆，走到头就是同一个视觉大小，
- * 不必在两个页面之间切换时重新找感觉。
+ * 范围 20–80sp（旧版遗留的一套数值；全屏那三套已经放开到 1–80sp）。
+ * 播放页右栏与全屏歌词现在共用 [FsStylePrefs] 里的 PLAIN 那套，这个值只用于迁移旧存档。
  */
 const val DEFAULT_LYRIC_FONT_SP = 24
 const val LYRIC_FONT_MIN_SP = 20
@@ -248,33 +290,63 @@ const val LYRIC_TRACKING_STEP = 5
 /**
  * 全屏歌词（全屏歌词 / 墨卷 / 声轨，三套共用同一组范围）的字号。
  *
- * 范围放到 20–80sp：20sp 是「想一屏读完整段」的小字，80sp 是「坐在沙发上只看一句」
- * 的大字。真机渲染不再二次夹取（早先墨卷/声轨内部各自夹在 24–64，调出这个区间就
- * 看不出变化，等于白给了滑杆）。
+ * 1–80sp 全开：1sp 是「只想看一眼还有几行」的极限小字（实际几乎看不清，但这是用户
+ * 明确要的下限），80sp 是「坐在沙发上只看一句」的大字。渲染侧不再二次夹取 ——
+ * 早先墨卷/声轨各自夹在 24–64，调出这个区间就看不出变化，等于白给了滑杆。
  */
 const val DEFAULT_FS_FONT_SP = 40
-const val FS_FONT_MIN_SP = 20
+const val FS_FONT_MIN_SP = 1
 const val FS_FONT_MAX_SP = 80
-const val FS_FONT_STEP_SP = 2
+const val FS_FONT_STEP_SP = 1
 
 /**
- * 全屏歌词行距：100% 为默认排版。
+ * 间距类参数（行距 / 竖距）的统一范围：-100% ~ 300%，100% 为设计稿原样。
  *
- * 40% = 行压得很紧（能一屏塞下很多句），300% = 一句占大半屏（跟唱用）。
+ * 百分比走 [fsGapScale] 换算，语意见那个函数：0% ≈ 贴住，负数 = 压到重叠。
  */
 const val DEFAULT_FS_GAP_PCT = 100
-const val FS_GAP_MIN_PCT = 40
+const val FS_GAP_MIN_PCT = -100
 const val FS_GAP_MAX_PCT = 300
 const val FS_GAP_STEP_PCT = 10
 
 /**
- * 全屏歌词字间距，单位 em×100：10 = 0.10em，0 = 完全贴紧，负数 = 收字。
- * 允许 -1.00em ~ +1.00em —— 负数那边是「字挤在一起」的排法，正数那边是散排。
+ * 墨卷竖距：竖排列与列之间的水平间距，100% 为原设计（1.85 倍字宽）。
+ *
+ * 竖排没有「行距」这个概念 —— 字是一列一列往下走的，能调的间距只有两处：
+ * 列内字与字的垂直间隔（字距）与相邻两列之间的水平间距（竖距）。
+ */
+const val DEFAULT_FS_COL_GAP_PCT = 100
+const val FS_COL_GAP_MIN_PCT = -100
+const val FS_COL_GAP_MAX_PCT = 300
+const val FS_COL_GAP_STEP_PCT = 10
+
+/**
+ * 字间距，单位 em×100：10 = 0.10em，0 = 完全贴紧，负数 = 收字。
+ * 允许 -1.00em ~ +3.00em —— 负数那边是「字挤在一起」的排法，正数那边是散排。
  */
 const val DEFAULT_FS_TRACKING = 10
 const val FS_TRACKING_MIN = -100
-const val FS_TRACKING_MAX = 100
+const val FS_TRACKING_MAX = 300
 const val FS_TRACKING_STEP = 5
+
+/**
+ * 把「行距 / 竖距」的百分比换成渲染用的倍数。
+ *
+ * 不能直接 `pct / 100` 当倍数用：-100% 会变成 -1，行高、列距都成了负数，Compose 的
+ * 行高直接崩、列距则把整卷倒着排。这里改用两段折线：
+ *
+ *   -100% → 0.5 倍（压到设计稿一半，字会明显叠在一起）
+ *      0% → 0.75 倍（基本贴住，正好等于「字高 = 行高」的观感）
+ *    100% → 1.00 倍（设计稿原样）
+ *    300% → 3.00 倍（一路散排）
+ *
+ * 在 100% 处两段相接，所以来回调不会有跳变；负区间仍保持单调 —— 越往左越紧，
+ * 而不是一到 0 就卡住不动。
+ */
+fun fsGapScale(pct: Int): Float {
+    val p = pct / 100f
+    return if (p >= 1f) p else 0.5f + 0.5f * (p + 1f) / 2f
+}
 
 /**
  * 背景摆动速度：倍率，1.0 是现在这套「慢呼吸」的基准。
@@ -286,6 +358,19 @@ const val DEFAULT_ORB_SPEED = 1.0f
 const val ORB_SPEED_MIN = 0.1f
 const val ORB_SPEED_MAX = 2.0f
 const val ORB_SPEED_STEP = 0.1f
+
+/**
+ * 迷你播放条缩放：百分比。100 是设计稿尺寸（76dp 高、屏宽 94%）。
+ *
+ * 高度 60–140：往下能压到原来六成，往上留给 4K 大屏；宽度只允许 60–100，
+ * 因为 100% 已经是「几乎顶满屏宽」，再宽就会压到内容区边缘。
+ */
+const val MINI_HEIGHT_MIN_PCT = 60
+const val MINI_HEIGHT_MAX_PCT = 140
+const val MINI_HEIGHT_STEP_PCT = 5
+const val MINI_WIDTH_MIN_PCT = 60
+const val MINI_WIDTH_MAX_PCT = 100
+const val MINI_WIDTH_STEP_PCT = 5
 
 /**
  * 默认解码方式：软解。理由见 [PlayerState.useSoftwareDecoder]。
@@ -326,6 +411,22 @@ private fun audioFormatOf(url: String): String? {
 }
 
 /**
+ * 把解析来源翻成播放页要显示的那几个字。
+ *
+ * 不用 [ResolveOrigin.label] 原样输出：「脚本: xx」里的冒号前缀是给日志看的。
+ * 电视右上角那一行要回答的是「现在到底是哪个音源在放」——
+ *  - 脚本解析成功：平台 + 脚本名（「网易云 · 六音」），平台和脚本都可能被换掉，两个都得有；
+ *  - 自动换源：直接写换到的平台（此时原平台的 track 已经没意义了）；
+ *  - 内置直连 / 本地文件：它们本身就是音源，不需要平台前缀。
+ */
+private fun sourceNameOf(origin: ResolveOrigin, platform: String): String = when (origin) {
+    is ResolveOrigin.Script -> if (origin.name.isBlank()) platform else "$platform · ${origin.name}"
+    is ResolveOrigin.OtherSource -> origin.source.displayName
+    ResolveOrigin.DirectFallback -> "内置直连"
+    ResolveOrigin.LocalFile -> "本地文件"
+}
+
+/**
  * 播放核心。
  *
  * 与原 Apple Music 版的结构差异：
@@ -352,6 +453,9 @@ class PlayerViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    /** 手机管理页地址。全屏歌词的「上传字体 / 背景」二维码用它。 */
+    fun webServerUrl(): String = webServer.serverUrl()
 
     /**
      * 非播放页订阅的低频状态：只忽略 [PlayerState.progressMs] / [durationMs] 这两个
@@ -414,8 +518,10 @@ class PlayerViewModel @Inject constructor(
                 volumeLeveling = GainProcessor.enabled,
                 motionArtworkEnabled = prefs.getBoolean("motion_artwork", false),
                 backgroundPlayEnabled = prefs.getBoolean("background_play", true),
-                screensaverTimeoutMin = prefs.getInt("screensaver_timeout", 10),
-                screensaverKeepBackground = prefs.getBoolean("screensaver_keep_bg", false),
+                miniCapsuleHeightPct = prefs.getInt("mini_height_pct", 100)
+                    .coerceIn(MINI_HEIGHT_MIN_PCT, MINI_HEIGHT_MAX_PCT),
+                miniCapsuleWidthPct = prefs.getInt("mini_width_pct", 100)
+                    .coerceIn(MINI_WIDTH_MIN_PCT, MINI_WIDTH_MAX_PCT),
                 showNowPlayingInfo = prefs.getBoolean("show_np_info", true),
                 nowPlayingBackground = NowPlayingBackground.fromName(prefs.getString("np_background", null)),
                 beatIntensity = prefs.getFloat("beat_intensity", 1.0f),
@@ -546,6 +652,7 @@ class PlayerViewModel @Inject constructor(
                 motionUrl = null,
                 qualityLabel = null,
                 qualityFormat = null,
+                sourceLabel = null,
             )
         }
         retriedSongId = null
@@ -571,6 +678,7 @@ class PlayerViewModel @Inject constructor(
                     resolveHint = resolved.warning,
                     qualityLabel = resolved.quality.displayName,
                     qualityFormat = audioFormatOf(resolved.url),
+                    sourceLabel = sourceNameOf(resolved.origin, track.source.displayName),
                 )
             }
             resolved.warning?.let { _toasts.tryEmit(it) }
@@ -947,6 +1055,7 @@ class PlayerViewModel @Inject constructor(
             it.copy(
                 fontSp = it.fontSp.coerceIn(FS_FONT_MIN_SP, FS_FONT_MAX_SP),
                 lineGapPct = it.lineGapPct.coerceIn(FS_GAP_MIN_PCT, FS_GAP_MAX_PCT),
+                colGapPct = it.colGapPct.coerceIn(FS_COL_GAP_MIN_PCT, FS_COL_GAP_MAX_PCT),
                 letterSpacing = it.letterSpacing.coerceIn(FS_TRACKING_MIN, FS_TRACKING_MAX),
             )
         }
@@ -955,8 +1064,10 @@ class PlayerViewModel @Inject constructor(
             .putString(fsKey(style, "font"), next.font.name)
             .putInt(fsKey(style, "font_sp"), next.fontSp)
             .putInt(fsKey(style, "gap_pct"), next.lineGapPct)
+            .putInt(fsKey(style, "col_gap_pct"), next.colGapPct)
             .putInt(fsKey(style, "tracking"), next.letterSpacing)
             .putBoolean(fsKey(style, "light"), next.light)
+            .putString(fsKey(style, "bg"), next.bg.name)
             .apply()
     }
 
@@ -969,8 +1080,15 @@ class PlayerViewModel @Inject constructor(
     fun nudgeFsLineGapPct(style: FsStyle, delta: Int) =
         updateFsStyle(style) { it.copy(lineGapPct = it.lineGapPct + delta) }
 
+    /** 墨卷专用：两竖列之间的水平间距。 */
+    fun nudgeFsColGapPct(style: FsStyle, delta: Int) =
+        updateFsStyle(style) { it.copy(colGapPct = it.colGapPct + delta) }
+
     fun nudgeFsLetterSpacing(style: FsStyle, delta: Int) =
         updateFsStyle(style) { it.copy(letterSpacing = it.letterSpacing + delta) }
+
+    fun setFsBg(style: FsStyle, mode: LyricBgMode) =
+        updateFsStyle(style) { it.copy(bg = mode) }
 
     fun setFsLight(style: FsStyle, enabled: Boolean) =
         updateFsStyle(style) { it.copy(light = enabled) }
@@ -988,6 +1106,7 @@ class PlayerViewModel @Inject constructor(
                 font = LyricFontChoice.fromName(prefs.getString("fs_lyric_font", null)),
                 fontSp = prefs.getInt("fs_lyric_font_sp", DEFAULT_FS_FONT_SP),
                 lineGapPct = prefs.getInt("fs_lyric_gap_pct", DEFAULT_FS_GAP_PCT),
+                colGapPct = prefs.getInt("fs_lyric_col_gap_pct", DEFAULT_FS_COL_GAP_PCT),
                 letterSpacing = prefs.getInt("fs_lyric_tracking", DEFAULT_FS_TRACKING),
                 light = prefs.getBoolean("fs_lyric_light", false),
             )
@@ -1001,9 +1120,12 @@ class PlayerViewModel @Inject constructor(
                     .coerceIn(FS_FONT_MIN_SP, FS_FONT_MAX_SP),
                 lineGapPct = prefs.getInt(fsKey(style, "gap_pct"), base.lineGapPct)
                     .coerceIn(FS_GAP_MIN_PCT, FS_GAP_MAX_PCT),
+                colGapPct = prefs.getInt(fsKey(style, "col_gap_pct"), base.colGapPct)
+                    .coerceIn(FS_COL_GAP_MIN_PCT, FS_COL_GAP_MAX_PCT),
                 letterSpacing = prefs.getInt(fsKey(style, "tracking"), base.letterSpacing)
                     .coerceIn(FS_TRACKING_MIN, FS_TRACKING_MAX),
                 light = prefs.getBoolean(fsKey(style, "light"), base.light),
+                bg = LyricBgMode.fromName(prefs.getString(fsKey(style, "bg"), base.bg.name)),
             )
         }
     }
@@ -1058,14 +1180,6 @@ class PlayerViewModel @Inject constructor(
             .coerceIn(LYRIC_FONT_MIN_SP, LYRIC_FONT_MAX_SP)
     }
 
-    fun stepScreensaverTimeout() {
-        val steps = listOf(0, 5, 10, 20, 30)
-        val idx = steps.indexOf(_state.value.screensaverTimeoutMin)
-        val next = steps[(if (idx < 0) 2 else idx + 1) % steps.size]
-        _state.update { it.copy(screensaverTimeoutMin = next) }
-        prefs.edit().putInt("screensaver_timeout", next).apply()
-    }
-
     fun toggleArtworkRounded() {
         val next = !_state.value.artworkRounded
         _state.update { it.copy(artworkRounded = next) }
@@ -1096,11 +1210,28 @@ class PlayerViewModel @Inject constructor(
         putBool("background_play", next)
     }
 
-    fun toggleScreensaverKeepBackground() {
-        val next = !_state.value.screensaverKeepBackground
-        _state.update { it.copy(screensaverKeepBackground = next) }
-        putBool("screensaver_keep_bg", next)
+    /**
+     * 迷你播放条高度（百分比）。整条胶囊连同图标、封面、文字一起等比缩放 ——
+     * 只把外框改高不改内容，60% 时会露出一圈空白边。
+     */
+    fun setMiniCapsuleHeightPct(pct: Int) {
+        val clamped = pct.coerceIn(MINI_HEIGHT_MIN_PCT, MINI_HEIGHT_MAX_PCT)
+        _state.update { it.copy(miniCapsuleHeightPct = clamped) }
+        prefs.edit().putInt("mini_height_pct", clamped).apply()
     }
+
+    fun nudgeMiniCapsuleHeightPct(delta: Int) =
+        setMiniCapsuleHeightPct(_state.value.miniCapsuleHeightPct + delta)
+
+    /** 迷你播放条宽度（百分比，相对屏宽的 94% 基准）。只改长度，不改内容大小。 */
+    fun setMiniCapsuleWidthPct(pct: Int) {
+        val clamped = pct.coerceIn(MINI_WIDTH_MIN_PCT, MINI_WIDTH_MAX_PCT)
+        _state.update { it.copy(miniCapsuleWidthPct = clamped) }
+        prefs.edit().putInt("mini_width_pct", clamped).apply()
+    }
+
+    fun nudgeMiniCapsuleWidthPct(delta: Int) =
+        setMiniCapsuleWidthPct(_state.value.miniCapsuleWidthPct + delta)
 
     fun toggleNowPlayingInfo() {
         val next = !_state.value.showNowPlayingInfo

@@ -37,8 +37,8 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.veil.music.data.model.Album
 import com.veil.music.ui.collection.CollectionScreen
-import com.veil.music.ui.components.NowPlayingBar
-import com.veil.music.ui.components.TopNavBar
+import com.veil.music.ui.components.MiniPlayerCapsule
+import com.veil.music.ui.components.TopNavCapsule
 import com.veil.music.ui.discover.DiscoverScreen
 import com.veil.music.ui.navigation.Screen
 import com.veil.music.ui.navigation.TopNavTab
@@ -57,7 +57,28 @@ import androidx.compose.ui.platform.LocalContext
 import java.net.URLDecoder
 
 /**
- * 应用外壳：顶部标签 + 内容区 + 底部播放条。
+ * 应用外壳：顶栏胶囊 + 内容区 + 迷你胶囊。
+ *
+ * ═══ 层级模型（改任何"返回键怎么走"之前先看这里）═══════════════════════════════
+ *
+ * **L1 内容层（最低）**：发现 / 我的 / 搜索 / 设置 / 歌单详情 —— NavHost 里的 tab 路由。
+ *      这一层内部的返回 = 回到发现页；在发现页再按返回 = 退出确认。
+ *
+ * **L2 播放层（盖在 L1 上）**：标准播放页 → 墨卷 → 声轨 → 全屏歌词。
+ *      这四张脸是**同一层**，按「换效」在层内轮转（cycleLyricView），彼此不分前后。
+ *      没有歌词时轮转会停在标准播放页 —— 空歌词进去只会看到一片白。
+ *      因为它们同层，返回键在层内**不**"回到上一张脸"，而是直接退出这一层回到 L1：
+ *      播放页、墨卷、声轨、全屏歌词里按返回，落点都是发现页。
+ *
+ * **L3 浮动层（永远在最上面，不入返回栈）**：
+ *      · 顶栏胶囊 TopNavCapsule —— 发现 / 我的 / 搜索 / 设置
+ *      · 迷你胶囊 MiniPlayerCapsule —— 底部播放条
+ *      · 调节胶囊 TuningCapsule —— 长按下键呼出（字号 / 字体 / 背景 / 换效）
+ *      浮动层没有"返回"这回事，但它们比 L2 先拿到按键：调节胶囊展开时，
+ *      返回键先把胶囊收起来，再按一次才退出 L2。
+ *
+ * 换句话说：越靠上越先吃键，返回键永远是"从最上面那一层开始撤"。
+ * ═══════════════════════════════════════════════════════════════════════════
  *
  * 与原版相比删掉了 onboarding / 音乐视频 / 电台 / 分类页这些 Apple 专属路由，
  * 只保留「发现、我的、搜索、正在播放、设置」和歌单详情。
@@ -113,14 +134,19 @@ fun AppShell(modifier: Modifier = Modifier) {
         }
     }
 
-    // 顶栏只需要「是否在播 + 歌名」两个字段。直接 collect 整个 PlayerState 会被
-    // startPolling() 每 900ms 更新的 progressMs 带着整壳（含 NavHost）一起重组。
-    // 投影 + distinctUntilChanged 后，只有这两个字段真的变了才刷新外壳。
-    val navBarInfo by remember(playerVm) {
+    // 底部迷你播放条只在「有歌」时才占高度。这里只投影一个布尔量再去重，
+    // 不 collect 整个 PlayerState —— 否则每 900ms 的 progressMs 会把整壳（含 NavHost）一起重组。
+    val hasSong by remember(playerVm) {
+        playerVm.state.map { it.currentSong != null }.distinctUntilChanged()
+    }.collectAsState(initial = false)
+
+    // 迷你条的高度/宽度比例：高度决定它自己多高，也决定底部要给内容留多少空间 ——
+    // 写死 104dp 的话，胶囊调到 140% 会压住列表最后一行，调到 60% 又空出一大块。
+    val miniSize by remember(playerVm) {
         playerVm.state
-            .map { s -> NavBarInfo(s.isPlaying, s.currentSong?.title) }
+            .map { it.miniCapsuleHeightPct to it.miniCapsuleWidthPct }
             .distinctUntilChanged()
-    }.collectAsState(initial = NavBarInfo(false, null))
+    }.collectAsState(initial = 100 to 100)
 
     // 更新检查：启动一次 + 每 3 小时一次（TV 应用常驻，只查一次会错过滚动构建）。
     var updateAvailable by remember { mutableStateOf(false) }
@@ -183,7 +209,19 @@ fun AppShell(modifier: Modifier = Modifier) {
                         SearchScreen(playerVm)
                     }
                     composable(Screen.NowPlaying.route) {
-                        NowPlayingScreen(playerVm = playerVm, navVm = navVm, playFocus = nowPlayingPlayFocus)
+                        NowPlayingScreen(
+                            playerVm = playerVm,
+                            navVm = navVm,
+                            playFocus = nowPlayingPlayFocus,
+                            // L2 里按返回 = 退出整层（墨卷/声轨/全屏歌词同样是这一条出口），
+                            // 不是"回上一张脸" —— 四张脸同层，详见文件头的层级模型。
+                            onExitLayer = {
+                                navController.navigate(Screen.Discover.route) {
+                                    popUpTo(Screen.Discover.route) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
                     }
                     composable(Screen.Settings.route) {
                         selectedTab = TopNavTab.Settings
@@ -204,43 +242,60 @@ fun AppShell(modifier: Modifier = Modifier) {
                 }
             }
 
-            // 底部播放信息栏已移除：它在 TV 上既抢不到焦点（点不到），又白占一条高度。
-            // 「现在在听什么」改由右上角胶囊显示歌名（见 TopNavBar 的 nowPlayingTitle）。
+            // 底部留出一条给迷你播放条的高度：内容不再被它压住，滚动到底也能看全最后一行。
+            // 播放页不渲染这条（页内已经有完整控件），没有歌时也不留。
+            if (!isOnNowPlaying && hasSong) {
+                Spacer(Modifier.height(76.dp * (miniSize.first / 100f) + 28.dp))
+            }
         }
 
         // 播放页是沉浸式全屏（自己铺满动态背景），不渲染顶栏 —— 顶栏的 4 个 tab
-        // 和右上角「正在播放」胶囊只在 4 个主页面出现。播放页退回用返回键（见 BackHandler）。
+        // 只在 4 个主页面出现。播放页退回用返回键（见 BackHandler）。
         if (!isOnNowPlaying) {
-            TopNavBar(
+            TopNavCapsule(
                 selected = selectedTab,
                 onSelect = { tab -> navController.navigateTab(tab) },
-                isPlaying = navBarInfo.isPlaying,
-                // 播放中显示歌名，没播放显示「未在播放」（胶囊内部兜底）。
-                nowPlayingTitle = navBarInfo.title,
                 updateAvailable = updateAvailable,
-                beatAnalyzer = playerVm.beatAnalyzer,
                 upEntryFocus = navBarFocus,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
+
+            // 迷你播放条：所有内容页的底部中央，离底留 26dp 空隙。
+            // 它取代了顶栏里那枚「正在播放」—— 播放/切歌/看进度都在原地完成，
+            // 只有按「确定」落在中间封面那块才进完整播放页。
+            if (hasSong) {
+                MiniPlayerCapsule(
+                    playerVm = playerVm,
+                    onOpen = { navController.navigateToNowPlaying() },
+                    onOpenQueue = {
+                        navVm.toggleQueuePanel()
+                        navController.navigateToNowPlaying()
+                    },
+                    heightPct = miniSize.first,
+                    widthPct = miniSize.second,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 26.dp),
+                )
+            }
         }
 
-        // 返回：发现页 → 退出确认；其它页 → 回发现页。
+        // ── 返回键：只按层级走，不看"页面栈深度" ────────────────────────────────
+        // L2 播放层：整层退出，回到 L1（见文件头的层级模型）。
+        // 层内的墨卷 / 声轨 / 全屏歌词由 NowPlayingScreen 自己先接一手（它要等调节胶囊
+        // 先收起来），最终也落到同一个出口。
+        val backToLevel1: () -> Unit = {
+            navController.navigate(Screen.Discover.route) {
+                popUpTo(Screen.Discover.route) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+        // L1 内容层：非发现页 → 回发现页；发现页 → 退出确认。
+        BackHandler(enabled = !showExitDialog && currentRoute != Screen.Discover.route) {
+            backToLevel1()
+        }
         BackHandler(enabled = !showExitDialog && currentRoute == Screen.Discover.route) {
             showExitDialog = true
-        }
-        BackHandler(
-            enabled = !showExitDialog && currentRoute != Screen.Discover.route && !isOnNowPlaying,
-        ) {
-            navController.navigate(Screen.Discover.route) {
-                popUpTo(Screen.Discover.route) { inclusive = true }
-                launchSingleTop = true
-            }
-        }
-        BackHandler(enabled = !showExitDialog && isOnNowPlaying) {
-            navController.navigate(Screen.Discover.route) {
-                popUpTo(Screen.Discover.route) { inclusive = true }
-                launchSingleTop = true
-            }
         }
 
         if (showExitDialog) {
@@ -259,9 +314,6 @@ fun AppShell(modifier: Modifier = Modifier) {
 private fun androidx.navigation.NavBackStackEntry.decode(key: String): String =
     arguments?.getString(key)?.let { URLDecoder.decode(it, "UTF-8") }?.trim().orEmpty()
 
-/** 顶栏胶囊用到的最小状态快照。 */
-private data class NavBarInfo(val isPlaying: Boolean, val title: String?)
-
 private fun androidx.navigation.NavHostController.openCollection(album: Album) {
     navigate(Screen.Collection.route(album.id, album.title, album.artworkUrl.orEmpty())) {
         launchSingleTop = true
@@ -270,7 +322,6 @@ private fun androidx.navigation.NavHostController.openCollection(album: Album) {
 
 private fun androidx.navigation.NavHostController.navigateTab(tab: TopNavTab) {
     val target = when (tab) {
-        TopNavTab.NowPlaying -> Screen.NowPlaying.route
         TopNavTab.Discover -> Screen.Discover.route
         TopNavTab.Library -> Screen.Library.route
         TopNavTab.Search -> Screen.Search.route

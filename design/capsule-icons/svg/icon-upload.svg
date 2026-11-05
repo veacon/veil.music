@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" color="#1A1F27">
+  <title>icon-upload</title>
+  <rect x="3.0" y="3.0" width="6.2" height="6.2" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+  <rect x="4.85" y="4.85" width="2.5" height="2.5" rx="0.6" fill="currentColor"/>
+  <rect x="14.8" y="3.0" width="6.2" height="6.2" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+  <rect x="16.65" y="4.85" width="2.5" height="2.5" rx="0.6" fill="currentColor"/>
+  <rect x="3.0" y="14.8" width="6.2" height="6.2" rx="1.5" stroke="currentColor" stroke-width="1.7"/>
+  <rect x="4.85" y="16.65" width="2.5" height="2.5" rx="0.6" fill="currentColor"/>
+  <rect x="14.6" y="14.6" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="16.8" y="14.6" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="19.0" y="14.6" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="14.6" y="16.8" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="19.0" y="16.8" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="14.6" y="19.0" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="16.8" y="19.0" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="19.0" y="19.0" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="10.4" y="10.4" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="12.6" y="10.4" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="10.4" y="12.6" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+  <rect x="12.6" y="12.6" width="1.6" height="1.6" rx="0.42" fill="currentColor"/>
+</svg>

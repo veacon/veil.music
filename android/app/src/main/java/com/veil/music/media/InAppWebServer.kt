@@ -6,6 +6,7 @@ import com.veil.music.data.model.Quality
 import com.veil.music.data.model.SourceID
 import com.veil.music.data.repository.LxRepository
 import com.veil.music.data.store.ScriptStore
+import com.veil.music.data.store.LyricLookStore
 import com.veil.music.source.catalog.HotSearchColumn
 import com.veil.music.source.js.GithubMirror
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -192,6 +193,7 @@ class InAppWebServer @Inject constructor(
         "/scripts" -> html(pageScripts())
         "/import" -> html(pageImport())
         "/settings" -> html(pageSettings())
+        "/lyric-look" -> html(pageLyricLook())
         "/debug" -> debugDownload()
         "/logs" -> html(pageLogs())
         "/api/hotsearch" -> json(hotSearchJson())
@@ -266,6 +268,29 @@ class InAppWebServer @Inject constructor(
                 params["quality"]?.firstOrNull()?.let { key -> Quality.fromKey(key)?.let(prefs::setPlayQuality) }
                 params["toggleSource"]?.firstOrNull()?.let { prefs.setToggleSource(it == "1") }
                 html(donePage("设置已保存"))
+            }
+            "/api/lyric-font" -> {
+                val tmp = files["file"]
+                val ok = tmp != null && LyricLookStore.saveFont(context, File(tmp))
+                addLog(if (ok) "INFO" else "ERROR", if (ok) "已更新歌词字体" else "歌词字体上传失败")
+                html(donePage(if (ok) "歌词字体已更新，回到电视即可生效" else "未收到字体文件（.ttf/.otf）"))
+            }
+            "/api/lyric-bg" -> {
+                // 背景图按界面分开存：墨卷与声轨互不覆盖（slot=ink / track / plain）。
+                val slot = when (params["slot"]?.firstOrNull()) {
+                    "ink" -> LyricLookStore.BgSlot.INK
+                    "track" -> LyricLookStore.BgSlot.TRACK
+                    else -> LyricLookStore.BgSlot.PLAIN
+                }
+                val tmp = files["file"]
+                val ok = tmp != null && LyricLookStore.saveBackground(context, slot, File(tmp))
+                val where = when (slot) {
+                    LyricLookStore.BgSlot.INK -> "墨卷"
+                    LyricLookStore.BgSlot.TRACK -> "声轨"
+                    LyricLookStore.BgSlot.PLAIN -> "全屏歌词"
+                }
+                addLog(if (ok) "INFO" else "ERROR", if (ok) "已更新${where}背景" else "${where}背景上传失败")
+                html(donePage(if (ok) "${where}背景已更新，回到电视即可生效" else "未收到图片文件"))
             }
             else -> notFound(session.uri)
         }
@@ -590,6 +615,51 @@ class InAppWebServer @Inject constructor(
           </form>
         </div>
         """,
+    )
+
+    /**
+     * 歌词外观上传页：替换全屏歌词的字体与背景图。
+     *
+     * 手机上打开 `/lyric-look`，选文件上传即可；电视端的全屏歌词会通过
+     * [LyricLookStore.version] 自动刷新，无需重启应用。
+     */
+    private fun pageLyricLook(): String = shell(
+        "歌词外观 · 薄音",
+        """
+        <div class="card">
+          <h3>歌词字体</h3>
+          <p>上传一个 .ttf / .otf 字体文件。上传后回到电视，在全屏歌词里长按下键呼出胶囊，选「字体 → 自定义字体」即可。</p>
+          <form method="POST" action="/api/lyric-font" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".ttf,.otf,.ttc,font/*" required>
+            <button type="submit">上传字体</button>
+          </form>
+        </div>
+        <div class="card" id="plain">
+          <h3>全屏歌词 · 背景图</h3>
+          <p>三套界面各自独立存一张背景，互不影响。</p>
+          <form method="POST" action="/api/lyric-bg?slot=plain" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required>
+            <button type="submit">上传全屏歌词背景</button>
+          </form>
+        </div>
+        <div class="card" id="ink">
+          <h3>墨卷 · 背景图</h3>
+          <p>竖排手卷的底图（建议 16:9、1080p 以上，浅色图会自动压暗）。</p>
+          <form method="POST" action="/api/lyric-bg?slot=ink" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required>
+            <button type="submit">上传墨卷背景</button>
+          </form>
+        </div>
+        <div class="card" id="track">
+          <h3>声轨 · 背景图</h3>
+          <p>时间轴界面的底图（建议 16:9、1080p 以上）。</p>
+          <form method="POST" action="/api/lyric-bg?slot=track" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required>
+            <button type="submit">上传声轨背景</button>
+          </form>
+        </div>
+        <p class="hint">上传后在电视端选「背景 → 自定义图片」即可启用；素材只保存在本机电视的应用私有目录，不会上传到任何服务器。</p>
+        """.trimIndent(),
     )
 
     private fun pageSettings(): String {
