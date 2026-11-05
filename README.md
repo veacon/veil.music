@@ -11,19 +11,15 @@
 
 发布页：[Releases](https://github.com/veacon/veil.music/releases)
 
-每个版本按 CPU 架构分两个包，**按你的设备选一个安装即可**（装错了会提示「应用未安装」）：
-
-| 包名 | 适用设备 | 说明 |
-|---|---|---|
-| `app-arm64-v8a-debug.apk` | 绝大多数 64 位电视盒子 / TV Stick / 投影仪 | 推荐，优先选它 |
-| `app-armeabi-v7a-debug.apk` | 老款 32 位盒子（2017 年前后的低配机型） | 64 位包装不上时再用 |
+每个版本只有一个包 `app-debug.apk`，**仅支持 Android 8.0（API 26）及以上的 64 位系统**。
+32 位盒子、Android 6/7 设备（含 Fire OS 6 的老款 Fire TV）无法安装。
 
 安装方式（任选其一）：
 
 ```bash
 # 1. 局域网 ADB（电视需先打开「开发者选项 → USB/网络调试」）
 adb connect 192.168.6.220:5555
-adb install -r app-arm64-v8a-debug.apk
+adb install -r app-debug.apk
 
 # 2. U 盘拷贝到电视，用文件管理器点开安装
 ```
@@ -43,15 +39,14 @@ APK 为 debug 签名，可直接侧载；安装时系统可能提示「未知来
 
 | 项目 | 值 | 说明 |
 |---|---|---|
-| minSdk | 23（Android 6.0） | 声明的最低安装版本 |
-| 完整支持基线 | Android 8.0（API 26） | 画中画、画中画控制按钮从这里开始生效 |
+| minSdk | 26（Android 8.0） | 声明的最低安装版本 |
 | targetSdk / compileSdk | 35 | |
-| ABI | arm64-v8a / armeabi-v7a | 分两个 APK 发布 |
+| ABI | arm64-v8a | 单一 APK，只打一份 64 位 QuickJS 原生库 |
 
-为什么 minSdk 是 23 而不是 26：Fire TV Stick 4K（第一代）、Fire TV Cube（第一代）跑的是
-Fire OS 6，内核就是 Android 7.1（API 25）。设成 26 这批设备直接装不上。代码里对 API 24/26
-的调用都做了版本守卫或降级（`isInPipCompat()`、`removeAll { }`、`Content-Length` 手动解析等），
-`./gradlew :app:lintDebug` 的 `NewApi` 检查当前 **0 error**。
+只保留 64 位 / Android 8.0+ 之后，低版本兼容代码全部移除：PiP 直接调用平台 API、
+动态广播注册统一走 `ContextCompat`、时间格式化改用 `java.time`（线程安全、可复用）、
+缓存清理用 `Collection.removeIf`、下载长度用 `HttpURLConnection.contentLengthLong`。
+`./gradlew :app:lintDebug` 的 `NewApi` 检查基线同步提到 26。
 
 ## 四、快速开始
 
@@ -121,8 +116,8 @@ http://<电视IP>:8666
 | gh-proxy.net | 备用 |
 | 直连 | 网络本身能通 GitHub 时最快 |
 
-发布页有两个 ABI 包，应用会按本机架构自动挑对应的那一个下载（挑不到才退回第一个 `.apk`），
-不需要手动选。
+发布页只有一个 `app-debug.apk`（arm64-v8a）。更新器优先挑名字带 `arm64` 的包，
+并跳过残留的 32 位 `armeabi` 包，避免误装旧架构构建。
 
 ## 九、构建
 
@@ -134,14 +129,12 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 ./gradlew assembleDebug
 ```
 
-产物按 ABI 拆分（`android/app/build.gradle.kts` 的 `splits.abi`）：
+产物只有一个（构建脚本里 `defaultConfig.ndk.abiFilters` 只保留 `arm64-v8a`，同时把依赖
+AAR 自带的 32 位 / x86 QuickJS 库过滤掉）：
 
 ```
-android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
-android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
+android/app/build/outputs/apk/debug/app-debug.apk
 ```
-
-需要合并包时把 `isUniversalApk` 改成 `true`，会额外生成 `app-universal-debug.apk`（体积约 40 MB）。
 
 ## 十、工程结构
 
