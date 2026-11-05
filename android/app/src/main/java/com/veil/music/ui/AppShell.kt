@@ -50,6 +50,8 @@ import com.veil.music.ui.screens.SearchScreen
 import com.veil.music.ui.screens.SettingsScreen
 import com.veil.music.ui.viewmodel.NavigationViewModel
 import com.veil.music.ui.viewmodel.PlayerViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import android.app.Activity
 import androidx.compose.ui.platform.LocalContext
 import java.net.URLDecoder
@@ -110,6 +112,15 @@ fun AppShell(modifier: Modifier = Modifier) {
             android.widget.Toast.makeText(context.applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
+
+    // 顶栏只需要「是否在播 + 歌名」两个字段。直接 collect 整个 PlayerState 会被
+    // startPolling() 每 900ms 更新的 progressMs 带着整壳（含 NavHost）一起重组。
+    // 投影 + distinctUntilChanged 后，只有这两个字段真的变了才刷新外壳。
+    val navBarInfo by remember(playerVm) {
+        playerVm.state
+            .map { s -> NavBarInfo(s.isPlaying, s.currentSong?.title) }
+            .distinctUntilChanged()
+    }.collectAsState(initial = NavBarInfo(false, null))
 
     // 更新检查：启动一次 + 每 3 小时一次（TV 应用常驻，只查一次会错过滚动构建）。
     var updateAvailable by remember { mutableStateOf(false) }
@@ -200,13 +211,12 @@ fun AppShell(modifier: Modifier = Modifier) {
         // 播放页是沉浸式全屏（自己铺满动态背景），不渲染顶栏 —— 顶栏的 4 个 tab
         // 和右上角「正在播放」胶囊只在 4 个主页面出现。播放页退回用返回键（见 BackHandler）。
         if (!isOnNowPlaying) {
-            val ps = playerVm.state.collectAsState().value
             TopNavBar(
                 selected = selectedTab,
                 onSelect = { tab -> navController.navigateTab(tab) },
-                isPlaying = ps.isPlaying,
+                isPlaying = navBarInfo.isPlaying,
                 // 播放中显示歌名，没播放显示「未在播放」（胶囊内部兜底）。
-                nowPlayingTitle = ps.currentSong?.title,
+                nowPlayingTitle = navBarInfo.title,
                 updateAvailable = updateAvailable,
                 beatAnalyzer = playerVm.beatAnalyzer,
                 upEntryFocus = navBarFocus,
@@ -248,6 +258,9 @@ fun AppShell(modifier: Modifier = Modifier) {
 
 private fun androidx.navigation.NavBackStackEntry.decode(key: String): String =
     arguments?.getString(key)?.let { URLDecoder.decode(it, "UTF-8") }?.trim().orEmpty()
+
+/** 顶栏胶囊用到的最小状态快照。 */
+private data class NavBarInfo(val isPlaying: Boolean, val title: String?)
 
 private fun androidx.navigation.NavHostController.openCollection(album: Album) {
     navigate(Screen.Collection.route(album.id, album.title, album.artworkUrl.orEmpty())) {

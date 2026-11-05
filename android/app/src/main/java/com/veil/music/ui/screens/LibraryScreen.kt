@@ -61,7 +61,7 @@ fun LibraryScreen(
     vm: LibraryViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
-    val playerState by playerVm.state.collectAsState()
+    val playerState by playerVm.stableState.collectAsState()
     val navBarFocus = LocalNavBarFocus.current
     // 右侧「播放全部」与第一首曲目之间的上下通道。
     // LazyColumn 是独立的滚动容器，几何焦点搜索从列表往上出不去，

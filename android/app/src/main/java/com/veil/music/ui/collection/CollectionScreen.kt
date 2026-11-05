@@ -63,7 +63,7 @@ fun CollectionScreen(
     vm: CollectionViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
-    val playerState by playerVm.state.collectAsState()
+    val playerState by playerVm.stableState.collectAsState()
 
     // 进入歌单详情后，焦点应落在「播放全部」上，而不是停留在顶栏「发现」标签。
     // 歌曲加载完成、header 渲染出来之后才请求焦点（loading 时按钮还不存在）。

@@ -136,7 +136,7 @@ fun SettingsScreen(
     val state by vm.state.collectAsState()
     val update by vm.update.collectAsState()
     val proxy by vm.proxy.collectAsState()
-    val playerState by playerVm.state.collectAsState()
+    val playerState by playerVm.stableState.collectAsState()
     var section by rememberSaveable { mutableStateOf(SettingsSection.AUDIO) }
     // 全屏歌词页里当前在调哪一个界面（全屏歌词 / 墨卷 / 声轨）。放在这里而不是 when 分支里：
     // LazyColumn 的 builder 不是 @Composable，拿不到 rememberSaveable。

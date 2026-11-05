@@ -33,10 +33,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -349,6 +352,22 @@ class PlayerViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    /**
+     * 非播放页订阅的低频状态：只忽略 [PlayerState.progressMs] / [durationMs] 这两个
+     * 每 900 ms 变化的进度字段。发现/我的/搜索/设置/歌单详情原本 collect 整个 state，
+     * 会被进度刷新带着整页（含列表）重组；改用这个派生流后，只有曲目、播放状态、
+     * 设置项真的变化才刷新。
+     *
+     * 纯派生：不写回 _state、不新增线程、不加锁，播放状态机与进度轮询完全不变；
+     * 播放页仍订阅 [state]，进度条与逐字歌词照旧实时刷新。
+     */
+    val stableState: StateFlow<PlayerState> = _state
+        .distinctUntilChanged { old, new ->
+            old.copy(progressMs = 0L, durationMs = 0L) ==
+                new.copy(progressMs = 0L, durationMs = 0L)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), _state.value)
 
     private val _toasts = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val toasts: SharedFlow<String> = _toasts.asSharedFlow()

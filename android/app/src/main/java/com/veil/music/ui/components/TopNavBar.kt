@@ -45,11 +45,11 @@ private fun EqBars(beatAnalyzer: com.veil.music.media.BeatAnalyzer?) {
     val w1 by inf.animateFloat(0.30f, 0.70f, infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Reverse), label = "w1")
     val w2 by inf.animateFloat(0.65f, 0.28f, infiniteRepeatable(tween(310, easing = LinearEasing), RepeatMode.Reverse), label = "w2")
     val w3 by inf.animateFloat(0.38f, 0.72f, infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Reverse), label = "w3")
+    // 三条柱子显式写出，避免每帧（无限动画 ~30fps）分配 List / lambda / 3 次装箱。
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(12.dp)) {
-        listOf(w1, w2, w3).forEach { wob ->
-            val frac = (wob * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)
-            Box(Modifier.width(2.dp).fillMaxHeight(frac).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
-        }
+        Box(Modifier.width(2.dp).fillMaxHeight((w1 * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
+        Box(Modifier.width(2.dp).fillMaxHeight((w2 * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
+        Box(Modifier.width(2.dp).fillMaxHeight((w3 * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
     }
 }
 

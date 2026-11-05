@@ -62,7 +62,7 @@ fun SearchScreen(
     vm: SearchViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
-    val playerState by playerVm.state.collectAsState()
+    val playerState by playerVm.stableState.collectAsState()
     var editing by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
 
