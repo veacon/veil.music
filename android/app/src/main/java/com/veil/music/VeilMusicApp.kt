@@ -1,6 +1,8 @@
 package com.veil.music
 
+import android.app.ActivityManager
 import android.app.Application
+import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -24,13 +26,25 @@ class VeilMusicApp : Application(), ImageLoaderFactory {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * 封面加载器：内存上限 64 MB、磁盘 150 MB。
+     * 封面加载器：内存上限按设备内存分级、磁盘 150 MB。
      * RGB_565 + 关闭淡入是为老电视准备的（封面多为不透明方图，半精度省一半内存）。
+     *
+     * 低 RAM 机型（1 GB / memoryClass ≤ 128 MB）单进程堆常常只有 96–192 MB，
+     * 固定 64 MB 位图缓存会把 GC 压到临界：切页时新页面解码封面即触发连续 GC，
+     * 表现为切页掉帧。按 heap 预算缩到 12–32 MB，只影响缓存命中率，不影响画面。
      */
-    override fun newImageLoader(): ImageLoader =
-        ImageLoader.Builder(this)
+    override fun newImageLoader(): ImageLoader {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val lowRam = am?.isLowRamDevice == true
+        val memoryClassMb = am?.memoryClass ?: 128
+        val cacheMb = when {
+            lowRam || memoryClassMb <= 128 -> 12
+            memoryClassMb <= 256 -> 24
+            else -> 32
+        }
+        return ImageLoader.Builder(this)
             // Coil 2.x：内存缓存上限是 Int（字节），磁盘缓存是 Long。别把两者写成同一个类型。
-            .memoryCache { MemoryCache.Builder(this).maxSizeBytes(64 * 1024 * 1024).build() }
+            .memoryCache { MemoryCache.Builder(this).maxSizeBytes(cacheMb * 1024 * 1024).build() }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
@@ -41,6 +55,7 @@ class VeilMusicApp : Application(), ImageLoaderFactory {
             .respectCacheHeaders(false)
             .crossfade(false)
             .build()
+    }
 
     override fun onCreate() {
         super.onCreate()

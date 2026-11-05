@@ -52,6 +52,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +69,7 @@ import androidx.tv.material3.Glow
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.veil.music.data.model.Album
 import com.veil.music.ui.components.ShelfSkeleton
 import com.veil.music.ui.navigation.LocalNavBarFocus
@@ -143,8 +145,12 @@ fun DiscoverScreen(
                 Crossfade(targetState = backdrop, animationSpec = tween(600), label = "backdrop") { url ->
                     if (url != null) {
                         Box(Modifier.fillMaxSize()) {
+                            // 背景只以 20% 透明度压在黑色渐变之下，全分辨率解码没有可见收益。
+                            // Crossfade 期间新旧两张会同时在内存里：限制到 960×540 后单张
+                            // RGB_565 约 1 MB（未限制时按 1920×1080 约 4 MB），峰值砍掉 3/4。
                             AsyncImage(
-                                model = url,
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(url).size(960, 540).build(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize().alpha(0.20f),
@@ -304,8 +310,11 @@ private fun FeatureFlow(
                     val album = albums.getOrNull(page) ?: return@Crossfade
                     Box(Modifier.fillMaxSize()) {
                         if (album.artworkUrl != null) {
+                            // 通栏流卡按显示上限解码：Crossfade 420ms 期间两张并存，
+                            // 限制到 1280×720 避免 1200px 原图被整张解进堆里。
                             AsyncImage(
-                                model = album.artworkUrl(1200),
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(album.artworkUrl(1200)).size(1280, 720).build(),
                                 contentDescription = album.title,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
