@@ -10,6 +10,7 @@ import com.veil.music.data.model.LyricsPayload
 import com.veil.music.data.model.Song
 import com.veil.music.data.model.SonglistInfo
 import com.veil.music.data.model.SonglistTag
+import com.veil.music.data.model.SonglistTagGroup
 import com.veil.music.data.model.SourceID
 import com.veil.music.data.model.Track
 import com.veil.music.lyrics.LyricParser
@@ -21,6 +22,9 @@ import com.veil.music.source.catalog.Catalogs
 import com.veil.music.source.catalog.HotSearch
 import com.veil.music.source.catalog.HotSearchColumn
 import com.veil.music.source.catalog.Songlists
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,7 +34,11 @@ import javax.inject.Singleton
  * 职责边界：
  *  - 只跟 [Songlists]/[Boards]/[Catalogs]（直连目录）与 [SourceManager]（脚本）打交道；
  *  - 出去的一律是 UI 模型（[Song] / [Album]）或已登记的 [Track]；
- *  - 不做缓存策略（那是 HomeStore 与 PlaybackResolver 的事），不做线程切换（调用方在 IO 上调）。
+ *  - 不做缓存策略（那是 HomeStore 与 PlaybackResolver 的事）；
+ *  - 目录/榜单/搜索这类 UI 数据整体在 [Dispatchers.IO] 上完成：HTTP 层本来就切了 IO，
+ *    但 JSON 解析与模型映射原本会回到调用方线程，而调用方全是 viewModelScope / HomeStore
+ *    的 Main，切页时大列表解析直接卡主线程。这里包一层，调用方无需各自记得切线程。
+ *  - 歌词链路（[lyrics]）刻意保持原样：它由播放链路触发，线程模型不动。
  */
 @Singleton
 class LxRepository @Inject constructor(
@@ -42,56 +50,68 @@ class LxRepository @Inject constructor(
     private val builtInLyrics: BuiltInLyricResolver,
     private val registry: TrackRegistry,
 ) {
+    /**
+     * 把「网络 + JSON 解析 + 模型映射」整块放到 IO 线程池。
+     * 不新建线程、不加锁，只是复用 Dispatchers.IO；结果类型与顺序完全不变。
+     */
+    private suspend fun <T> onIo(block: suspend CoroutineScope.() -> T): T =
+        withContext(Dispatchers.IO, block)
+
     // ── 歌单广场 ────────────────────────────────────────────────────────────
 
-    suspend fun recommendedSonglists(source: SourceID, page: Int = 1): List<SonglistInfo> {
-        val service = songlists.serviceFor(source) ?: return emptyList()
-        val order = service.orders.firstOrNull() ?: return emptyList()
-        return runCatching { service.fetchRecommended(order, SonglistTag.ALL, page) }.getOrDefault(emptyList())
+    suspend fun recommendedSonglists(source: SourceID, page: Int = 1): List<SonglistInfo> = onIo<List<SonglistInfo>> {
+        val service = songlists.serviceFor(source) ?: return@onIo emptyList()
+        val order = service.orders.firstOrNull() ?: return@onIo emptyList()
+        runCatching { service.fetchRecommended(order, SonglistTag.ALL, page) }.getOrDefault(emptyList())
     }
 
-    suspend fun songlistsByOrder(source: SourceID, orderId: String, tagId: String, page: Int): List<SonglistInfo> {
-        val service = songlists.serviceFor(source) ?: return emptyList()
-        val order = service.orders.firstOrNull { it.id == orderId } ?: service.orders.firstOrNull() ?: return emptyList()
+    suspend fun songlistsByOrder(source: SourceID, orderId: String, tagId: String, page: Int): List<SonglistInfo> = onIo<List<SonglistInfo>> {
+        val service = songlists.serviceFor(source) ?: return@onIo emptyList()
+        val order = service.orders.firstOrNull { it.id == orderId } ?: service.orders.firstOrNull() ?: return@onIo emptyList()
         val tag = if (tagId.isEmpty()) SonglistTag.ALL else SonglistTag(tagId, tagId)
-        return runCatching { service.fetchRecommended(order, tag, page) }.getOrDefault(emptyList())
+        runCatching { service.fetchRecommended(order, tag, page) }.getOrDefault(emptyList())
     }
 
     suspend fun songlistOrders(source: SourceID) = songlists.serviceFor(source)?.orders.orEmpty()
 
-    suspend fun songlistTags(source: SourceID) =
+    suspend fun songlistTags(source: SourceID): List<SonglistTagGroup> = onIo<List<SonglistTagGroup>> {
         runCatching { songlists.serviceFor(source)?.fetchTags().orEmpty() }.getOrDefault(emptyList())
-
-    suspend fun songlistDetail(info: SonglistInfo): List<Track> {
-        val service = songlists.serviceFor(info.source) ?: return emptyList()
-        return runCatching { service.fetchDetail(info).tracks }.getOrDefault(emptyList())
     }
 
-    suspend fun searchSonglists(source: SourceID, keyword: String, page: Int = 1): List<SonglistInfo> =
+    suspend fun songlistDetail(info: SonglistInfo): List<Track> = onIo<List<Track>> {
+        val service = songlists.serviceFor(info.source) ?: return@onIo emptyList()
+        runCatching { service.fetchDetail(info).tracks }.getOrDefault(emptyList())
+    }
+
+    suspend fun searchSonglists(source: SourceID, keyword: String, page: Int = 1): List<SonglistInfo> = onIo<List<SonglistInfo>> {
         runCatching { songlists.serviceFor(source)?.search(keyword, page).orEmpty() }.getOrDefault(emptyList())
+    }
 
     // ── 榜单 ───────────────────────────────────────────────────────────────
 
-    suspend fun boards(source: SourceID): List<BoardInfo> =
+    suspend fun boards(source: SourceID): List<BoardInfo> = onIo<List<BoardInfo>> {
         runCatching { boards.serviceFor(source)?.fetchBoards().orEmpty() }.getOrDefault(emptyList())
+    }
 
-    suspend fun boardTracks(source: SourceID, bangid: String, page: Int = 1): List<Track> =
+    suspend fun boardTracks(source: SourceID, bangid: String, page: Int = 1): List<Track> = onIo<List<Track>> {
         runCatching { boards.serviceFor(source)?.fetchTracks(bangid, page).orEmpty() }.getOrDefault(emptyList())
+    }
 
     // ── 搜索 ───────────────────────────────────────────────────────────────
 
     /** [source] 为 null 时四平台并发聚合（对应 lx 的「全部」搜索）。 */
-    suspend fun searchTracks(keyword: String, source: SourceID? = null, page: Int = 1): List<Track> {
-        if (keyword.isBlank()) return emptyList()
-        return if (source == null) {
+    suspend fun searchTracks(keyword: String, source: SourceID? = null, page: Int = 1): List<Track> = onIo<List<Track>> {
+        if (keyword.isBlank()) return@onIo emptyList()
+        if (source == null) {
             runCatching { catalogs.searchAll(keyword, page) }.getOrDefault(emptyList())
         } else {
             runCatching { catalogs.search(source, keyword, page) }.getOrDefault(emptyList())
         }
     }
 
-    suspend fun hotSearch(): List<HotSearchColumn> =
+    suspend fun hotSearch(): List<HotSearchColumn> = onIo<List<HotSearchColumn>> {
         runCatching { hotSearch.fetchAll() }.getOrDefault(emptyList())
+    }
 
     // ── 详情页取曲目（歌单 / 榜单统一入口）────────────────────────────────
 

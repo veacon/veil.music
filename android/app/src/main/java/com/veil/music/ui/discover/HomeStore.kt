@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -77,16 +78,16 @@ class HomeStore @Inject constructor(
         _state.value = DiscoverState(isLoading = true, source = source, sections = emptyList())
 
         loadJob = scope.launch {
+            // 网络、JSON 解析、卡片映射、状态构造整块放 IO：以前只有 HTTP 在 IO，
+            // 解析回到 Main，切到发现页时会在主线程构建整页数据。
+            // cache / StateFlow 的写回仍留在 Main，避免引入锁。
             val result = runCatching {
-                coroutineScope {
-                    val listsDeferred = async { repo.recommendedSonglists(source) }
-                    val boardsDeferred = async { repo.boards(source) }
-                    listsDeferred.await() to boardsDeferred.await()
-                }
-            }
-
-            result.fold(
-                onSuccess = { (lists, boards) ->
+                withContext(Dispatchers.IO) {
+                    val (lists, boards) = coroutineScope {
+                        val listsDeferred = async { repo.recommendedSonglists(source) }
+                        val boardsDeferred = async { repo.boards(source) }
+                        listsDeferred.await() to boardsDeferred.await()
+                    }
                     val cards = repo.songlistCards(lists)
                     val boardCards = repo.boardCards(boards)
                     val hero = cards.firstOrNull()
@@ -95,13 +96,18 @@ class HomeStore @Inject constructor(
                         if (rest.isNotEmpty()) add(DiscoverSection("推荐歌单", rest.take(18)))
                         if (boardCards.isNotEmpty()) add(DiscoverSection("排行榜", boardCards.take(18)))
                     }
-                    val next = DiscoverState(
+                    DiscoverState(
                         isLoading = false,
                         source = source,
                         hero = hero,
                         sections = sections,
                         error = if (sections.isEmpty() && hero == null) "该数据源暂时没有返回内容" else null,
                     )
+                }
+            }
+
+            result.fold(
+                onSuccess = { next ->
                     cache[source] = next
                     // 只有仍然是当前源时才写回，防止慢请求覆盖新选择
                     if (lastLoaded == source) _state.value = next
