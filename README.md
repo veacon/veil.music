@@ -1,4 +1,4 @@
-# Veil Music 2.0（AMusic-ATV 重构版）
+# Veil Music 2.0
 
 把 `lavande16/Apple-Music-For-Android-TV`（Android TV 端非官方 Apple Music 客户端）改造成
 **「界面/元数据仍用 Apple，音频改由落雪（LX Music）音源提供」**。
@@ -7,6 +7,8 @@
 - 目标形态：**无 PC**，音源脚本在端内执行
 - 音质目标：FLAC / 母带优先，MP3 兜底
 - 品牌：自 2.0 起更名为 **Veil Music**，包名 `com.veacon.veilmusic`（图标沿用原版）
+- 仓库：**`veacon/veil.music` 是唯一一条线**；旧的 `com.veil.music`（v1.1.2）代码归档在
+  `legacy-1.1.2` 分支与同名 tag，`main` 从 2.0 起只放这一个应用
 - **免登录**：Apple 只当元数据库（浏览/搜索/专辑/歌单/榜单均匿名可用），
   播放走落雪，歌词走网易云/QQ。令牌（MUT）与试听片段都不再需要。
 
@@ -322,6 +324,27 @@ Apple 的 `/v1/me/library/*` 在未登录时 403，所以资料库整块换成**
 - 构建环境：上游 `gradle/gradle-daemon-jvm.properties` 要求 JDK 21，本机只有 17，该文件已移除（JDK 17 可正常构建）。换机器需补 `app/local.properties` 的 `sdk.dir`。
 
 ---
+
+## 仓库与发布
+
+| 项 | 位置 |
+|---|---|
+| 主仓库（唯一一条线） | `veacon/veil.music`，分支 `main` |
+| 旧代码归档 | 同仓库 `legacy-1.1.2` 分支 + `legacy-1.1.2` tag（`com.veil.music` / minSdk 26 / arm64，v1.1.2） |
+| 更新清单 | `https://github.com/veacon/veil.music/releases/latest/download/update.json` |
+| 更新包 | 同仓库 `releases/download/<tag>/Veil-Music-<version>.apk` |
+
+发布流程（`UPDATE_BASE_URL` 已指向该仓库，`AppUpdates` 只接受同仓库 `releases/download/` 下的 `.apk`）：
+
+1. `./gradlew :app:assembleRelease`
+2. 算 `sha256` 与字节数，写 `update.json`：
+   ```json
+   { "channel": "user", "packageName": "com.veacon.veilmusic",
+     "versionName": "2.0", "versionCode": 200, "sizeBytes": 19648653,
+     "minSdk": 23, "sha256": "<64 位小写>", "notes": "",
+     "apkUrl": "https://github.com/veacon/veil.music/releases/download/v2.0/Veil-Music-2.0.apk" }
+   ```
+3. 建 release `v2.0`，同时上传 APK 与 `update.json`（清单必须挂在 latest release 上）
 
 ## 上游
 
