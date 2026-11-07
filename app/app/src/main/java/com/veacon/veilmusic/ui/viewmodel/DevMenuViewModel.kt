@@ -80,7 +80,11 @@ class DevMenuViewModel @Inject constructor(
                 val info = updater.check()
                 val phase = when { info.code <= com.veacon.veilmusic.BuildConfig.VERSION_CODE -> "latest"; info.minSdk > android.os.Build.VERSION.SDK_INT -> "incompatible"; else -> "available" }
                 _update.value = UpdateState(phase = if (!manual && phase != "available") "idle" else phase, info = info, manualResult = manual)
-            } catch (_: Exception) { _update.value = UpdateState(phase = if (manual) "error" else "idle", manualResult = manual) }
+            } catch (e: Exception) {
+                // 更新失败只有一句「请检查网络」，没有日志就完全查不出是 DNS、TLS 还是清单校验。
+                android.util.Log.w("AppUpdates", "check failed: ${e.javaClass.simpleName}: ${e.message}", e)
+                _update.value = UpdateState(phase = if (manual) "error" else "idle", manualResult = manual)
+            }
         }
     }
     fun downloadUpdate() {

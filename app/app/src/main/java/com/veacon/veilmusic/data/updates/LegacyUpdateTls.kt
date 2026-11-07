@@ -58,7 +58,13 @@ private val verifiedRedirects = okhttp3.Interceptor { chain ->
 }
 
 internal fun updateHttpClient(manifestUrl: String): OkHttpClient {
-    val builder = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+    // github.com 的 HTTP/2 协商常被中间设备打断（实测报 "Required SETTINGS preface not received"），
+    // 更新请求固定走 HTTP/1.1，配合下面的手动跟随重定向更稳。
+    val builder = OkHttpClient.Builder()
+        .followRedirects(false).followSslRedirects(false)
+        .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+        .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
     if (needsLegacyUpdateTls(manifestUrl, Build.VERSION.SDK_INT)) {
         val trust = LegacyUpdateTrustManager(defaultTrustManager(null))
         val tls = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
