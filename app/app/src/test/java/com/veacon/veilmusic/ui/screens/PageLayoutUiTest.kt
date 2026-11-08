@@ -168,8 +168,64 @@ class PageLayoutUiTest {
         assertEquals(880f,compose.onAllNodes(vertical)[0].fetchSemanticsNode().boundsInRoot.right,.1f)
         save("library-landscape-artists",960,600)
     }
-    @Test fun albumAndPlaylistOuterArtworkAndTrackPaneAlignInBothOrientations() {
-        val songs=(0..7).map {Song("s$it","Track $it","Artist","",180000,null,null,null)}
+    /** Requirement: Down from the tab bar lands on the sidebar's 「歌曲」 entry, not the track list. */
+    @Test fun enteringTheLibraryLandsOnTheSidebarSongsEntry() {
+        val vm=blank(LibraryViewModel::class.java)
+        val songs=(0..2).map {Song("s$it","Song $it","Artist","",180000,null,null,null)}
+        val flow=MutableStateFlow(LibraryState(songs=songs,sort=SortState(SortField.DEFAULT,SortDir.ASC)))
+        set(vm,"_state",flow);set(vm,"state",flow)
+        val pins=MutableStateFlow(emptySet<String>());set(vm,"_pinnedIds",pins);set(vm,"pinnedIds",pins)
+        val entry=androidx.compose.ui.focus.FocusRequester()
+        mount(960,600) {LibraryScreen(vm=vm,playerVm=player(),contentFocusRequester=entry) }
+        compose.runOnIdle {entry.requestFocus()}
+        compose.waitForIdle()
+        compose.onNodeWithText("歌曲",substring=false).assertIsFocused()
+        save("library-entry-sidebar",960,600)
+    }
+
+    /**
+     * 侧边栏和顶栏一样是「焦点即选中」：上下移动就换分区，不用再按 OK；
+     * 右键进的是内容列表本身，不是右上角的排序按钮。
+     */
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    @Test fun librarySidebarFocusSelectsSectionAndRightEntersTheList() {
+        val vm=blank(LibraryViewModel::class.java)
+        val songs=(0..2).map {Song("s$it","Song $it","Artist","",180000,null,null,null)}
+        val flow=MutableStateFlow(LibraryState(songs=songs,sort=SortState(SortField.DEFAULT,SortDir.ASC)))
+        set(vm,"_state",flow);set(vm,"state",flow)
+        val pins=MutableStateFlow(emptySet<String>());set(vm,"_pinnedIds",pins);set(vm,"pinnedIds",pins)
+        val entry=androidx.compose.ui.focus.FocusRequester()
+        compose.setContent {
+            val mode = androidx.compose.ui.platform.LocalInputModeManager.current
+            SideEffect { mode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard) }
+            Box(Modifier.fillMaxSize(),contentAlignment=Alignment.TopStart) {
+                Box(Modifier.requiredSize(960.dp,600.dp).background(Color.White)) {
+                    PageLayout {CompositionLocalProvider(LocalUiMotion provides UiMotion(false)) {
+                        LibraryScreen(vm=vm,playerVm=player(),contentFocusRequester=entry)
+                    }}
+                }
+            }
+        }
+        compose.runOnIdle {entry.requestFocus()}
+        compose.waitForIdle()
+        compose.onNodeWithText("歌曲",substring=false).assertIsFocused()
+
+        val down=androidx.compose.ui.input.key.Key.DirectionDown
+        val right=androidx.compose.ui.input.key.Key.DirectionRight
+        // 焦点移动到「播放列表」即选中，无需 OK：内容切到歌单网格。
+        compose.onNodeWithText("歌曲",substring=false).performKeyInput {pressKey(down)}
+        compose.waitForIdle()
+        compose.onNodeWithText("播放列表",substring=false).assertIsFocused()
+        compose.onNodeWithText("导入歌单",substring=false).assertExists()
+
+        // 右键进列表本身：首个歌单卡（这里只有「导入歌单」）拿到焦点，而非右上角的排序按钮。
+        compose.onNodeWithText("播放列表",substring=false).performKeyInput {pressKey(right)}
+        compose.waitForIdle()
+        compose.onNodeWithText("导入歌单",substring=false).assertIsFocused()
+        save("library-sidebar-right-enters-list",960,600)
+    }
+
+    @Test fun albumAndPlaylistOuterArtworkAndTrackPaneAlignInBothOrientations() {        val songs=(0..7).map {Song("s$it","Track $it","Artist","",180000,null,null,null)}
         val album=blank(AlbumDetailViewModel::class.java)
         val albumState=MutableStateFlow(AlbumDetailUiState(isLoading=false,album=Album("a","Album fixture","Artist",artworkUrl=null),tracks=songs))
         set(album,"_state",albumState);set(album,"state",albumState)

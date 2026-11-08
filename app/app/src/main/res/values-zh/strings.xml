@@ -332,6 +332,13 @@
     <string name="fluid_quality_high">高画质</string>
     <string name="msg_326" formatted="false">"去浏览音乐"</string>
     <string name="msg_327" formatted="false">"导入歌单"</string>
+    <string name="msg_328" formatted="false">"添加至列表"</string>
+    <string name="msg_329" formatted="false">"已添加到播放列表“%1$s”，共 %2$d 首"</string>
+    <string name="msg_330" formatted="false">"已向播放列表“%1$s”补充 %2$d 首"</string>
+    <string name="msg_331" formatted="false">"播放列表“%1$s”已经有这些歌了"</string>
     <string name="msg_recent" formatted="false">"最近播放"</string>
     <string name="msg_recent_empty" formatted="false">"还没有播放记录，播放超过 10 秒的歌曲会出现在这里"</string>
+    <string name="msg_332" formatted="false">"歌曲换源"</string>
+    <string name="msg_333" formatted="false">"歌词换源"</string>
+    <string name="msg_334" formatted="false">"正在换源…"</string>
 </resources>

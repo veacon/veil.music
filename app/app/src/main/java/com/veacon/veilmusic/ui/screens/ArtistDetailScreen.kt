@@ -119,7 +119,6 @@ fun ArtistDetailScreen(
                     Row(Modifier.padding(start = pageHorizontalInset, end = pageHorizontalInset, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PillButton(com.veacon.veilmusic.ui.components.Glyph.PLAY, tr(R.string.msg_001), Color(0xFFFA233B), modifier = playEntryFocus) { playerVm.playAlbum(state.topSongs, 0) }
                         PillButton(com.veacon.veilmusic.ui.components.Glyph.SHUFFLE, tr(R.string.msg_098), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) { playerVm.playAlbum(state.topSongs, state.topSongs.indices.randomOrNull() ?: 0, shuffle = true) }
-                        PillButton(com.veacon.veilmusic.ui.components.Glyph.RADIO, tr(R.string.msg_099), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) { val request = playerVm.reserveStationRequest("artist-station:${state.name}", tr(R.string.msg_033, state.name), state.artworkUrl?.replace("{w}", "600")?.replace("{h}", "600")?.replace("{f}", "jpg")); val job = vm.playStation { songs -> playerVm.playAlbumIfCurrent(request, songs) }; playerVm.watchStationRequest(request, job) }
                     }
                 }
                 itemsIndexedTopSongs(state.topSongs, playerVm)

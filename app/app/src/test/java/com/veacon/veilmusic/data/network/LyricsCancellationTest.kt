@@ -19,6 +19,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[23],application=Application::class)
 class LyricsCancellationTest {
+    /** 歌词只走第三方平台（网易云→QQ→酷狗→酷我→咪咕）后，取消 getLyrics 应中断正在进行的
+     *  搜索 HTTP 调用，且不会因为取消而误触发下一个平台。 */
     @Test fun windowCancellationCancelsActualHttpCallWithoutStartingFallback()=runBlocking {
         val entered=CompletableDeferred<Unit>();val finish=CountDownLatch(1);val held=AtomicReference<Call>();var requests=0
         val http=OkHttpClient.Builder().addInterceptor {chain->
@@ -27,11 +29,12 @@ class LyricsCancellationTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("fixture").body("{}".toResponseBody()).build()
         }.build()
         val apple=AppleDirectClient()
-        apple.javaClass.getDeclaredField("cachedBearer").apply {isAccessible=true}.set(apple,"fixture-no-network")
-        val prefs=MutPreferences(RuntimeEnvironment.getApplication());prefs.setMUT("fixture")
-        val source=DirectLyricsSource(apple,prefs,com.veacon.veilmusic.data.datasource.ThirdPartyLyrics(),http)
-        val fallback=OkHttpClient.Builder().addInterceptor {error("cancelled Apple request must not start public fallback")}.build()
-        source.javaClass.getDeclaredField("publicHttp").apply {isAccessible=true}.set(source,fallback)
+        val prefs=MutPreferences(RuntimeEnvironment.getApplication())
+        val thirdParty=com.veacon.veilmusic.data.datasource.ThirdPartyLyrics()
+        // 第三方歌词用自己内部 new 的 OkHttpClient，注入 http 到 DirectLyricsSource 只会被 lrclib 用。
+        // 这里把 ThirdPartyLyrics 的 http 换成拦截器版本，验证取消传播。
+        thirdParty.javaClass.getDeclaredField("http").apply {isAccessible=true}.set(thirdParty,http)
+        val source=DirectLyricsSource(apple,prefs,thirdParty,http)
         try {
             withTimeout(5_000L) {
                 val request=launch {source.getLyrics("123","cn","song","artist",60L)}

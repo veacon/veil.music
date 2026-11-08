@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.first
 internal data class PlaybackBookmark(
     val song: Song, val queue: List<Song>, val queueIndex: Int, val positionMs: Long,
     val fullStream: Boolean,
+    /** Whether the session was playing when this bookmark was taken — drives launch auto-resume. */
+    val playing: Boolean = true,
 )
 
 /** One IO consumer preserves write ordering and coalesces pending progress bookmarks.
@@ -47,6 +49,7 @@ internal class PlaybackStateWriter(
                     edit.putInt("queue_index", value.queueIndex)
                         .putLong("position_ms", value.positionMs)
                         .putBoolean("full_stream", value.fullStream)
+                        .putBoolean("was_playing", value.playing)
                         .apply()
                     previousQueue = value.queue
                     previousSong = value.song

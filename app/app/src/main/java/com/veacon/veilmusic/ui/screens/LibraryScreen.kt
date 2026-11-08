@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -42,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -63,14 +65,6 @@ import com.veacon.veilmusic.ui.viewmodel.LibrarySection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
 import com.veacon.veilmusic.ui.viewmodel.SortField
-
-private fun com.veacon.veilmusic.ui.viewmodel.LibraryState.hasContent(section: LibrarySection): Boolean = when (section) {
-    LibrarySection.Songs -> songs.isNotEmpty()
-    LibrarySection.Playlists -> playlists.isNotEmpty()
-    LibrarySection.Albums -> albums.isNotEmpty()
-    LibrarySection.Artists -> artists.isNotEmpty()
-    LibrarySection.Recents -> recents.isNotEmpty()
-}
 
 /** Sorted snapshots let a sort/section fade finish before the new order is shown. */
 private data class LibraryItems(
@@ -103,11 +97,16 @@ fun LibraryScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val localEntryFocus = remember { FocusRequester() }
     val listFocus = remember { FocusRequester() }
+    // Down from the tab bar lands on the sidebar row of the section currently shown (「歌曲」 on the
+    // first visit — see libraryEntryFocus).
+    val rowFocus = remember { LibrarySection.entries.associateWith { FocusRequester() } }
+    val entryScope = rememberCoroutineScope()
     val sortRoute = remember { LibrarySortFocusRoute() }
     val sortFocus = sortRoute.control
-    val hasCurrentItems = state.hasContent(section)
+    // Right from the sidebar enters the list itself (not the sort control).
+    val contentRoute = remember { LibraryContentEntryRoute() }
+    val currentSection by rememberUpdatedState(section)
     val returnNavigation = com.veacon.veilmusic.ui.navigation.LocalNavigationReturn.current
-    val listReady = state.error == null && hasCurrentItems
 
     var showImport by remember { mutableStateOf(false) }
     // 在 FadeThrough 外面取好：里面的 section 是解构出来的 val，不能赋值。
@@ -134,14 +133,20 @@ fun LibraryScreen(
     val inset = pageHorizontalInset
     val sidebarWidth = 208.dp.coerceAtMost((maxWidth - inset * 2) * 0.32f)
     Row(Modifier.fillMaxSize().padding(horizontal = inset)) {
-        // Modern left sidebar (Songs / Playlists / Albums / Artists).
-        SectionSidebar(section, onReturnToTab, sidebarWidth, sortRoute::request) { section = it }
+        // Modern left sidebar (Songs / Playlists / Albums / Artists). Focus selects the section —
+        // the tab bar behaves the same way — so no OK press is needed to switch.
+        SectionSidebar(section, onReturnToTab, sidebarWidth, contentRoute::request, rowFocus) { section = it }
 
         // Always mount this entry group so Down is safe even during first loading.
-        // Prefer the list itself over both sidebar and sort control when data exists.
+        // Down from the tab bar goes to the sidebar row; the list is reached with Right.
         Box(modifier = Modifier.weight(1f).fillMaxHeight()
             .focusRequester(contentFocusRequester ?: localEntryFocus)
-            .libraryEntryFocus(listFocus,listReady,returnNavigation?.restoring==true,sortRoute).focusGroup()) {
+            .libraryEntryFocus(
+                onEnterRequest = { entryScope.launch { runCatching { rowFocus.getValue(currentSection).requestFocus() } } },
+                restoring = returnNavigation?.restoring == true,
+                sort = sortRoute,
+                entry = contentRoute,
+            ).focusGroup()) {
             FadeThrough(Triple(section, state, orderedItems), modifier = Modifier.fillMaxSize(),
                 contentKey = { (section, state, _) -> Triple(section, state.sort, when {
                     state.error != null -> "error"
@@ -154,7 +159,10 @@ fun LibraryScreen(
                     else -> Column(Modifier.fillMaxSize().padding(top = 80.dp)) {
                         SortBar(section, state.sort.field, state.sort.dir, onReturnToTab, sortFocus, listFocus) { f, d -> vm.setSort(f, d) }
                         Box(Modifier.weight(1f).focusRequester(listFocus).focusGroup()) {
-                            CompositionLocalProvider(LocalLibrarySortFocus provides sortRoute) {
+                            CompositionLocalProvider(
+                                LocalLibrarySortFocus provides sortRoute,
+                                LocalLibraryContentEntryFocus provides contentRoute.control,
+                            ) {
                             Box(Modifier.fillMaxSize().librarySortOnRight(section==LibrarySection.Songs || section==LibrarySection.Artists || section==LibrarySection.Recents)) {
                             sectionStates.SaveableStateProvider(section.name) {
                             when (section) {
@@ -243,7 +251,8 @@ fun LibraryScreen(
  *  bright accent bar; unselected are quiet. Bigger, cleaner than the old sidebar. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)?, sidebarWidth: androidx.compose.ui.unit.Dp, onRequestSort: () -> Boolean, onSelect: (LibrarySection) -> Unit) {
+private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)?, sidebarWidth: androidx.compose.ui.unit.Dp, onRequestContent: () -> Boolean, rowFocus: Map<LibrarySection, FocusRequester>, onSelect: (LibrarySection) -> Unit) {
+    val inputModeManager = androidx.compose.ui.platform.LocalInputModeManager.current
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -269,10 +278,15 @@ private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)
                     focusedContainerColor = if (isSel) Color(0x4DFA233B) else com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
                 ),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-                // The first content row goes straight Up to tabs; keep sort reachable from the sidebar.
                 modifier = Modifier.fillMaxWidth()
+                    .then(rowFocus[s]?.let { Modifier.focusRequester(it) } ?: Modifier)
+                    // 和顶栏一致：焦点落到哪一节就直接切过去，不用再按 OK。
+                    .onFocusChanged {
+                        if (it.isFocused && inputModeManager.inputMode == androidx.compose.ui.input.InputMode.Keyboard) onSelect(s)
+                    }
+                    // 右键进右侧内容列表（以前是跳右上角的排序按钮，等于把用户送错了地方）。
                     .onPreviewKeyEvent {event ->
-                        if(event.type==KeyEventType.KeyDown && event.key==Key.DirectionRight) onRequestSort() else false
+                        if(event.type==KeyEventType.KeyDown && event.key==Key.DirectionRight) onRequestContent() else false
                     }
                     .returnToTabOnUp(if (s == LibrarySection.Songs) onReturnToTab else null),
             ) {
@@ -438,6 +452,7 @@ private fun PlaylistGrid(
     tabBarFocused: Boolean = false,
 ) {
     val gridState = rememberTabAwareGridState(tabBarFocused)
+    val entryFocus = LocalLibraryContentEntryFocus.current
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(4),
@@ -446,12 +461,6 @@ private fun PlaylistGrid(
         verticalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        // 第一格永远是「导入歌单」——本地资料库的主要入口。
-        item(key = "import-card") {
-            Box(Modifier.returnToTabOnUp(onReturnToTab)) {
-                ImportCard(importing = importing, onClick = onImport)
-            }
-        }
         gridItemsIndexed(playlists, key = { _, item -> item.id }) { index, playlist ->
             Box(Modifier.librarySortOnRight(index%4==3 || index==playlists.lastIndex).returnToTabOnUp(if (index < 4) onReturnToTab else null)) {
                 PlaylistCard(
@@ -460,7 +469,15 @@ private fun PlaylistGrid(
                     onOpen      = { onOpen(playlist) },
                     onPlay      = { onPlay(playlist) },
                     onMenu      = { onMenu(playlist) },
+                    modifier    = if (index == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier,
                 )
+            }
+        }
+        // 「导入歌单」放在列表末尾：歌单多了以后不该让这个动作用户每次都要跳过。
+        item(key = "import-card") {
+            Box(Modifier.librarySortOnRight(playlists.isEmpty() || playlists.size % 4 == 3)) {
+                ImportCard(importing = importing, onClick = onImport,
+                    modifier = if (playlists.isEmpty() && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier)
             }
         }
     }
@@ -469,9 +486,10 @@ private fun PlaylistGrid(
 /** 「＋ 导入歌单」卡片：与歌单同尺寸，点击弹出导入对话框。 */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ImportCard(importing: Boolean, onClick: () -> Unit) {
+private fun ImportCard(importing: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         onClick = onClick,
+        modifier = modifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF1C1C1F)),
@@ -509,10 +527,12 @@ private fun PlaylistCard(
     onOpen: () -> Unit,
     onPlay: () -> Unit,
     onMenu: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick      = onOpen,
         onLongClick  = onMenu,
+        modifier     = modifier,
         shape  = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)), focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFEDEDF0), Color(0xFF414146))),
         scale  = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
@@ -577,6 +597,7 @@ private fun PlaylistCard(
 @Composable
 private fun AlbumGrid(albums: List<Album>, onAlbumClick: (String) -> Unit, onReturnToTab: (() -> Unit)? = null, tabBarFocused: Boolean = false) {
     val gridState = rememberTabAwareGridState(tabBarFocused)
+    val entryFocus = LocalLibraryContentEntryFocus.current
     if (albums.isEmpty()) { Box(Modifier.fillMaxSize(), Alignment.Center) { Text(tr(R.string.msg_125), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA))) }; return }
     LazyVerticalGrid(
         state = gridState,
@@ -588,7 +609,8 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (String) -> Unit, onRet
     ) {
         gridItemsIndexed(albums, key = { _, item -> item.id }) { index, album ->
             AlbumCard(album = album, size = 150, onClick = { onAlbumClick(album.id) },
-                modifier = Modifier.librarySortOnRight(index%4==3 || index==albums.lastIndex).returnToTabOnUp(if (index < 4) onReturnToTab else null))
+                modifier = Modifier.librarySortOnRight(index%4==3 || index==albums.lastIndex).returnToTabOnUp(if (index < 4) onReturnToTab else null)
+                    .then(if (index == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier))
         }
     }
 }
@@ -597,10 +619,13 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (String) -> Unit, onRet
 @Composable
 private fun ArtistList(artists: List<Artist>, onArtistClick: (String) -> Unit, onReturnToTab: (() -> Unit)? = null, tabBarFocused: Boolean = false) {
     val listState = rememberTabAwareListState(tabBarFocused)
+    val entryFocus = LocalLibraryContentEntryFocus.current
     if (artists.isEmpty()) { Box(Modifier.fillMaxSize(), Alignment.Center) { Text(tr(R.string.msg_126), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA))) }; return }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 32.dp, top = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         itemsIndexed(artists, key = { _, item -> item.id }) { index, artist ->
-            Surface(onClick = { onArtistClick(artist.id) }, modifier = Modifier.fillMaxWidth().returnToTabOnUp(if (index == 0) onReturnToTab else null), shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            Surface(onClick = { onArtistClick(artist.id) }, modifier = Modifier.fillMaxWidth()
+                .then(if (index == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier)
+                .returnToTabOnUp(if (index == 0) onReturnToTab else null), shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225))), scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(44.dp).clip(RoundedCornerShape(50)).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)))) {
@@ -681,6 +706,7 @@ private fun SongList(
         return
     }
     var menuSong by remember { mutableStateOf<Song?>(null) }
+    val entryFocus = LocalLibraryContentEntryFocus.current
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 32.dp, top = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val returnKeys=com.veacon.veilmusic.ui.navigation.occurrenceKeys(songs.map { it.id })
     items(songs.size, key = { returnKeys[it] }) { idx ->
@@ -689,7 +715,9 @@ private fun SongList(
                 onClick = { playerVm.playAlbum(songs, idx) },
                 onLongClick = { menuSong = song },
                 onContextMenu = { menuSong = song },
-                modifier = Modifier.fillMaxWidth().returnToTabOnUp(if (idx == 0) onReturnToTab else null),
+                modifier = Modifier.fillMaxWidth()
+                    .then(if (idx == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier)
+                    .returnToTabOnUp(if (idx == 0) onReturnToTab else null),
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225))), scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

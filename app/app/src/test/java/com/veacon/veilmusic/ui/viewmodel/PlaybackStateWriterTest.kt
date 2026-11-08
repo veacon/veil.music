@@ -62,4 +62,13 @@ class PlaybackStateWriterTest {
         fail=false;writer.submit(bookmark(40));writer.close();writer.worker.join()
         assertEquals(1,errors.get());assertEquals("[]",prefs.getString("queue",null));assertEquals(40L,prefs.getLong("position_ms",-1))
     }
+    @Test fun playStateIsBookmarkedSoLaunchCanDecideToResume()=runBlocking {
+        val prefs=prefs();val writer=PlaybackStateWriter(prefs,moshi)
+        writer.awaitSaved(writer.submit(bookmark(1000).copy(playing=true)))
+        assertTrue(prefs.getBoolean("was_playing",false))
+        writer.awaitSaved(writer.submit(bookmark(2000).copy(playing=false)))
+        assertFalse(prefs.getBoolean("was_playing",true))
+        writer.close();writer.worker.join()
+        assertEquals(2000L,prefs.getLong("position_ms",-1))
+    }
 }

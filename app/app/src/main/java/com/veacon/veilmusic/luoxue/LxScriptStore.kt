@@ -39,11 +39,11 @@ class LxScriptStore(private val context: Context) {
 
     private fun readManifest(): JSONObject = runCatching {
         val f = manifestFile()
-        if (f.exists()) JSONObject(f.readText()) else JSONObject()
+        if (f.exists()) JSONObject(f.readText(Charsets.UTF_8)) else JSONObject()
     }.getOrDefault(JSONObject())
 
     private fun writeManifest(o: JSONObject) {
-        runCatching { manifestFile().writeText(o.toString()) }
+        runCatching { manifestFile().writeText(o.toString(), Charsets.UTF_8) }
     }
 
     private fun sha1(bytes: ByteArray): String =
@@ -131,7 +131,7 @@ class LxScriptStore(private val context: Context) {
         require(safe.endsWith(".js", true)) { "文件名必须以 .js 结尾" }
         require(safe.length in 4..80) { "文件名长度不合法" }
         require(safe.none { it in "\\:*?\"<>|" }) { "文件名含非法字符" }
-        val bytes = text.toByteArray()
+        val bytes = text.toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_BYTES) { "脚本超过 ${MAX_BYTES / 1024}KB" }
         // 落雪脚本的两个硬特征：导出 handler + musicUrl 实现
         val looksValid = text.contains("musicUrl") && (text.contains("EVENT_NAMES") || text.contains("on(EVENT_NAMES"))

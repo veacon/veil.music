@@ -23,7 +23,6 @@ import com.veacon.veilmusic.data.model.Album
 import com.veacon.veilmusic.ui.components.AlbumCard
 import com.veacon.veilmusic.ui.components.TouchSurface
 import com.veacon.veilmusic.ui.screens.OnboardingContent
-import com.veacon.veilmusic.ui.screens.LauncherIconSettings
 import com.veacon.veilmusic.ui.viewmodel.OnboardingState
 import java.io.File
 import org.junit.Assert.*
@@ -101,17 +100,4 @@ class V20FocusTest {
         assertEquals(url,intent.dataString)
     }
 
-    @Test fun iconSelectionIsGrayAndRemoteFocusIsAccentWithoutChangingSelection() {
-        lateinit var input:InputModeManager
-        compose.setContent {input=LocalInputModeManager.current;Box(Modifier.fillMaxSize().background(Color.White)) {LauncherIconSettings()}}
-        compose.mainClock.advanceTimeBy(300)
-        val selected=bitmap("icon-selection-gray")
-        assertTrue(count(selected,0xFFC7C7CC.toInt())>50)
-        compose.runOnIdle {input.requestInputMode(InputMode.Keyboard)}
-        compose.onAllNodes(isFocusable())[1].performKeyInput {pressKey(Key.DirectionRight)}
-        compose.mainClock.advanceTimeBy(500)
-        val focused=bitmap("icon-remote-focus-accent")
-        assertTrue("Remote focus adds an accent outline",count(focused,0xFFFA233B.toInt())>count(selected,0xFFFA233B.toInt())+100)
-        compose.onAllNodes(isSelected()).assertCountEquals(1)
-    }
 }

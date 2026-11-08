@@ -53,7 +53,7 @@ class AppleMusicDrmCallback(
     override fun executeProvisionRequest(
         uuid: UUID,
         request: ExoMediaDrm.ProvisionRequest,
-    ): ByteArray {
+    ): MediaDrmCallback.Response {
         val url = request.defaultUrl + "&signedRequest=" + String(request.data, Charsets.UTF_8)
         val resp = http.newCall(
             Request.Builder()
@@ -62,13 +62,13 @@ class AppleMusicDrmCallback(
                 .build()
         ).execute()
         if (!resp.isSuccessful) error("provisioning failed http=${resp.code}")
-        return resp.body!!.bytes()
+        return MediaDrmCallback.Response(resp.body!!.bytes())
     }
 
     override fun executeKeyRequest(
         uuid: UUID,
         request: ExoMediaDrm.KeyRequest,
-    ): ByteArray {
+    ): MediaDrmCallback.Response {
         val challenge = Base64.encodeToString(request.data, Base64.NO_WRAP)
         val uri = uriForChallenge(request.data)
         val body = JSONObject().apply {
@@ -93,6 +93,6 @@ class AppleMusicDrmCallback(
         val json = JSONObject(respBody)
         android.util.Log.i("AMMV", "license http=${resp.code} status=${json.opt("status")} hasLicense=${json.has("license")} uri=${uri.take(40)}")
         val licenseB64 = json.getString("license")
-        return Base64.decode(licenseB64, Base64.DEFAULT)
+        return MediaDrmCallback.Response(Base64.decode(licenseB64, Base64.DEFAULT))
     }
 }

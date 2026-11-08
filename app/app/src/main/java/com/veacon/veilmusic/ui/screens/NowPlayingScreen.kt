@@ -11,6 +11,7 @@ import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.FadeVisibility
 import com.veacon.veilmusic.ui.components.LocalUiMotion
 import com.veacon.veilmusic.ui.components.motionInput
+import com.veacon.veilmusic.ui.components.menuInitialFocus
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
 import android.graphics.drawable.BitmapDrawable
@@ -25,7 +26,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.RepeatMode as AnimRepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import com.veacon.veilmusic.ui.viewmodel.stationPresentation
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -165,7 +165,7 @@ fun NowPlayingScreen(
 ) {
     val playbackState by playerVm.state.collectAsState()
     val artworkCentered by playerVm.artworkCentered.collectAsState()
-    val state = playbackState.stationPresentation()
+    val state = playbackState
     val fontState = com.veacon.veilmusic.ui.theme.LocalAppFontState.current
     val song = state.currentSong
     val toggleCount by navVm.toggleQueue.collectAsState()
@@ -185,6 +185,9 @@ fun NowPlayingScreen(
     var chromeVisible by remember { mutableStateOf(true) }
     var lastInteractionMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showSongDestinations by remember(song?.id) { mutableStateOf(false) }
+    // 长按 ↓ 的「播放信息」浮层（歌曲/音质/音源/解码器）。
+    var showPlaybackInfo by remember { mutableStateOf(false) }
+    var infoKeyHeld by remember { mutableStateOf(false) }
     var showLyricsMenu by remember { mutableStateOf(false) }
     var lyricsHidden by rememberSaveable { mutableStateOf(false) }
     // A portrait viewport overrides presentation without changing the user's normal choice.
@@ -297,6 +300,18 @@ fun NowPlayingScreen(
                     openWallCard(card)
                 })
             .onPreviewKeyEvent { event ->
+                // 长按 ↓ 打开播放信息浮层；短按仍然是普通的焦点下移。
+                // 遥控器按住时系统会连发 repeatCount>0 的 KeyDown，这里当作「长按」判定，
+                // 并吞掉后续重复事件，免得浮层刚出现就被自己的连发打断。
+                if (event.key == Key.DirectionDown && !albumWall) {
+                    if (event.type == KeyEventType.KeyUp) {
+                        if (infoKeyHeld) { infoKeyHeld = false; return@onPreviewKeyEvent true }
+                    } else if (event.nativeKeyEvent.repeatCount >= 1) {
+                        infoKeyHeld = true
+                        if (!showPlaybackInfo) showPlaybackInfo = true
+                        return@onPreviewKeyEvent true
+                    }
+                }
                 if (albumWall && !wallSelection && libraryWallArt.isNotEmpty() &&
                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
                     wallSelectedIndex = -1
@@ -373,7 +388,7 @@ fun NowPlayingScreen(
         LaunchedEffect(song?.id, state.lyricsNotice, state.lyricsNoticeGeneration, state.isLoading, fontState.ready, lyricsPanelVisible) {
             if (state.lyricsNotice == com.veacon.veilmusic.ui.viewmodel.LyricsNoticePhase.Pending &&
                 !state.isLoading && fontState.ready && state.lyrics.isEmpty() && lyricsPanelVisible &&
-                !state.isLiveRadio && song?.isMusicVideo == false && state.lyricsNoticeSongId == song.id)
+                song?.isMusicVideo == false && state.lyricsNoticeSongId == song.id)
                 playerVm.showEmptyLyricsNotice(song.id,state.lyricsNoticeGeneration)
         }
         FadeThrough(state, Modifier.fillMaxSize(), contentKey = { it.currentSong != null }) { state ->
@@ -439,16 +454,15 @@ fun NowPlayingScreen(
                     lyricsScale = state.lyricsScale, chromeVisible = chromeVisible,
                     loading = state.isLoading && !state.isPlaying,
                     showEmptyLyrics = emptyLyricsNoticeVisible(state,state),
-                    stationLaunch = if (albumWall) null else state.stationLaunch,
                     lyricsHidden = lyricsHidden || albumWall,
                     onArtworkClick = { if (albumWall) closeAlbumWall() else openAlbumWall() },
                     coverFocusRequester = fullCoverFocus,
                     suppressPlayFocus = transferCoverFocus || wallSelection || returnToWallCover,
                     footerVisible = !wallSelection,
                     playFocusRequester = fullPlayFocus,
-                    onSongInfoClick = { if (state.stationLaunch == null) showSongDestinations = !showSongDestinations },
+                    onSongInfoClick = { showSongDestinations = !showSongDestinations },
                     songInfoMenu = {
-                        SongDestinationsPopup(visible = showSongDestinations && state.stationLaunch == null,
+                        SongDestinationsPopup(visible = showSongDestinations,
                             song = song, playerVm = playerVm, onDismiss = { showSongDestinations = false },
                             onArtistClick = { showSongDestinations = false; onArtistClick(it) },
                             onAlbumClick = { showSongDestinations = false; onAlbumClick(it) })
@@ -511,7 +525,7 @@ fun NowPlayingScreen(
                             }
                             Box(Modifier.weight(1f)) {
                                 SongInfoFocusSurface(
-                                    onClick = { if (state.stationLaunch == null) showSongDestinations = !showSongDestinations },
+                                    onClick = { showSongDestinations = !showSongDestinations },
                                     chromeAlpha = chromeAlpha,
                                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = tr(R.string.msg_281, song.title, song.artistName) },
                                 ) {
@@ -526,7 +540,7 @@ fun NowPlayingScreen(
                                     }
                                 }
                                 SongDestinationsPopup(
-                                    visible = showSongDestinations && state.stationLaunch == null,
+                                    visible = showSongDestinations,
                                     song = song, playerVm = playerVm,
                                     onDismiss = { showSongDestinations = false },
                                     onArtistClick = { showSongDestinations = false; onArtistClick(it) },
@@ -548,7 +562,7 @@ fun NowPlayingScreen(
                                 visualScale = UnderCoverVisualScale, loading = state.isLoading && !state.isPlaying)
                             Spacer(Modifier.height(12.dp))
                             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                                PlayerFavoriteButton(enabled=state.stationLaunch==null,visualScale=UnderCoverVisualScale) {playerVm.addToLibrary(song)}
+                                PlayerFavoriteButton(visualScale=UnderCoverVisualScale) {playerVm.addToLibrary(song)}
                                 TransportButton(TransportIcon.Prev, playerVm::prev, visualScale = UnderCoverVisualScale, inactiveColor = PlayerControlInactiveColor)
                                 TransportButton(if (state.isPlaying) TransportIcon.Pause else TransportIcon.Play,
                                     playerVm::togglePlayPause, large = true, loading = state.isLoading && !state.isPlaying,
@@ -562,7 +576,6 @@ fun NowPlayingScreen(
                     }
                     }, panel={
                         val panel = when {
-                            state.stationLaunch != null -> "station"
                             showQueue && chromeVisible -> "queue"
                             lyricsHidden -> "hidden"
                             state.lyrics.isNotEmpty() -> "lyrics"
@@ -573,7 +586,6 @@ fun NowPlayingScreen(
                         FadeThrough(panel to state, Modifier.fillMaxSize(), contentKey = { it.first }) { (panel, state) ->
                             when {
                                 panel == "hidden" -> Unit
-                                panel == "station" -> StationLaunchMessage(state.stationLaunch?.failed == true, state.lyricsScale)
                                 panel == "queue" -> QueuePanel(
                                     state.queue, state.queueIndex, state.userQueue,
                                     onSelect = playerVm::playFromQueue,
@@ -616,6 +628,15 @@ fun NowPlayingScreen(
             smoothProgress, song.durationMs,
             (state.userQueue.firstOrNull() ?: state.queue.getOrNull(state.queueIndex + 1))?.title, song.id, visible = chromeVisible && !wallSelection,
         )
+        if (showPlaybackInfo) PlaybackInfoDialog(
+            song = song,
+            stream = state.resolvedStream?.takeIf { it.songId == song.id },
+            decoderMode = state.decoderMode,
+            lyricsSource = state.lyricsSource,
+            onRetrySource = { showPlaybackInfo = false; playerVm.retryCurrentSource() },
+            onRetryLyrics = { showPlaybackInfo = false; playerVm.retryCurrentLyrics() },
+            onDismiss = { showPlaybackInfo = false },
+        )
         }
     }
 }
@@ -648,6 +669,148 @@ private fun SongDestinationsPopup(
         NpMenuItem(tr(R.string.msg_132),modifier=if (ids.first != null) Modifier.focusRequester(firstFocus) else Modifier,icon=Glyph.ARTIST,
             enabled=ids.first!=null) {ids.first?.let(onArtistClick)}
         NpMenuItem(tr(R.string.msg_133),modifier=if (ids.first == null && ids.second != null) Modifier.focusRequester(firstFocus) else Modifier,icon=Glyph.ALBUM,enabled=ids.second!=null) {ids.second?.let(onAlbumClick)}
+    }
+}
+
+private fun infoText(zh: String, en: String): String =
+    if (com.veacon.veilmusic.i18n.AppLanguage.code == "en") en else zh
+
+/** 平台代码 → 展示名。落雪脚本用的是 wy / tx / kg 这套缩写。 */
+private fun platformLabel(raw: String?): String = when (raw?.lowercase()) {
+    "wy", "netease", "163" -> infoText("网易云", "NetEase")
+    "tx", "qq" -> "QQ"
+    "kg", "kugou" -> infoText("酷狗", "Kugou")
+    "mg", "migu" -> infoText("咪咕", "Migu")
+    null, "" -> ""
+    else -> raw
+}
+
+/**
+ * 长按 ↓ 的播放信息浮层：当前歌曲-歌手、音质、使用的音源、使用的播放器（硬解/软解）。
+ *
+ * 取代过去每首歌都弹一次的「准备播放 …」toast —— 同样的信息，但只在需要时出现。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun PlaybackInfoDialog(
+    song: com.veacon.veilmusic.data.model.Song,
+    stream: com.veacon.veilmusic.ui.viewmodel.ResolvedStream?,
+    decoderMode: com.veacon.veilmusic.data.DecoderMode,
+    lyricsSource: String?,
+    onRetrySource: () -> Unit,
+    onRetryLyrics: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val closeFocus = remember { FocusRequester() }
+    val primary = com.veacon.veilmusic.ui.theme.AppPalette.primary
+    val secondary = com.veacon.veilmusic.ui.theme.AppPalette.secondary
+    val surface = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF1C1C1E))
+    val divider = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE3E3E8), Color(0xFF3A3A3F))
+
+    val sourceValue = buildString {
+        val name = stream?.sourceName?.takeIf { it.isNotBlank() }
+        val platform = platformLabel(stream?.platform)
+        if (name != null) append(name)
+        if (platform.isNotEmpty()) {
+            if (isNotEmpty()) append(" · ")
+            append(platform)
+        }
+    }.ifEmpty { infoText("未知", "Unknown") }
+
+    val playerValue = when (decoderMode) {
+        com.veacon.veilmusic.data.DecoderMode.HARDWARE -> infoText("硬解 · MediaCodec", "Hardware · MediaCodec")
+        com.veacon.veilmusic.data.DecoderMode.SOFTWARE -> infoText("软解 · FFmpeg", "Software · FFmpeg")
+    }
+
+    com.veacon.veilmusic.ui.components.MotionDialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.width(440.dp).clip(RoundedCornerShape(18.dp)).background(surface)
+                .padding(horizontal = 24.dp, vertical = 22.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(
+                    Modifier.size(58.dp).clip(RoundedCornerShape(8.dp))
+                        .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF2C2C31))),
+                ) {
+                    if (song.artworkUrl != null) AsyncImage(
+                        model = song.artworkUrl(120), contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("${song.title} - ${song.artistName}", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                        color = primary, maxLines = 2)
+                    Text(infoText("播放信息", "Playback info"), fontSize = 11.sp,
+                        color = secondary, modifier = Modifier.padding(top = 3.dp))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            PlaybackInfoRow(infoText("音质", "Quality"), stream?.qualityLabel ?: "—", primary, secondary)
+            PlaybackInfoRow(infoText("音源", "Source"), sourceValue, primary, secondary)
+            PlaybackInfoRow(infoText("播放器", "Decoder"), playerValue, primary, secondary)
+            PlaybackInfoRow(infoText("歌词来源", "Lyrics source"), lyricsSource?.takeIf { it.isNotBlank() } ?: "—", primary, secondary)
+            Spacer(Modifier.height(18.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(divider))
+            Spacer(Modifier.height(14.dp))
+            // 歌曲/歌词偶尔会解析错或拿到坏源，这里给一条手动换源的口子。
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    onClick = { onRetrySource() },
+                    modifier = Modifier.weight(1f),
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                        focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFDCDCE1), Color(0xFF48484D)),
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+                ) {
+                    Text(tr(R.string.msg_332), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                }
+                Surface(
+                    onClick = { onRetryLyrics() },
+                    modifier = Modifier.weight(1f),
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                        focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFDCDCE1), Color(0xFF48484D)),
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+                ) {
+                    Text(tr(R.string.msg_333), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+                    .menuInitialFocus(closeFocus),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                    focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFDCDCE1), Color(0xFF48484D)),
+                ),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+            ) {
+                Text(infoText("关闭", "Close"), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = primary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackInfoRow(label: String, value: String, labelColor: Color, valueColor: Color) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, fontSize = 13.sp, color = valueColor, modifier = Modifier.width(78.dp))
+        Text(value, fontSize = 14.sp, color = labelColor, fontWeight = FontWeight.Medium, maxLines = 2)
     }
 }
 
@@ -771,7 +934,6 @@ internal fun FullScreenLyrics(
     chromeVisible: Boolean = true,
     loading: Boolean = false,
     showEmptyLyrics: Boolean = true,
-    stationLaunch: com.veacon.veilmusic.ui.viewmodel.StationLaunch? = null,
     lyricsHidden: Boolean = false,
     onArtworkClick: () -> Unit = {},
     coverFocusRequester: FocusRequester = remember { FocusRequester() },
@@ -805,8 +967,7 @@ internal fun FullScreenLyrics(
             end = if (portrait) portraitSide else 128.dp,
             top = if (portrait) 24.dp else 36.dp,
             bottom = 120.dp)) {
-            if (stationLaunch != null) StationLaunchMessage(stationLaunch.failed, 1.3f * lyricsScale)
-            else if(!lyricsHidden) com.veacon.veilmusic.ui.components.FontGatedLyrics(com.veacon.veilmusic.ui.theme.LocalAppFontState.current, fontScale = 1.3f * lyricsScale) {
+            if(!lyricsHidden) com.veacon.veilmusic.ui.components.FontGatedLyrics(com.veacon.veilmusic.ui.theme.LocalAppFontState.current, fontScale = 1.3f * lyricsScale) {
             if (lyrics.isNotEmpty()) LyricsPanel(
                 lyrics = lyrics,
                 progressState = progressState,

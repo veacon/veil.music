@@ -7,9 +7,8 @@ import kotlinx.coroutines.flow.runningFold
 /** Unknown lyrics keep the previous layout, including across track changes and page remounts. */
 internal fun nextPlayerLayoutCentered(previous: Boolean, state: PlayerState): Boolean {
     val song = state.currentSong ?: return false
-    if (state.stationLaunch != null) return false
     if (state.lyrics.isNotEmpty()) return false
-    if (state.isLiveRadio || (state.emptyLyricsNoticeCompletedFor == song.id && state.exhaustedEmptyLyricsFor == song.id)) return true
+    if (state.emptyLyricsNoticeCompletedFor == song.id && state.exhaustedEmptyLyricsFor == song.id) return true
     return previous
 }
 

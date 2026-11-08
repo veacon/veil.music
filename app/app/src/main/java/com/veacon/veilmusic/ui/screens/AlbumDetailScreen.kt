@@ -9,6 +9,8 @@ import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -127,10 +129,12 @@ fun AlbumDetailScreen(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // Play & Shuffle pinned above tracks
+                // Play & Shuffle & Add-to-queue pinned above tracks.
+                // Scrollable so the three pills still fit when the pane is narrow (portrait).
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).returnToTabOnUp(onReturnToTab),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).returnToTabOnUp(onReturnToTab)
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         PillButton(Glyph.PLAY, tr(R.string.msg_001), Color(0xFFFA233B), modifier = playEntryFocus) {
@@ -138,6 +142,12 @@ fun AlbumDetailScreen(
                         }
                         PillButton(Glyph.SHUFFLE, tr(R.string.msg_098), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) {
                             playerVm.playAlbum(state.tracks.shuffled(), shuffle = true)
+                        }
+                        PillButton(Glyph.PLUS, tr(R.string.msg_328), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) {
+                            playerVm.saveAsPlaylist(
+                                name = album.title, originKey = "album:" + album.id,
+                                coverUrl = album.artworkUrl, songs = state.tracks,
+                            )
                         }
                     }
                 }
@@ -197,7 +207,6 @@ fun AlbumDetailScreen(
                         AlbumContextItem(Glyph.PLAY_NEXT, tr(R.string.msg_128),    { if (!clickBlocked) { playerVm.playNext(s);    dismissMenu() } }, Modifier.focusRequester(firstFocus))
                         AlbumContextItem(Glyph.QUEUE_ADD, tr(R.string.msg_129), { if (!clickBlocked) { playerVm.addToQueue(s); dismissMenu() } })
                         AlbumContextItem(Glyph.ADD_TO, tr(R.string.msg_148), { if (!clickBlocked) { addToSong = s; dismissMenu() } })
-                        AlbumContextItem(Glyph.RADIO, tr(R.string.msg_147), { if (!clickBlocked) { playerVm.createSongStation(s); dismissMenu() } })
                         val goArtist = s.artistId ?: album.artistId ?: state.tracks.firstOrNull()?.artistId
                         val goAlbum  = s.albumId ?: album.id
                         HorizontalDivider(color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 8.dp))

@@ -156,7 +156,6 @@ internal fun CategoryContent(
                                 itemsIndexed(section.albums, key = { _, dto -> dto.id }) { itemIndex, dto ->
                                     val isPlaylist = dto.id.startsWith("pl.") || dto.id.startsWith("p.")
                                     val isCurator = dto.id.startsWith("ac-") || dto.id.startsWith("c-") || dto.id.startsWith("mr-")
-                                    val isStation = dto.id.startsWith("ra.")
                                     val isArtist = dto.type == "artists" || dto.id.startsWith("r.")
                                     val isSong = dto.type == "songs"
                                     AlbumCard(
@@ -170,7 +169,6 @@ internal fun CategoryContent(
                                         onClick = {
                                             when {
                                                 isCurator  -> onCuratorClick(dto.id)
-                                                isStation  -> playerVm?.playStation(dto.id, (dto.artworkUrl ?: "").replace("{w}", "600").replace("{h}", "600").replace("{f}", "jpg"), dto.title)
                                                 isArtist   -> onArtistClick(dto.id)
                                                 isSong     -> playerVm?.playSong(Album(id = dto.id, title = dto.title, artistName = dto.artistName, artworkUrl = dto.artworkUrl, artworkBgColor = dto.artworkBgColor, type = "songs"))
                                                 isPlaylist -> onPlaylistClick(dto.id, dto.title, (dto.artworkUrl ?: "").replace("{w}", "500").replace("{h}", "500").replace("{f}", "jpg"))

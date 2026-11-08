@@ -553,91 +553,13 @@ class DirectMusicDataSource @Inject constructor(private val api: DirectAppleApi)
         }
         pool.distinctBy { it.id }.filter { it.id != seedId }.shuffled()
     }
-
-    /** Top songs for a genre (Apple charts) → a shuffled genre station queue. */
-    @Suppress("UNCHECKED_CAST")
-    /** Build a playable queue from a station's rolling next-tracks feed (standalone path). */
-    suspend fun stationTracks(id: String): Result<List<SongDto>> = runCatching {
-        val out = LinkedHashMap<String, SongDto>()
-        for (batchIndex in 0 until 12) {
-            currentCoroutineContext().ensureActive()
-            if (out.size >= 20) break
-            val batch = runCatching { api.stationNextTracks(id).data }.getOrDefault(emptyList())
-            // Retrofit cancellation must stop this multi-request operation, not become an empty batch.
-            currentCoroutineContext().ensureActive()
-            for (item in batch) {
-                val dto = item.toSongDto()
-                if (dto.id.isNotEmpty()) out[dto.id] = dto
-            }
-        }
-        out.values.toList()
-    }
-
-    /** Live-radio stream + Widevine key server, no proxy. Mirrors the server's /station/:id/stream:
-     *  play/assets for the live HLS + key server, then the media playlist for the Widevine EXT-X-KEY
-     *  URI (the license body's `uri`). The CDN rejects the auth headers our Retrofit client injects,
-     *  so the m3u8 fetches use a bare OkHttp client. */
-    suspend fun stationStream(id: String): Result<StationStreamResponse> = runCatching {
-        val res = api.playAssets(
-            "https://amp-api.music.apple.com/v1/play/assets",
-            mapOf("format" to "stream", "hasDrm" to "true", "id" to id,
-                  "kind" to "radioStation", "mediaType" to "0", "keyFormat" to "web"),
-        )
-        val asset = res.results?.assets?.firstOrNull() ?: error("no play asset")
-        val url = asset.url ?: error("no stream url")
-        val wvKeyUri = runCatching {
-            val master = plainHttpText(url)
-            val mediaUrl = master.lineSequence().firstOrNull { it.startsWith("http") }?.trim()
-                ?: return@runCatching null
-            val media = plainHttpText(mediaUrl)
-            media.lineSequence().firstOrNull {
-                it.startsWith("#EXT-X-KEY") && it.contains("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")
-            }?.let { Regex("URI=\"([^\"]*)\"").find(it)?.groupValues?.getOrNull(1) }
-        }.getOrNull()
-        StationStreamResponse(
-            liveStreamUrl = url,
-            drmKeyUri     = asset.keyServerUrl,
-            certUrl       = asset.widevineKeyCertificateUrl,
-            wvKeyUri      = wvKeyUri,
-            adamId        = id.removePrefix("ra."),
-        )
-    }
-
+    /** 裸 OkHttp：部分 CDN 会拒绝 Retrofit 注入的 auth 头。 */
     private val plainHttp by lazy { okhttp3.OkHttpClient() }
     private suspend fun plainHttpText(url: String): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         plainHttp.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { r ->
             r.body?.string() ?: ""
         }
     }
-
-    suspend fun genreStationSongs(genreId: String): Result<List<SongDto>> = runCatching {
-        val raw = api.charts(storefront, types = "songs", limit = 50, genre = genreId)
-        val results = raw["results"] as? Map<*, *> ?: return@runCatching emptyList()
-        val songCharts = results["songs"] as? List<*> ?: return@runCatching emptyList()
-        val out = mutableListOf<SongDto>()
-        for (chart in songCharts) {
-            val data = (chart as? Map<*, *>)?.get("data") as? List<*> ?: continue
-            for (e in data) {
-                val n = e as? Map<*, *> ?: continue
-                val a = n["attributes"] as? Map<*, *> ?: continue
-                val art = a["artwork"] as? Map<*, *>
-                out += SongDto(
-                    id = n["id"] as? String ?: continue,
-                    title = a["name"] as? String ?: "",
-                    artistName = a["artistName"] as? String ?: "",
-                    albumName = a["albumName"] as? String ?: "",
-                    durationMs = (a["durationInMillis"] as? Number)?.toLong() ?: 0L,
-                    artworkUrl = art?.get("url") as? String,
-                    artworkBgColor = art?.get("bgColor") as? String,
-                    previewUrl = null,
-                    previewHlsUrl = null,
-                    hasLyrics = (a["hasLyrics"] as? Boolean) ?: false,
-                )
-            }
-        }
-        out.distinctBy { it.id }.shuffled()
-    }
-
     /**
      * The artist page's payload, mapped from Apple's `views` into the same shape the
      * proxy returns so the screen doesn't care which path it came from.

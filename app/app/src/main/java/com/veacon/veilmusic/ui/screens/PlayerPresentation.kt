@@ -48,7 +48,7 @@ internal fun playerColumnSpacing(width: Dp, side: Dp, gap: Dp, cover: Dp): Playe
 /** Panel overrides do not change the session's stable lyrics-layout decision. */
 internal fun centerPlayerControls(state: PlayerState, hidden: Boolean, queueVisible: Boolean,
     fontsReady: Boolean, settledCentered: Boolean = false): Boolean {
-    if(state.currentSong==null || state.stationLaunch!=null || queueVisible) return false
+    if(state.currentSong==null || queueVisible) return false
     return hidden || (fontsReady && settledCentered && state.lyrics.isEmpty())
 }
 
@@ -59,7 +59,7 @@ internal fun emptyLyricsNoticeVisible(snapshot: PlayerState, current: PlayerStat
         snapshot.lyricsNoticeGeneration == current.lyricsNoticeGeneration &&
         current.lyricsNoticeSongId == id && current.lyricsNotice == LyricsNoticePhase.Visible &&
         current.exhaustedEmptyLyricsFor == id && current.lyrics.isEmpty() &&
-        current.stationLaunch == null && !current.isLiveRadio && current.currentSong.isMusicVideo == false
+        current.currentSong.isMusicVideo == false
 }
 
 /** Keep both subtrees mounted while moving the existing control column horizontally. */
@@ -109,13 +109,6 @@ internal fun PlayerChromeAutoHide(
 @Composable
 internal fun EmptyLyrics(songId: String, fontScale: Float, visible: Boolean = true, centered: Boolean = false) {
     if (visible && !centered) PlayerStatusText(tr(R.string.msg_093), fontScale)
-}
-
-@Composable
-internal fun StationLaunchMessage(failed: Boolean, fontScale: Float) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        PlayerStatusText(if (failed) tr(R.string.msg_094) else tr(R.string.msg_095), fontScale)
-    }
 }
 
 @Composable

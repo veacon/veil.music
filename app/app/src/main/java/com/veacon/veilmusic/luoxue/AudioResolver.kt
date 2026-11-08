@@ -69,6 +69,7 @@ class AudioResolver(
         album: String = "",
         durationSec: Int = 0,
         plan: QualityPlan = QualityPlan.DEFAULT,
+        excludeScript: String? = null,
         onStep: (String) -> Unit = {},
     ): ResolveResult = withContext(Dispatchers.IO) {
         val t0 = System.currentTimeMillis()
@@ -108,6 +109,8 @@ class AudioResolver(
                 break
             }
             for (engine in ordered) {
+                // 换源时跳过当前命中的脚本，强制落到下一个源，否则「换源」永远返回同一个源。
+                if (excludeScript != null && engine.fileName == excludeScript) continue
                 val qualities = engine.sources[cand.source] ?: continue
                 // 按用户选的档位取前两档：脚本内部自带 quality 降级表，
                 // 逐档调用只会重复跑同一串后端（实测一档就要 10s+）。

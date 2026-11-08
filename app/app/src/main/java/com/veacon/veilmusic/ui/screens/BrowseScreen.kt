@@ -258,13 +258,11 @@ private fun SpotlightRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(albums, key = { it.id }, contentType = { "spotlight" }) { album ->
                 val isPlaylist = album.id.startsWith("pl.") || album.id.startsWith("p.")
-                val isStation = album.id.startsWith("ra.")
                 val isCurator = album.id.startsWith("ac-") || album.id.startsWith("c-") || album.id.startsWith("mr-")
                 val isSong = album.type == "songs"
                 com.veacon.veilmusic.ui.components.SpotlightHeroCard(album = album, width = 360, onClick = {
                     when {
                         isCurator -> onCuratorClick(album.id)
-                        isStation -> playerVm?.playStation(album.id, album.artworkUrl(600), album.title)
                         isPlaylist -> onPlaylistClick(album.id, album.title, album.artworkUrl(500) ?: "")
                         isSong -> playerVm?.playSong(album)
                         else -> onAlbumClick(album.id)
@@ -334,13 +332,11 @@ private fun BrowseRow(
         ) {
             items(albums, key = { it.id }) { album ->
                 val isPlaylist = album.id.startsWith("pl.") || album.id.startsWith("p.")
-                val isStation = album.id.startsWith("ra.")
                 val isCurator = album.id.startsWith("ac-") || album.id.startsWith("c-") || album.id.startsWith("mr-")
                 val isSong = album.type == "songs"
                 AlbumCard(album = album, size = 130, onClick = {
                     when {
                         isCurator -> onCuratorClick(album.id)
-                        isStation -> playerVm?.playStation(album.id, album.artworkUrl(600), album.title)
                         isPlaylist -> onPlaylistClick(album.id, album.title, album.artworkUrl(500) ?: "")
                         isSong -> playerVm?.playSong(album)
                         else -> onAlbumClick(album.id)

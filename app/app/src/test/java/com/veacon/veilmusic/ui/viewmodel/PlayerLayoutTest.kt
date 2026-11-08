@@ -65,13 +65,10 @@ class PlayerLayoutTest {
         } finally {scope.cancel()}
     }
 
-    @Test fun bufferingNeverChangesAResolvedLayoutAndStationPlaceholderKeepsIt() {
+    @Test fun bufferingNeverChangesAResolvedLayout() {
         for(previous in listOf(false,true)) {
             assertEquals(previous,nextPlayerLayoutCentered(previous,state().copy(isLoading=true)))
-            assertFalse(nextPlayerLayoutCentered(previous,state().copy(
-                stationLaunch=StationLaunch(1,"station","电台",null))))
         }
-        assertTrue(nextPlayerLayoutCentered(false,state().copy(isLiveRadio=true)))
         assertFalse(nextPlayerLayoutCentered(true,PlayerState()))
     }
 

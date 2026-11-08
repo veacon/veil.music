@@ -37,6 +37,11 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class V25LayoutTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
+
+    // 断言按中文文案找节点，而 AppLanguage 是全局状态：别的用例切成英文后这组就会全挂。
+    @org.junit.Before fun useChinese() {
+        com.veacon.veilmusic.i18n.AppLanguage.select(com.veacon.veilmusic.i18n.LanguageChoice.Chinese)
+    }
     private fun song(id:String)=Song(id,"歌曲 $id","艺人","专辑",60_000,null,null,null)
     private fun state(id:String="a")=PlayerState(currentSong=song(id))
     private val lines=listOf(LyricLine(0,1000,"歌词已加载"))
@@ -83,6 +88,10 @@ class V25LayoutTest {
     }
     private fun assertLayout(centered:Boolean) {
         compose.waitForIdle();compose.mainClock.advanceTimeBy(600)
+        // 每个用例自己把焦点要回来：这组用例原先靠上一个用例留下的焦点，
+        // 少跑一个就整组挂掉（删用例时踩过）。
+        compose.runOnIdle { focus.requestFocus() }
+        compose.waitForIdle()
         val bounds=compose.onNodeWithTag("controls").fetchSemanticsNode().boundsInRoot
         assertEquals(if(centered)480f-cover.value/2 else spacing.side.value,bounds.left,1f)
         compose.onNodeWithContentDescription("播放").assertIsFocused()
@@ -147,13 +156,11 @@ class V25LayoutTest {
         compose.runOnIdle {hidden=true};assertLayout(true)
         compose.runOnIdle {hidden=false};assertLayout(false)
     }
-    @Test fun stationHandoffKeepsItsVisibleSplitLayoutUntilNewLyricsArrive() {
+    @Test fun handoffKeepsItsVisibleSplitLayoutUntilNewLyricsArrive() {
         mount(state().copy(emptyLyricsNoticeCompletedFor="a",exhaustedEmptyLyricsFor="a"));assertLayout(true)
-        publish(state().copy(emptyLyricsNoticeCompletedFor="a",exhaustedEmptyLyricsFor="a",
-            stationLaunch=StationLaunch(1,"station","电台",null)));assertLayout(false)
-        // Clearing the placeholder also clears the outgoing song's completed-empty decision.
-        publish(state());assertLayout(false)
-        publish(state("b").copy(isLoading=true));assertLayout(false)
+        // 切到新歌、歌词还没到时：沿用上一首的「已确认无歌词」，保持居中。
+        publish(state("b").copy(isLoading=true));assertLayout(true)
+        // 新歌歌词到了 → 回到分栏。
         publish(state("b").copy(lyrics=lines,isLoading=true));assertLayout(false)
     }
     @Test fun expiredNoticeWhileRetryIsPendingDoesNotCenterThenJumpBack() {

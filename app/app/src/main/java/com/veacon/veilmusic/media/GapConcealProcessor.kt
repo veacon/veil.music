@@ -2,7 +2,7 @@ package com.veacon.veilmusic.media
 
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.exoplayer.audio.BaseAudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 

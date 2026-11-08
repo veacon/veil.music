@@ -135,11 +135,11 @@ dependencies {
 
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
     // Media3
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
-    implementation("androidx.media3:media3-datasource-okhttp:1.4.1")
-    implementation("androidx.media3:media3-session:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
     // FFmpeg audio decoder extension, built from media3 1.4.1 source for armeabi-v7a.
     // Native lib lives in src/main/jniLibs; these are just the FfmpegAudioRenderer
     // classes. Gives on-device HE-AAC decoding that matches the proxy (kills chop).

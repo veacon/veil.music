@@ -19,6 +19,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import javax.inject.Named
 
+/** 歌词 + 命中的来源标签。 */
+data class LyricsBundle(val lines: List<LyricLine>, val source: String)
+
 @Singleton
 class DirectLyricsSource @Inject constructor(
     private val appleClient: AppleDirectClient,
@@ -43,54 +46,52 @@ class DirectLyricsSource @Inject constructor(
     }
     private fun store(songId: String, lines: List<LyricLine>) { cache[songId] = System.currentTimeMillis() to lines }
 
+    /** 每首歌命中的来源（与 [cache] 同生命周期）。 */
+    private val sourceCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun sourceOf(songId: String): String = sourceCache[songId] ?: ""
+    private fun rememberSource(songId: String, source: String) { if (source.isNotBlank()) sourceCache[songId] = source }
+
+    /** 「歌词换源」用：清掉这首歌的缓存，强制走一遍完整歌词级联（Apple → 网易云/QQ → lrclib）。 */
+    fun invalidate(songId: String) { cache.remove(songId); sourceCache.remove(songId) }
+
     suspend fun getLyrics(
         songId: String,
         storefront: String,
         title: String = "",
         artist: String = "",
         durationSec: Long = 0,
-    ): List<LyricLine> = withContext(Dispatchers.IO) {
-        cached(songId)?.let { return@withContext it }
-        val bearer = appleClient.getBearer()
-        val mut = mutPrefs.getMUT()
-        Log.i("DirectLyrics", "getLyrics song=$songId sf=$storefront bearerLen=${bearer.length} mutLen=${mut.length} title='$title' artist='$artist'")
-        // 未登录不再直接返回空：Apple TTML 需要 MUT，但网易云/QQ 不需要。
-        val sf = storefront.ifEmpty { "cn" }
+    ): List<LyricLine> = getLyricsBundle(songId, storefront, title, artist, durationSec).lines
 
-        if (bearer.isNotEmpty() && mut.isNotEmpty()) {
-            val headers = mapOf(
-                "Authorization" to "Bearer $bearer",
-                "Media-User-Token" to mut,
-                "Origin" to "https://music.apple.com",
-                "User-Agent" to "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
-            )
+    /** 歌词 + 命中的来源标签（网易云 / QQ音乐 / 酷狗 / 酷我 / 咪咕 / lrclib），供「歌词来源」展示。 */
+    suspend fun getLyricsBundle(
+        songId: String,
+        storefront: String,
+        title: String = "",
+        artist: String = "",
+        durationSec: Long = 0,
+        excludeSources: Set<String> = emptySet(),
+    ): LyricsBundle = withContext(Dispatchers.IO) {
+        cached(songId)?.let { return@withContext LyricsBundle(it, sourceOf(songId)) }
+        Log.i("DirectLyrics", "getLyrics song=$songId title='$title' artist='$artist' exclude=$excludeSources")
 
-            // 1. Apple TTML (syllable-lyrics then lyrics) — 仅登录态可用，逐字歌词质量最高
-            val isLibrary = songId.startsWith("i.")
-
-            // Apple's lyrics relationships live ONLY on the CATALOG song. A library id (i.*) 400s
-            // ("No relationship found matching 'syllable-lyrics'") on both the library endpoint and
-            // the catalog endpoint (the i.* id isn't a catalog id), so word-sync silently died and we
-            // always fell to lrclib. Resolve i.* → catalog id first, exactly like the proxy does.
-            val catalogId = if (isLibrary) resolveCatalogId(songId) else songId
-
-            val ttmlLines = if (catalogId.isNotEmpty()) tryAppleTtml(catalogId, sf, isLibrary = false, headers) else emptyList()
-            if (ttmlLines.isNotEmpty()) return@withContext ttmlLines.also { store(songId, it) }
-        }
-
-        // 2. 网易云 / QQ：本 app 默认的歌词来源
+        // 歌词只走国内五大平台（网易云 → QQ → 酷狗 → 酷我 → 咪咕），Apple TTML 已移除。
+        // 「歌词换源」会通过 excludeSources 跳过当前命中的源，让级联落到下一个平台。
         if (title.isNotEmpty() && artist.isNotEmpty()) {
-            val third = thirdParty.fetch(title, artist, durationSec)
-            if (third.isNotEmpty()) return@withContext third.also { store(songId, it) }
+            val third = thirdParty.fetch(title, artist, durationSec, excludeSources)
+            if (third.lines.isNotEmpty()) return@withContext LyricsBundle(third.lines, third.source).also {
+                store(songId, it.lines); rememberSource(songId, it.source)
+            }
         }
 
-        // 3. lrclib fallback
+        // lrclib fallback
         if (title.isNotEmpty() && artist.isNotEmpty()) {
             val lrc = tryLrclib(title, artist, durationSec)
-            if (lrc.isNotEmpty()) return@withContext lrc.also { store(songId, it) }
+            if (lrc.isNotEmpty()) return@withContext LyricsBundle(lrc, "lrclib").also {
+                store(songId, it.lines); rememberSource(songId, "lrclib")
+            }
         }
 
-        emptyList()
+        LyricsBundle(emptyList(), "")
     }
 
     /** Library song (i.*) → its catalog song id via the catalog relationship. "" if none. */

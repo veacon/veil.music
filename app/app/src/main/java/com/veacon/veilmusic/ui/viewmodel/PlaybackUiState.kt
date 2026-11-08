@@ -9,18 +9,18 @@ internal data class ShellPlaybackUiState(
     val queue: List<Song>, val queueIndex: Int, val motionArtworkEnabled: Boolean,
     val lowPowerMode: Boolean, val mutExpired: Boolean, val isFullStream: Boolean,
 )
-internal fun PlayerState.shellUiState(): ShellPlaybackUiState {
-    val shown = stationPresentation()
-    return ShellPlaybackUiState(shown.isPlaying,isInPip,shown.currentSong,
-        queue,queueIndex,motionArtworkEnabled,lowPowerMode,mutExpired,shown.isFullStream)
-}
+internal fun PlayerState.shellUiState(): ShellPlaybackUiState =
+    ShellPlaybackUiState(isPlaying,isInPip,currentSong,
+        queue,queueIndex,motionArtworkEnabled,lowPowerMode,mutExpired,isFullStream)
 
 /** Settings observes preferences/output changes, never the playback clock or queue. */
 internal data class SettingsPlaybackUiState(
     val volumeLeveling: Boolean, val backgroundPlayEnabled: Boolean, val fluidQuality: FluidQuality,
     val lyricsScale: Float, val motionArtworkEnabled: Boolean, val artworkRounded: Boolean,
     val avSyncAuto: Boolean, val avOutputLabel: String, val avOnBluetooth: Boolean,
+    val decoderMode: com.veacon.veilmusic.data.DecoderMode,
+    val unifySampleRate: Boolean, val audioOffload: Boolean,
 )
 internal fun PlayerState.settingsUiState() = SettingsPlaybackUiState(volumeLeveling,
     backgroundPlayEnabled,fluidQuality,lyricsScale,motionArtworkEnabled,artworkRounded,
-    avSyncAuto,avOutputLabel,avOnBluetooth)
+    avSyncAuto,avOutputLabel,avOnBluetooth,decoderMode,unifySampleRate,audioOffload)

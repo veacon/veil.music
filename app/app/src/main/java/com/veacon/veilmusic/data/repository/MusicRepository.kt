@@ -10,6 +10,7 @@ import com.veacon.veilmusic.data.model.Song
 import com.veacon.veilmusic.data.MutPreferences
 import com.veacon.veilmusic.data.ServerPreferences
 import com.veacon.veilmusic.data.datasource.DirectLyricsSource
+import com.veacon.veilmusic.data.datasource.LyricsBundle
 import com.veacon.veilmusic.data.datasource.DirectMusicDataSource
 import com.veacon.veilmusic.data.network.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -105,12 +106,6 @@ class MusicRepository @Inject constructor(
         }
     }
 
-    suspend fun getStationTracks(id: String) =
-        if (!useProxy) direct.stationTracks(id).map { it.filter { VideoPlaybackPolicy.allows(it.id, it.type) }.map(::songFromDto) }
-        else apiCall { api.getStationTracks(id).songs.filter { VideoPlaybackPolicy.allows(it.id, it.type) }.map(::songFromDto) }
-    suspend fun getStationStream(id: String) =
-        if (!useProxy) direct.stationStream(id)
-        else apiCall { api.getStationStream(id) }
     suspend fun getAlbum(id: String) =
         (if (!useProxy) direct.album(id).mapCatching { check(VideoPlaybackPolicy.allows(it.id, it.type)); albumFromDto(it) }
         else apiCall { albumFromDto(api.getAlbum(id)) }).mapCatching { item -> check(VideoPlaybackPolicy.allows(item.id, item.type)); item }
@@ -224,15 +219,24 @@ class MusicRepository @Inject constructor(
         if (!useProxy) direct.relatedSongs(songId).map { it.filter { VideoPlaybackPolicy.allows(it.id, it.type) }.map(::songFromDto) }
         else runCatching { api.getRelatedSongs(songId).songs.filter { VideoPlaybackPolicy.allows(it.id, it.type) }.map(::songFromDto) }
 
-    suspend fun getGenreStation(genreId: String) =
-        if (!useProxy) direct.genreStationSongs(genreId).map { it.filter { VideoPlaybackPolicy.allows(it.id, it.type) }.map(::songFromDto) }
-        else runCatching { emptyList<Song>() }
-
     // ── Lyrics ────────────────────────────────────────────────────────────
     suspend fun getLyrics(songId: String, title: String = "", artist: String = "", durationSec: Long = 0) =
         if (!useProxy) runCatching {
             directLyrics.getLyrics(songId, direct.storefront, title, artist, durationSec)
         } else runCatching { api.getLyrics(songId).lines }
+
+    /** 歌词 + 命中的来源（网易云/QQ音乐/酷狗/酷我/咪咕/lrclib）。直连时带来源；代理时只有 lines、来源未知。 */
+    suspend fun getLyricsBundle(songId: String, title: String = "", artist: String = "", durationSec: Long = 0, excludeSources: Set<String> = emptySet()): LyricsBundle =
+        if (!useProxy) runCatching {
+            directLyrics.getLyricsBundle(songId, direct.storefront, title, artist, durationSec, excludeSources)
+        }.getOrDefault(LyricsBundle(emptyList(), ""))
+        else runCatching {
+            val resp = api.getLyrics(songId)
+            LyricsBundle(resp.lines, resp.source ?: "")
+        }.getOrDefault(LyricsBundle(emptyList(), ""))
+
+    /** 「歌词换源」：清掉直连歌词源的内存缓存，强制重走歌词级联。 */
+    fun invalidateLyricsCache(songId: String) = directLyrics.invalidate(songId)
 
     /** Warm the lyrics cache for an upcoming song so it shows instantly on switch. */
     suspend fun prefetchLyrics(songId: String, title: String, artist: String, durationSec: Long) {

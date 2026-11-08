@@ -10,6 +10,8 @@ import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
 import com.veacon.veilmusic.ui.components.ContentActionShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import com.veacon.veilmusic.ui.navigation.ReturnLazyColumn as LazyColumn
@@ -189,13 +191,26 @@ fun PlaylistDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                PillButton(Glyph.PLAY, tr(R.string.msg_001), Color(0xFFFA233B), modifier = playEntryFocus) {
-                                    playerVm.playAlbum(sortedTracks, 0)   // mixed queue; videos route to the video player
+                                // The pills scroll instead of overflowing when the pane is narrow
+                                // (portrait); the sort button stays pinned on the right.
+                                Row(
+                                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    PillButton(Glyph.PLAY, tr(R.string.msg_001), Color(0xFFFA233B), modifier = playEntryFocus) {
+                                        playerVm.playAlbum(sortedTracks, 0)   // mixed queue; videos route to the video player
+                                    }
+                                    PillButton(Glyph.SHUFFLE, tr(R.string.msg_098), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) {
+                                        playerVm.playAlbum(sortedTracks, sortedTracks.indices.randomOrNull() ?: 0, shuffle = true)
+                                    }
+                                    PillButton(Glyph.PLUS, tr(R.string.msg_328), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) {
+                                        playerVm.saveAsPlaylist(
+                                            name = playlistName, originKey = "playlist:" + playlistId,
+                                            coverUrl = state.artworkUrl ?: artworkUrl, songs = sortedTracks,
+                                        )
+                                    }
                                 }
-                                PillButton(Glyph.SHUFFLE, tr(R.string.msg_098), com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))) {
-                                    playerVm.playAlbum(sortedTracks, sortedTracks.indices.randomOrNull() ?: 0, shuffle = true)
-                                }
-                                Spacer(Modifier.weight(1f))
                                 SortCircleButton(onClick = { showSortDialog = true })
                             }
                         }
@@ -245,7 +260,6 @@ fun PlaylistDetailScreen(
                     HorizontalDivider(color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 8.dp))
                     PlaylistContextItem(Glyph.PLAY_NEXT, tr(R.string.msg_128),    { if (!clickBlocked) { playerVm.playNext(s);    dismissMenu() } }, Modifier.focusRequester(firstFocus))
                     PlaylistContextItem(Glyph.QUEUE_ADD, tr(R.string.msg_129), { if (!clickBlocked) { playerVm.addToQueue(s); dismissMenu() } })
-                    PlaylistContextItem(Glyph.RADIO, tr(R.string.msg_147), { if (!clickBlocked) { playerVm.createSongStation(s); dismissMenu() } })
                     PlaylistContextItem(Glyph.ADD_TO, tr(R.string.msg_148), { if (!clickBlocked) { addToSong = s; dismissMenu() } })
                     HorizontalDivider(color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 8.dp))
                     s.artistId?.let { aid -> PlaylistContextItem(Glyph.ARTIST, tr(R.string.msg_132), onClick = { if (!clickBlocked) { onArtistClick(aid); dismissMenu() } }) }

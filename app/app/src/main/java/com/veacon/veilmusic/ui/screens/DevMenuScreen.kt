@@ -24,11 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -65,6 +67,9 @@ fun DevMenuScreen(
     var showDev by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     var showSourceManager by remember { mutableStateOf(false) }
+    // 音源清单快照：停用/删除后要刷新，否则弹窗里的状态是旧的（看起来"点了没反应/全停用"）。
+    var sourceScripts by remember { mutableStateOf(emptyList<com.veacon.veilmusic.luoxue.LxPlayback.ScriptView>()) }
+    LaunchedEffect(showSourceManager) { if (showSourceManager) sourceScripts = vm.sourceScripts() }
     val ctx = LocalContext.current
     val english = com.veacon.veilmusic.i18n.AppLanguage.code == "en"
     fun tx(zh: String, en: String) = if (english) en else zh
@@ -101,10 +106,10 @@ fun DevMenuScreen(
             }
 
             // 免登录模式：不再提供 Apple 登录入口，设置页只留本地/播放相关项。
+            // 「应用图标」选择项已移除：图标主题固定，不再让用户在这里改桌面别名。
             Box(Modifier.returnToTabOnUp(onReturnToTab)) {
-                SettingsSection(tr(R.string.msg_186)) { LauncherIconSettings() }
+                LanguageSettingsSection()
             }
-            LanguageSettingsSection()
             SettingsSection(tx("外观", "Appearance")) {
                 val dark = com.veacon.veilmusic.ui.theme.AppPalette.isDark
                 Stepper(tx("界面模式", "Appearance"), if (dark) tx("深色", "Dark") else tx("浅色", "Light"),
@@ -128,12 +133,44 @@ fun DevMenuScreen(
                     decEnabled = quality.ordinal > 0,
                     incEnabled = quality.ordinal < com.veacon.veilmusic.data.AudioQuality.entries.lastIndex,
                 )
+                SettingDivider()
+                val decoder = pstate.decoderMode
+                val hw = decoder == com.veacon.veilmusic.data.DecoderMode.HARDWARE
+                Stepper(
+                    tx("解码方式", "Audio decoder"),
+                    if (hw) tx("硬解", "Hardware") else tx("软解", "Software"),
+                    if (hw) tx("使用系统解码器；出现变速或杂音请切回软解",
+                               "Uses the system decoder; switch back if audio speeds up or crackles")
+                    else tx("内置 FFmpeg 解码，兼容性最好",
+                            "Built-in FFmpeg decoder — the most consistent"),
+                    { playerVm.setDecoderMode(com.veacon.veilmusic.data.DecoderMode.SOFTWARE) },
+                    { playerVm.setDecoderMode(com.veacon.veilmusic.data.DecoderMode.HARDWARE) },
+                    decEnabled = hw,
+                    incEnabled = !hw,
+                )
                 if (state.pcServerIp.isNotBlank()) {
                     SettingDivider()
                     Toggle(tr(R.string.msg_190), state.standaloneOn,
                         if (state.standaloneOn) tr(R.string.msg_191) else tr(R.string.msg_192)) {
                         vm.toggleStandalone()
                     }
+                }
+                // P2 输出层：统一采样率（默认开）+ offload（只在设备报得出支持时出现）。
+                SettingDivider()
+                Toggle(
+                    tx("统一输出采样率", "Unified output rate"),
+                    pstate.unifySampleRate,
+                    tx("把每首歌重采样到设备原生采样率，换歌时不再重建音频输出",
+                       "Resample everything to the device's native rate so tracks no longer rebuild the output"),
+                ) { playerVm.setUnifySampleRate(!pstate.unifySampleRate) }
+                if (playerVm.audioOffloadSupported()) {
+                    SettingDivider()
+                    Toggle(
+                        tx("音频直通（offload）", "Audio offload"),
+                        pstate.audioOffload,
+                        tx("解码交给音频 DSP，更省电；会关闭音量均衡与律动背景",
+                           "Let the audio DSP decode: lower power, but no leveling or beat visuals"),
+                    ) { playerVm.setAudioOffload(!pstate.audioOffload) }
                 }
                 SettingDivider()
                 Toggle(tr(R.string.msg_193), pstate.volumeLeveling, tr(R.string.msg_194)) { playerVm.toggleVolumeLeveling() }
@@ -206,7 +243,7 @@ fun DevMenuScreen(
                         }
                         items(netLogs.reversed()) { line -> Text(line, fontSize = 12.sp, lineHeight = 18.sp,
                             fontFamily = FontFamily.Monospace, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8))) }
-                        items(state.logs.reversed()) { log -> Text(log.message, fontSize = 12.sp, lineHeight = 18.sp,
+                        items(state.logs.reversed()) { log -> Text(com.veacon.veilmusic.ui.viewmodel.LogStage.localize(log.message), fontSize = 12.sp, lineHeight = 18.sp,
                             fontFamily = FontFamily.Monospace, color = when (log.level) {
                                 "ERROR" -> Color(0xFFB22222); "WARN" -> Color(0xFF8A6500)
                                 else -> com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8))
@@ -240,10 +277,10 @@ fun DevMenuScreen(
     }
     if (showSourceManager) {
         SourceManagerDialog(
-            scripts = vm.sourceScripts(),
+            scripts = sourceScripts,
             onDismiss = { showSourceManager = false },
-            onToggle = { file, disabled -> vm.setScriptDisabled(file, disabled) },
-            onDelete = { file -> vm.deleteScript(file) },
+            onToggle = { file, disabled -> vm.setScriptDisabled(file, disabled); sourceScripts = vm.sourceScripts() },
+            onDelete = { file -> vm.deleteScript(file); sourceScripts = vm.sourceScripts() },
         )
     }
     if (update.manualResult) {
@@ -265,46 +302,6 @@ fun DevMenuScreen(
             confirmLabel = if (update.phase == "available") tx("更新", "Update") else tx("确定", "OK"),
             onDismiss = vm::dismissUpdateResult,
             onConfirm = { when (update.phase) { "available" -> vm.downloadUpdate(); "permission" -> { vm.dismissUpdateResult(); vm.installUpdate() }; else -> vm.dismissUpdateResult() } })
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-internal fun LauncherIconSettings() {
-    val context = LocalContext.current
-    val manager = remember(context) { com.veacon.veilmusic.data.LauncherIconManager(context) }
-    var selected by remember { mutableStateOf(manager.current()) }
-    val shape = RoundedCornerShape(30.dp)
-    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(tr(R.string.msg_234), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
-            Text(tr(R.string.msg_235), fontSize = 12.sp, lineHeight = 18.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            com.veacon.veilmusic.data.LauncherIcon.values().forEach { icon ->
-                val chosen = selected == icon
-                val selectionBorder = Border(androidx.compose.foundation.BorderStroke(2.dp,
-                    if (chosen) com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFC7C7CC), Color(0xFF707078)) else Color.Transparent), shape = shape)
-                val focusBorder = Border(androidx.compose.foundation.BorderStroke(2.dp,
-                    com.veacon.veilmusic.ui.theme.AppPalette.accent), shape = shape)
-                Surface(onClick = {
-                    runCatching { manager.select(icon) }.onSuccess { selected = manager.current() }
-                        .onFailure { android.widget.Toast.makeText(context, tr(R.string.msg_236), android.widget.Toast.LENGTH_SHORT).show() }
-                }, modifier = Modifier.size(96.dp).semantics {
-                    contentDescription = tr(R.string.msg_237, icon.title)
-                    this.selected = chosen
-                },
-                    shape = ClickableSurfaceDefaults.shape(shape),
-                    colors = ClickableSurfaceDefaults.colors(containerColor = Color.White, focusedContainerColor = Color.White),
-                    border = ClickableSurfaceDefaults.border(border = selectionBorder, focusedBorder = focusBorder),
-                    glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
-                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(icon.resource), null, Modifier.size(64.dp))
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -441,25 +438,35 @@ internal fun Stepper(label: String, value: String, sub: String, onDec: () -> Uni
         SettingText(label, sub)
         Row(Modifier.width(190.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween) {
-            StepBtn("−", onDec, decEnabled)
+            // 到边界时只调淡 + 标记 disabled，仍可聚焦：否则点完一步焦点就被顶栏接走。
+            StepBtn("−", onDec, enabled = true, dimmed = !decEnabled, disabledSemantics = !decEnabled)
             Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF3C3C43), Color(0xFFE3E3E8)),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(1f))
-            StepBtn("+", onInc, incEnabled)
+            StepBtn("+", onInc, enabled = true, dimmed = !incEnabled, disabledSemantics = !incEnabled)
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun StepBtn(symbol: String, onClick: () -> Unit, enabled: Boolean = true) {
-    Surface(onClick = onClick, enabled = enabled, modifier = Modifier.size(36.dp),
+internal fun StepBtn(symbol: String, onClick: () -> Unit, enabled: Boolean = true, dimmed: Boolean = false,
+                     disabledSemantics: Boolean = false) {
+    Surface(onClick = onClick, enabled = enabled,
+        // 到边界时只做两件事：符号调淡 + 语义上标记 disabled（读屏/测试照旧）。
+        // 但不能真的禁用：禁用的按钮不可聚焦，点完一步焦点会掉出本行、被顶栏接走。
+        // 点到边界的那一下由各 step 函数自己夹取，等于空操作。
+        modifier = Modifier.size(36.dp).then(
+            if (disabledSemantics) Modifier.semantics { disabled() } else Modifier),
         shape = ClickableSurfaceDefaults.shape(ContentActionShape),
         colors = ClickableSurfaceDefaults.colors(containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)), focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.accent,
             focusedContentColor = Color.White, contentColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF3C3C43), Color(0xFFE3E3E8))),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None)) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) { Text(symbol, fontSize = 20.sp) }
+        Box(Modifier.fillMaxSize(), Alignment.Center) {
+            // 颜色不写死：聚焦时跟随 focusedContentColor（白字）。
+            Text(symbol, fontSize = 20.sp, modifier = Modifier.alpha(if (dimmed) 0.45f else 1f))
+        }
     }
 }
 

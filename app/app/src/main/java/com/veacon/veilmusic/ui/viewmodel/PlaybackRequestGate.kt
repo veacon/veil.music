@@ -4,25 +4,10 @@ package com.veacon.veilmusic.ui.viewmodel
 internal class PlaybackRequestGate {
     var revision = 0L
         private set
-    private var pendingStation: String? = null
-
-    fun select(): Long {
-        pendingStation = null
-        return ++revision
-    }
-
-    fun station(id: String): Long? {
-        if (pendingStation == id) return null
-        val request = select()
-        pendingStation = id
-        return request
-    }
+    fun select(): Long = ++revision
 
     fun isCurrent(request: Long): Boolean = request == revision
 
-    fun finishStation(request: Long) {
-        if (isCurrent(request)) pendingStation = null
-    }
 }
 
 /** Play/pause intent while a selected song has no attached source yet. Never resumes old audio. */

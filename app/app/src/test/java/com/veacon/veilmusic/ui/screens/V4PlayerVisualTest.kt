@@ -88,17 +88,6 @@ class V4PlayerVisualTest {
         val hidden=image("title-focus-hidden");assertEquals(android.graphics.Color.BLACK,hidden.getPixel(10,10))
         compose.onNodeWithText("歌曲名称").assertIsDisplayed();compose.onNodeWithTag("songInfo").assertIsFocused()
     }
-    @Test fun iconChoicesHaveDescriptionAboveIconsAndSwitchSelectionWithoutLabels() {
-        compose.setContent {Box(Modifier.width(500.dp).background(Color(0xFFF5F5F7))) {LauncherIconSettings()}}
-        val title=compose.onNodeWithText("更换应用图标").fetchSemanticsNode().boundsInRoot
-        val description=compose.onNodeWithText("更换后无需重启应用，桌面图标稍后自动刷新").fetchSemanticsNode().boundsInRoot
-        val red=compose.onNodeWithContentDescription("红色图标");val white=compose.onNodeWithContentDescription("白色图标")
-        assertTrue(title.bottom<=description.top);assertTrue(description.bottom<red.fetchSemanticsNode().boundsInRoot.top)
-        red.assertIsSelected();white.assertIsNotSelected()
-        compose.onNodeWithText("红色 · 已选").assertDoesNotExist();compose.onNodeWithText("白色").assertDoesNotExist()
-        image("icon-selection-red")
-        white.performClick();white.assertIsSelected();red.assertIsNotSelected();image("icon-selection-white")
-    }
     @Test fun gateHasOnlyIconBrandAndShortInstruction() {
         compose.setContent {Box(Modifier.requiredSize(360.dp,800.dp)) {LargeScreenGate {Text("Main")}}}
         compose.onNodeWithText("Main").assertDoesNotExist()

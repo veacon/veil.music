@@ -110,13 +110,17 @@ class LxPlayback @Inject constructor(
         prefs.getStringSet("disabled_scripts", emptySet())?.contains(fileName) == true
 
     fun disabledScripts(): Set<String> =
-        prefs.getStringSet("disabled_scripts", emptySet()) ?: emptySet()
+        prefs.getStringSet("disabled_scripts", emptySet())?.toSet() ?: emptySet()
 
     /** 停用 / 启用一个脚本文件，返回操作后的状态（true=已停用）。 */
     fun setScriptDisabled(fileName: String, disabled: Boolean): Boolean {
+        // getStringSet 返回的集合与内部存储共享底层 Map：直接往里 add 会把「停用一个」
+        // 变成「全员停用」（旧 bug）。先 toSet() 拿独立副本，再放入新的 immutable set。
         val set = disabledScripts().toMutableSet()
         if (disabled) set.add(fileName) else set.remove(fileName)
-        prefs.edit().putStringSet("disabled_scripts", set).apply()
+        // 用 commit 而非 apply：后面立刻 reload()，必须保证这次写入已落定，否则引擎
+        // 重建时读到旧名单，停用/启用不生效。
+        prefs.edit().putStringSet("disabled_scripts", set.toSet()).commit()
         reload("${if (disabled) "停用" else "启用"} $fileName")
         return disabled
     }
@@ -308,13 +312,13 @@ class LxPlayback @Inject constructor(
         lastError = null
     }
 
-    /** 解析一首歌；[force] 跳过缓存（直链过期重试）。失败返回 null，由调用方降级。 */
-    suspend fun resolve(song: Song, force: Boolean = false): AudioStream? {
+    /** 解析一首歌；[force] 跳过缓存（直链过期重试）；[excludeScript] 换源时跳过当前命中的脚本。 */
+    suspend fun resolve(song: Song, force: Boolean = false, excludeScript: String? = null): AudioStream? {
         if (!isEnabled()) return null
         songs[song.id] = song
-        if (!force) cached(song.id)?.let { return it }
+        if (!force && excludeScript == null) cached(song.id)?.let { return it }
         val job = synchronized(inflight) {
-            inflight[song.id] ?: scope.async { doResolve(song) }.also { inflight[song.id] = it }
+            inflight[song.id] ?: scope.async { doResolve(song, excludeScript) }.also { inflight[song.id] = it }
         }
         return try {
             job.await()
@@ -336,8 +340,8 @@ class LxPlayback @Inject constructor(
         scope.launch { runCatching { resolve(song) } }
     }
 
-    private suspend fun doResolve(song: Song): AudioStream? = try {
-        doResolveInner(song)
+    private suspend fun doResolve(song: Song, excludeScript: String? = null): AudioStream? = try {
+        doResolveInner(song, excludeScript)
     } catch (e: Throwable) {
         if (e is kotlinx.coroutines.CancellationException) throw e
         lastError = "${e.javaClass.simpleName}: ${e.message}"
@@ -345,7 +349,7 @@ class LxPlayback @Inject constructor(
         null
     }
 
-    private suspend fun doResolveInner(song: Song): AudioStream? {
+    private suspend fun doResolveInner(song: Song, excludeScript: String? = null): AudioStream? {
         if (!ensureReadyBlocking()) return null
         val r = resolver ?: return null
         val durationSec = (song.durationMs / 1000).toInt()
@@ -356,6 +360,7 @@ class LxPlayback @Inject constructor(
             album = song.albumName,
             durationSec = durationSec,
             plan = QualityPlan(q.ladder, q.minKbps),
+            excludeScript = excludeScript,
         ) { step -> log("${song.title} · $step") }
 
         val stream = result.stream

@@ -116,4 +116,55 @@ class LocalLibraryStoreTest {
         )
         assertEquals(listOf("a", "b"), s.allSongs().map { it.id })
     }
+
+    /** 「添加至列表」= 在资料库里存一条播放列表（不是把歌塞进收藏）。 */
+    @Test fun addAsPlaylistCreatesLocalPlaylistNotFavorites() {
+        val s = store()
+        val result = s.addAsPlaylist(
+            name = "夜曲", originKey = "album:1", coverUrl = "https://art/1.jpg",
+            songs = listOf(song("a"), song("b")),
+        )
+        assertTrue(result is LocalLibraryStore.PlaylistUpsert.Created)
+        assertEquals(2, (result as LocalLibraryStore.PlaylistUpsert.Created).added)
+
+        val saved = s.playlists.value.single()
+        assertEquals("夜曲", saved.name)
+        assertEquals("https://art/1.jpg", saved.coverUrl)
+        assertEquals(listOf("a", "b"), saved.songs.map { it.id })
+        // 本地歌单：不显示来源标记，也不该在长按菜单里出现「重新导入」
+        assertFalse(saved.isImported)
+        assertNull(saved.sourceUrl)
+        // 收藏（资料库·歌曲）不受影响
+        assertTrue(s.favorites.value.isEmpty())
+    }
+
+    /** 同一张专辑再点一次：只补齐缺的曲目，不会多出一个同名歌单。 */
+    @Test fun addAsPlaylistIsIdempotentPerOrigin() {
+        val s = store()
+        s.addAsPlaylist("夜曲", "album:1", null, listOf(song("a"), song("b")))
+
+        val again = s.addAsPlaylist("夜曲", "album:1", null, listOf(song("b"), song("a")))
+        assertTrue(again is LocalLibraryStore.PlaylistUpsert.Unchanged)
+        assertEquals(1, s.playlists.value.size)
+
+        val more = s.addAsPlaylist("夜曲", "album:1", null, listOf(song("a"), song("c")))
+        assertTrue(more is LocalLibraryStore.PlaylistUpsert.Updated)
+        assertEquals(1, (more as LocalLibraryStore.PlaylistUpsert.Updated).added)
+        // 原有顺序保留，新歌追加在后面
+        assertEquals(listOf("a", "b", "c"), s.playlists.value.single().songs.map { it.id })
+
+        // 另一张同名专辑按 originKey 区分，仍会新建
+        s.addAsPlaylist("夜曲", "album:2", null, listOf(song("z")))
+        assertEquals(2, s.playlists.value.size)
+    }
+
+    @Test fun addAsPlaylistSurvivesRestart() {
+        val s = store()
+        s.addAsPlaylist("夜曲", "album:1", null, listOf(song("a")))
+        awaitFile("album:1")
+        val reloaded = store().playlists.value.single()
+        assertEquals("夜曲", reloaded.name)
+        assertEquals("album:1", reloaded.originKey)
+        assertEquals(listOf("a"), reloaded.songs.map { it.id })
+    }
 }

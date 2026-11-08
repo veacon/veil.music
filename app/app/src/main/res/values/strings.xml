@@ -332,6 +332,13 @@
     <string name="fluid_quality_high">High quality</string>
     <string name="msg_326" formatted="false">"Browse music"</string>
     <string name="msg_327" formatted="false">"Import a playlist"</string>
+    <string name="msg_328" formatted="false">"Add to Playlist"</string>
+    <string name="msg_329" formatted="false">"Added to playlist “%1$s” (%2$d songs)"</string>
+    <string name="msg_330" formatted="false">"Added %2$d more songs to “%1$s”"</string>
+    <string name="msg_331" formatted="false">"“%1$s” already has these songs"</string>
     <string name="msg_recent" formatted="false">"Recently Played"</string>
     <string name="msg_recent_empty" formatted="false">"No play history yet. Songs you listen to for over 10 seconds will appear here."</string>
+    <string name="msg_332" formatted="false">"Switch song source"</string>
+    <string name="msg_333" formatted="false">"Switch lyrics source"</string>
+    <string name="msg_334" formatted="false">"Switching source…"</string>
 </resources>

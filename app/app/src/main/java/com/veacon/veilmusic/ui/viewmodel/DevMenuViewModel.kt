@@ -18,6 +18,7 @@ import com.veacon.veilmusic.data.StandalonePreferences
 import com.veacon.veilmusic.data.repository.MusicRepository
 import com.veacon.veilmusic.media.BeatAnalyzer
 import com.veacon.veilmusic.data.NetworkLog
+import com.veacon.veilmusic.i18n.AppLanguage
 import com.veacon.veilmusic.media.InAppWebServer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,26 @@ import java.util.*
 import javax.inject.Inject
 
 data class LogEntry(val level: String, val message: String)
+
+/** 日志「阶段词」的中文显示名。日志里用的是 DEC/PLR/LX 这类短标签，给用户看时翻成中文。 */
+object LogStage {
+    private val zh = mapOf(
+        "DEC" to "解码", "CODEC" to "解码器", "PLR" to "播放", "LX" to "音源", "PRE" to "预取",
+        "WDOG" to "自愈", "SAVE" to "存档", "LAYOUT" to "布局", "SPD" to "倍速", "OUT" to "输出",
+        "ERROR" to "错误", "ERR" to "错误", "WARN" to "警告", "OK" to "就绪", "LIB" to "资料库",
+    )
+
+    /** 把一行里的 `[LEVEL]` 标签换成中文，例如 `[DEC]` → `[解码]`。 */
+    fun localize(message: String): String {
+        val en = AppLanguage.code == "en"
+        if (en) return message
+        return message.replace(Regex("""\[([A-Z]+)\]""")) { m ->
+            val label = m.groupValues[1]
+            val cn = zh[label] ?: return@replace m.value
+            "[$cn]"
+        }
+    }
+}
 
 data class DevMenuState(
     val serverOk:       Boolean        = false,

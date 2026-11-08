@@ -337,7 +337,14 @@ internal object MessageCatalog {
         R.string.playback_section to ("播放" to "Playback"),
         R.string.msg_326 to ("去浏览音乐" to "Browse music"),
         R.string.msg_327 to ("导入歌单" to "Import a playlist"),
+        R.string.msg_328 to ("添加至列表" to "Add to Playlist"),
+        R.string.msg_329 to ("已添加到播放列表“%1\$s”，共 %2\$d 首" to "Added to playlist “%1\$s” (%2\$d songs)"),
+        R.string.msg_330 to ("已向播放列表“%1\$s”补充 %2\$d 首" to "Added %2\$d more songs to “%1\$s”"),
+        R.string.msg_331 to ("播放列表“%1\$s”已经有这些歌了" to "“%1\$s” already has these songs"),
         R.string.msg_recent to ("最近播放" to "Recently Played"),
         R.string.msg_recent_empty to ("还没有播放记录，播放超过 10 秒的歌曲会出现在这里" to "No play history yet. Songs you listen to for over 10 seconds will appear here."),
+        R.string.msg_332 to ("歌曲换源" to "Switch song source"),
+        R.string.msg_333 to ("歌词换源" to "Switch lyrics source"),
+        R.string.msg_334 to ("正在换源…" to "Switching source…"),
     )
 }

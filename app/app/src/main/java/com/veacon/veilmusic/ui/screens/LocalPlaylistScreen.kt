@@ -178,7 +178,9 @@ fun LocalPlaylistScreen(
                                 Modifier.size(40.dp).clip(RoundedCornerShape(5.dp))
                                     .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
                             ) {
-                                song.artworkUrl?.let {
+                                // artworkUrl 是 Apple 的模板（`{w}x{h}bb.jpg`），必须过一遍
+                                // artworkUrl(size) 才拿到真实地址，否则缩略图一直是灰块。
+                                song.artworkUrl(160)?.let {
                                     AsyncImage(model = it, contentDescription = null,
                                         contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 }

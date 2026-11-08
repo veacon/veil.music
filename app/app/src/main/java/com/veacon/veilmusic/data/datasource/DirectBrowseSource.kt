@@ -285,11 +285,8 @@ class DirectBrowseSource @Inject constructor(
                     continue
                 }
                 val albums = maps
-                    // Keep Apple Music Radio LIVE stations (isLive); drop only non-live radio shows.
-                    .filter { m ->
-                        m["type"] as? String != "stations" ||
-                            (m["attributes"] as? Map<*, *>)?.get("isLive") == true
-                    }
+                    // 电台已整体下线（播放走落雪，Apple 直播台是 Widevine secure HLS，播不了）。
+                    .filter { m -> m["type"] as? String != "stations" }
                     .mapNotNull { m ->
                         when (m["type"] as? String) {
                             "songs", "music-videos", "uploaded-videos" -> songCard(m)
@@ -313,7 +310,7 @@ class DirectBrowseSource @Inject constructor(
                 val content = (((cm["relationships"] as? Map<*, *>)?.get("contents") as? Map<*, *>)
                     ?.get("data") as? List<*>)?.firstOrNull() as? Map<*, *> ?: continue
                 val t = content["type"] as? String
-                if (t == "stations" && (content["attributes"] as? Map<*, *>)?.get("isLive") != true) continue   // non-live radio shows don't play — omit; keep live radio
+                if (t == "stations") continue   // 电台已下线，任何 station 卡片都不再展示
                 var obj = when (t) {
                     "songs", "music-videos" -> songCard(content)
                     "apple-curators", "curators" -> curatorCard(content)

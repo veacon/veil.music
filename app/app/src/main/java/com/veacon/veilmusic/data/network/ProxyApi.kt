@@ -126,16 +126,6 @@ data class AlbumsResponse(val albums: List<AlbumDto> = emptyList())
 data class SongsResponse(val songs: List<SongDto> = emptyList())
 
 @JsonClass(generateAdapter = true)
-data class StationStreamResponse(
-    val liveStreamUrl: String? = null,
-    val drmKeyUri:     String? = null,   // Widevine key server (linear.tv.apple.com)
-    val certUrl:       String? = null,   // Widevine service certificate URL
-    val wvKeyUri:      String? = null,   // Widevine EXT-X-KEY URI → license body `uri`
-    val adamId:        String? = null,
-    val isLive:        Boolean = true,
-)
-
-@JsonClass(generateAdapter = true)
 data class LibrarySongsResponse(
     val songs: List<SongDto> = emptyList(),
     val songsNewestFirst: Boolean = false,
@@ -236,12 +226,6 @@ interface ProxyApi {
 
     @GET("api/albums/{id}/related")
     suspend fun getRelatedAlbums(@Path("id") id: String): AlbumsResponse
-
-    @GET("api/albums/station/{id}/tracks")
-    suspend fun getStationTracks(@Path("id") id: String): SongsResponse
-
-    @GET("api/albums/station/{id}/stream")
-    suspend fun getStationStream(@Path("id") id: String): StationStreamResponse
 
     @GET("api/songs/{id}")
     suspend fun getSong(@Path("id") id: String): SongDto

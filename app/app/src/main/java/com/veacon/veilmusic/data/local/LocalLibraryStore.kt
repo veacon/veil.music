@@ -34,6 +34,12 @@ class LocalLibraryStore @Inject constructor(
         /** local / qq / netease / kugou / text —— 用于界面标注来源。 */
         val source: String = SOURCE_LOCAL,
         val sourceUrl: String? = null,
+        /**
+         * 由「添加至列表」生成时的来源标识（`album:xxx` / `playlist:xxx`）。
+         * 只用来判断「这张专辑已经存过了」，不参与重新导入 —— 所以不能复用 [sourceUrl]，
+         * 那个字段非空就会在长按菜单里露出「重新导入」。
+         */
+        val originKey: String? = null,
         val songs: List<Song> = emptyList(),
         val createdAt: Long = 0L,
         val updatedAt: Long = 0L,
@@ -118,6 +124,58 @@ class LocalLibraryStore @Inject constructor(
     fun addFavorite(song: Song) = synchronized(lock) {
         _favorites.value = listOf(song) + _favorites.value.filterNot { it.id == song.id }
         persistLocked()
+    }
+
+    /**
+     * 「添加至列表」的结果。提示文案据此区分「新建 / 追加 / 已经在里面了」。
+     */
+    sealed interface PlaylistUpsert {
+        data class Created(val playlist: LocalPlaylist, val added: Int) : PlaylistUpsert
+        data class Updated(val playlist: LocalPlaylist, val added: Int) : PlaylistUpsert
+        data class Unchanged(val playlist: LocalPlaylist) : PlaylistUpsert
+    }
+
+    /**
+     * 「添加至列表」：把整张专辑 / 整个歌单存成资料库里的一条播放列表。
+     *
+     * [originKey] 是稳定的来源标识：同一张专辑再点一次只会补齐缺的曲目，不会多出一个同名歌单。
+     * 已存在的歌单保持原有顺序，新曲目按传入顺序追加在后面。
+     */
+    fun addAsPlaylist(
+        name: String, originKey: String, coverUrl: String?, songs: List<Song>,
+    ): PlaylistUpsert = synchronized(lock) {
+        val existing = _playlists.value.firstOrNull { it.originKey == originKey }
+        if (existing != null) {
+            val known = existing.songs.mapTo(HashSet()) { it.id }
+            val fresh = songs.filter { known.add(it.id) }
+            // 封面模板（`{w}x{h}bb.jpg`）没替换过就是加载不出来的灰块，借这次点击顺手修好。
+            val healedCover = coverUrl != null &&
+                (existing.coverUrl == null || existing.coverUrl.contains("{"))
+            if (fresh.isEmpty() && !healedCover) return@synchronized PlaylistUpsert.Unchanged(existing)
+            val merged = existing.copy(
+                songs = existing.songs + fresh,
+                coverUrl = if (healedCover) coverUrl else existing.coverUrl,
+                updatedAt = System.currentTimeMillis(),
+            )
+            _playlists.value = _playlists.value.map { if (it.id == existing.id) merged else it }
+            persistLocked()
+            // 只是补封面、没有新曲目时，对用户来说仍然是「已经有了」。
+            return@synchronized if (fresh.isEmpty()) PlaylistUpsert.Unchanged(merged)
+            else PlaylistUpsert.Updated(merged, fresh.size)
+        }
+        val now = System.currentTimeMillis()
+        val playlist = LocalPlaylist(
+            id = "lp-" + UUID.randomUUID().toString().take(8),
+            name = name.ifBlank { "新建歌单" },
+            coverUrl = coverUrl,
+            originKey = originKey,
+            songs = songs,
+            createdAt = now,
+            updatedAt = now,
+        )
+        _playlists.value = listOf(playlist) + _playlists.value
+        persistLocked()
+        PlaylistUpsert.Created(playlist, songs.size)
     }
 
     fun removeFavorite(songId: String) = synchronized(lock) {

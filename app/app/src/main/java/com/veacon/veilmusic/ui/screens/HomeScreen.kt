@@ -130,11 +130,9 @@ private fun ContentRow(
 ) {
     val openCard: (Album) -> Unit = { album ->
         val isPlaylist = album.id.startsWith("pl.") || album.id.startsWith("p.")
-        val isStation = album.id.startsWith("ra.")
         val isCategory = album.id.startsWith("ac-") || album.id.startsWith("c-") || album.id.startsWith("mr-")
         when {
             isCategory -> onCategoryClick(album.id)
-            isStation  -> playerVm.playStation(album.id, album.artworkUrl(600), album.title)
             isPlaylist -> onPlaylistClick(album.id, album.title, album.artworkUrl(500) ?: "")
             else       -> onAlbumClick(album.id)
         }
@@ -197,8 +195,7 @@ private fun ContentRow(
         ) {
             items(section.albums, key = { it.id }, contentType = { "album" }) { album ->
                 val isPlaylist = album.id.startsWith("pl.") || album.id.startsWith("p.")
-                val isStation = album.id.startsWith("ra.")
-                // "Find Your Mood" cards carry the CategoryScreen prefix ("ac-"/"c-").
+                        // "Find Your Mood" cards carry the CategoryScreen prefix ("ac-"/"c-").
                 val isCategory = album.id.startsWith("ac-") || album.id.startsWith("c-") || album.id.startsWith("mr-")
                 AlbumCard(
                     album = album,
@@ -206,8 +203,7 @@ private fun ContentRow(
                     onClick = {
                         when {
                             isCategory -> onCategoryClick(album.id)
-                            isStation  -> playerVm.playStation(album.id, album.artworkUrl(600), album.title)
-                            isPlaylist -> onPlaylistClick(album.id, album.title, album.artworkUrl(500) ?: "")
+                                            isPlaylist -> onPlaylistClick(album.id, album.title, album.artworkUrl(500) ?: "")
                             else       -> onAlbumClick(album.id)
                         }
                     },

@@ -359,10 +359,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
     }
     // Register root-page handlers INSIDE each NavHost destination, before its
     // content. This beats NavHost's pop handler while preserving child dialogs/IME.
-    BackHandler(enabled = !showExitDialog &&
-        currentRoute == Screen.Radio.route) {
-        returnToListenNow()
-    }
 
     // Keep a stable light underlay. The player destination paints its own black
     // canvas, which now enters/exits as part of the same NavHost crossfade.
@@ -566,9 +562,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                         },
                     )
                 }
-            }
-            returningComposable(Screen.Radio.route) {
-                RadioScreen(playerVm = playerVm, onReturnToTab = { requestTabFocus(destinationTab) })
             }
             returningComposable(Screen.DevMenu.route)    {
                 DevMenuScreen(

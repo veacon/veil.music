@@ -41,6 +41,10 @@ import org.robolectric.annotation.GraphicsMode
 @OptIn(ExperimentalTvMaterial3Api::class,ExperimentalTestApi::class)
 class V23LayoutTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
+    /** These assertions look the controls up by their Chinese labels — pin the language. */
+    @org.junit.Before fun useChinese() {
+        com.veacon.veilmusic.i18n.AppLanguage.select(com.veacon.veilmusic.i18n.LanguageChoice.Chinese)
+    }
     private fun save(name:String)=compose.runOnIdle {
         val view=compose.activity.window.decorView
         val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
@@ -64,8 +68,6 @@ class V23LayoutTest {
         assertFalse(centerPlayerControls(empty,false,false,false,true))
         assertFalse(centerPlayerControls(empty,false,true,true,true))
         assertTrue(centerPlayerControls(initial,true,false,false))
-        assertFalse(centerPlayerControls(initial.copy(stationLaunch=StationLaunch(1,"station","电台",null)),true,false,true))
-        assertTrue(centerPlayerControls(initial.copy(isLiveRadio=true),false,false,true,true))
         assertFalse(centerPlayerControls(empty.copy(lyrics=listOf(LyricLine(0,1000,"歌词"))),false,false,true,true))
     }
 
@@ -125,7 +127,7 @@ class V23LayoutTest {
         compose.setContent {
             Column(Modifier.fillMaxSize().background(Color.White)) {
                 TouchSurface({},Modifier.size(100.dp,30.dp).focusRequester(external).testTag("outside")) {}
-                Box(Modifier.fillMaxSize().focusRequester(entry).libraryEntryFocus(list,true,false,sort).focusGroup()) {
+                Box(Modifier.fillMaxSize().focusRequester(entry).libraryEntryFocus({list.requestFocus()},false,sort).focusGroup()) {
                     Column(Modifier.fillMaxSize()) {
                         SortBar(if(grid) LibrarySection.Albums else LibrarySection.Songs,SortField.NAME,SortDir.ASC,null,sort.control,list) {_,_->picks++}
                         Box(Modifier.weight(1f).focusRequester(list).focusGroup()) {

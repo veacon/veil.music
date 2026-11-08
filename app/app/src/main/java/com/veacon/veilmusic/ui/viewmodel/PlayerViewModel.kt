@@ -105,20 +105,46 @@ enum class NowPlayingBackground(private val labelId: Int) {
     }
 }
 
-// Apple Music live radio stations (isLive=true). Fixed set — these stream a live Widevine HLS
-// feed via /v1/play/assets, unlike personal/genre stations which return a next-tracks song queue.
-private val LIVE_STATION_IDS = setOf(
-    "ra.978194965",   // Apple Music 1
-    "ra.1498155548",  // Apple Music Hits
-    "ra.1498157166",  // Apple Music Country
-    "ra.1740613864",  // Apple Música Uno
-    "ra.1740614260",  // Apple Music Chill
-    "ra.1740613859",  // Apple Music Club
-    "ra.1534941676",  // Apple Music TV (video)
-)
+/**
+ * 一首歌实际命中的音频流（解析之后才知道）。
+ *
+ * 只给「播放信息」浮层用：音源脚本名、平台、容器格式、请求档位、真实码率。
+ * [songId] 跟着歌曲走，切歌瞬间旧信息绝不会挂在新歌上。
+ */
+data class ResolvedStream(
+    val songId: String,
+    val sourceName: String,
+    val platform: String,
+    val format: String,
+    val quality: String,
+    val kbps: Int,
+    /** 命中的脚本文件名（如 lx-01-kulao.js），换源时据此跳过当前源。 */
+    val script: String = "",
+) {
+    /** 「FLAC · 1024 kbps」这类展示串；码率未知时只留格式。 */
+    val qualityLabel: String
+        get() {
+            val name = when {
+                format.contains("flac") && quality.contains("24") -> "FLAC 24bit"
+                format.contains("flac") -> "FLAC"
+                format.contains("aac") || format.contains("m4a") || format.contains("mp4") -> "AAC"
+                format.contains("mp3") -> "MP3"
+                format.contains("ape") -> "APE"
+                format.contains("wavpack") -> "WavPack"
+                format.contains("opus") -> "OPUS"
+                format.isBlank() -> ""
+                else -> format.substringAfter('/').uppercase()
+            }
+            return when {
+                kbps > 0 && name.isNotEmpty() -> "$name · $kbps kbps"
+                name.isNotEmpty() -> name
+                kbps > 0 -> "$kbps kbps"
+                else -> "—"
+            }
+        }
+}
 
 data class PlayerState(
-    val stationLaunch: StationLaunch? = null,
     val currentSong:      Song?           = null,
     val song:             Song?           = null,
     val isPlaying:        Boolean         = false,
@@ -131,6 +157,8 @@ data class PlayerState(
     val lyricsNoticeGeneration: Long = 0L,
     val emptyLyricsNoticeCompletedFor: String? = null,
     val exhaustedEmptyLyricsFor: String? = null,
+    /** 当前歌词命中的来源标签（网易云/QQ音乐/酷狗/酷我/咪咕/lrclib），供播放信息框展示。 */
+    val lyricsSource: String? = null,
     /** 播放一律按"完整曲目"处理：音源只来自落雪，不需要 MUT，也不再有试听片段。 */
     val isFullStream:     Boolean         = true,
     val motionUrl:        String?         = null,
@@ -179,14 +207,18 @@ data class PlayerState(
     val lowPowerMode: Boolean = false,
     /** Volume leveling (loudness AGC) on the audio path. */
     val volumeLeveling: Boolean = false,
+    /** 硬解 / 软解 — which decoder path the player is built with. */
+    val decoderMode: com.veacon.veilmusic.data.DecoderMode = com.veacon.veilmusic.data.DecoderMode.SOFTWARE,
+    /** 当前曲目实际命中的音频流（音源/格式/码率），长按 ↓ 的播放信息框用；未解析完成时为 null。 */
+    val resolvedStream: ResolvedStream? = null,
+    /** 统一输出采样率（P2），改档要重建播放器。 */
+    val unifySampleRate: Boolean = true,
+    /** 音频 offload（P2）；设备不支持时恒为 false。 */
+    val audioOffload: Boolean = false,
     /** Decrypt/buffer in flight — a cold track takes 15-20s, so the UI must say so. */
     val isLoading:        Boolean         = false,
     /** True while the current track is playing via on-device Widevine. */
     val standaloneActive: Boolean         = false,
-    /** Live radio: continuous DRM stream. Drives the LIVE badge, hides Up Next, disables skip. */
-    val isLiveRadio: Boolean              = false,
-    /** Station cover, shown on the Now Playing art when a live station is paused. */
-    val radioStationArt: String?          = null,
     /** Keep audio playing when the app goes to the background / home is pressed. */
     val backgroundPlayEnabled: Boolean    = false,
     /** True while the activity is in Picture-in-Picture (renders the minimal PiP view). */
@@ -200,6 +232,12 @@ private const val LYRICS_BASELINE_MS = 200L
 /** Added to BOTH the beat and the lyrics when a Bluetooth output is live (Automatic mode). Bluetooth
  *  delays the actual sound by roughly this much; an estimate, since Android exposes no exact figure. */
 private const val BT_DELTA_MS = 350L
+/** 启动续播的等待上限：脚本冷启动（十来秒）+ 一次完整解析（十几秒）。超时则保留待播状态。 */
+private const val LX_RESTORE_TIMEOUT_MS = 60_000L
+/** 看门狗采样间隔与判定：READY 且在播时连续 N 个 tick 位置不动，就认定音频通路卡死。 */
+private const val WATCHDOG_TICK_MS = 2_000L
+private const val WATCHDOG_STALL_TICKS = 2
+private const val WATCHDOG_MAX_RECOVERIES = 2
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -216,6 +254,7 @@ class PlayerViewModel @Inject constructor(
     private val webServer: InAppWebServer,
     private val lx: com.veacon.veilmusic.luoxue.LxPlayback,
     private val localLibrary: com.veacon.veilmusic.data.local.LocalLibraryStore,
+    private val playbackCache: com.veacon.veilmusic.data.cache.PlaybackCache,
     val beatAnalyzer: BeatAnalyzer,
 ) : ViewModel() {
 
@@ -289,6 +328,23 @@ class PlayerViewModel @Inject constructor(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("player_state", Context.MODE_PRIVATE)
 
+    /**
+     * 硬解 / 软解. Read once here (before any player is built) and owned by [setDecoderMode] after
+     * that, so every rebuild — start, crossfade, radio, switch — agrees on one decoder path.
+     */
+    private var decoderMode = com.veacon.veilmusic.data.DecoderMode.fromKey(prefs.getString("decoder_mode", null))
+
+    /**
+     * P2 输出策略，和 [decoderMode] 一样在构造期读一次、之后只由 setter 改：
+     *  - [outputSampleRate]：设备原生采样率，0 表示取不到（不重采样）。
+     *  - [unifySampleRate]：把每首歌统一到这个采样率，避免 44.1k/48k 来回切重建 sink。
+     *  - [offloadEnabled]：音频 offload。设备探测不到支持就永远是 false。
+     */
+    private val outputSampleRate = com.veacon.veilmusic.media.OutputTuning.deviceSampleRate(context)
+    private var unifySampleRate = prefs.getBoolean("unify_sample_rate", true)
+    private var offloadEnabled = com.veacon.veilmusic.media.OutputTuning.offloadSupported() &&
+        prefs.getBoolean("audio_offload", false)
+
     private val bookmarkWriterDelegate = lazy {
         PlaybackStateWriter(prefs, moshi, onError = { error ->
             webServer.addLog("SAVE", "bookmark failed (${error.javaClass.simpleName})")
@@ -296,7 +352,8 @@ class PlayerViewModel @Inject constructor(
     }
     private val bookmarkWriter by bookmarkWriterDelegate
 
-    private val _state = MutableStateFlow(PlayerState())
+    private val _state = MutableStateFlow(PlayerState(decoderMode = decoderMode,
+        unifySampleRate = unifySampleRate, audioOffload = offloadEnabled))
     val state: StateFlow<PlayerState> = _state
     val artworkCentered: StateFlow<Boolean> = _state.stablePlayerLayout()
         .onEach { webServer.addLog("LAYOUT", "lyrics layout=${if (it) "centered" else "split"}") }
@@ -352,22 +409,99 @@ class PlayerViewModel @Inject constructor(
     val toasts: SharedFlow<String> = _toasts
     fun toast(msg: String) { _toasts.tryEmit(msg) }
 
-    /** 落雪命中后提示音源与格式，例如「准备播放 明明就-周杰伦 来源裤佬SVIP mp3 320k」。 */
-    private fun announceResolvedSource(song: Song, stream: com.veacon.veilmusic.luoxue.AudioStream) {
-        val fmt = when {
-            stream.kind.contains("flac") -> "flac"
-            stream.kind.contains("aac") || stream.kind.contains("m4a") -> "aac"
-            else -> "mp3"
-        }
+    /**
+     * 落雪命中后记下这条流的信息（音源 / 格式 / 码率），供播放页「长按 ↓」的信息框读取。
+     *
+     * 以前这里会弹一条「准备播放 xxx 来源 yyy」的 toast —— 每首歌都弹、还挡字幕，
+     * 现在改成按需查看：不打扰，但信息一条不少。
+     */
+    private fun recordResolvedStream(song: Song, stream: com.veacon.veilmusic.luoxue.AudioStream) {
         val sourceName = stream.sourceName.ifBlank {
             stream.script.removeSuffix(".js").removePrefix("lx-")
         }
-        toast("准备播放 ${song.title}-${song.artistName} 来源${sourceName} $fmt ${stream.kbps}k")
+        _state.update {
+            it.copy(resolvedStream = ResolvedStream(
+                songId = song.id,
+                sourceName = sourceName,
+                platform = stream.source,
+                format = stream.kind,
+                quality = stream.quality,
+                kbps = stream.kbps,
+                script = stream.script,
+            ))
+        }
     }
 
     private var lastErrorKey: String? = null
     private var hasPlayedSomething = false
     var nowPlayingVisible = false
+
+    /**
+     * 播放信息框里的「歌曲换源」：落雪直链过期 / 源端 403 / 音质不对时，用户手动触发一次强制重解析。
+     * 保持当前进度，重新解析当前歌并换到新的直链；解析不到就提示并跳过下一首（和自动重解析一致）。
+     */
+    fun retryCurrentSource() {
+        val song = _state.value.currentSong ?: return
+        if (song.isMusicVideo) return
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = _state.value.isPlaying
+        // 换源语义：跳过「当前命中的脚本」，让解析级联落到下一个源；否则 force 重解析
+        // 仍会按同一优先级返回同一个源，用户点了等于没点。
+        val currentScript = _state.value.resolvedStream?.takeIf { it.songId == song.id }?.script
+            ?.takeIf { it.isNotBlank() }
+        lxRetriedSongId = song.id   // 复用防死循环标记：手动换源也最多这一次
+        lx.invalidate(song.id)
+        val myGen = ++playGen
+        sourcePreparation.begin(myGen, wasPlaying)
+        attachedSourceGeneration = -1
+        webServer.addLog("LX", "手动换源 ${song.title}（@${pos}ms，跳过 $currentScript）")
+        toast(tr(R.string.msg_334))   // 「正在换源…」
+        viewModelScope.launch {
+            val stream = lx.resolve(song, force = true, excludeScript = currentScript)
+            if (myGen != playGen) return@launch
+            val shouldPlay = sourcePreparation.finish(myGen) ?: return@launch
+            if (stream != null) {
+                attachedSourceGeneration = myGen
+                lxSongId = song.id
+                recordResolvedStream(song, stream)
+                player.setMediaItem(buildLxMediaItem(song, stream), pos)
+                player.prepare(); player.volume = 1f; player.playWhenReady = shouldPlay
+                webServer.addLog("LX", "手动换源成功 ${song.title} · ${stream.kind} ${stream.kbps}kbps · ${stream.source}/${stream.script}")
+            } else {
+                lxSongId = null
+                webServer.addLog("LX", "手动换源失败 ${song.title} — 跳过")
+                toast(tr(R.string.msg_019, song.title))
+                advanceQueue()
+            }
+        }
+    }
+
+    /**
+     * 播放信息框里的「歌词换源」：歌词拿错/没匹配到歌词时，清掉本歌缓存并**跳过当前命中的源**
+     * 再走一遍歌词级联（网易云 → QQ → 酷狗 → 酷我 → 咪咕 → lrclib），等于手动换一个来源。
+     */
+    fun retryCurrentLyrics() {
+        val song = _state.value.currentSong ?: return
+        if (song.isMusicVideo) return
+        lyricsCache.remove(song.id)
+        lyricsInFlight.remove(song.id)
+        // 关键：直连歌词源（DirectLyricsSource）内部还有一层 24h 缓存，只清 ViewModel 的
+        // lyricsCache 没用，必须把它也失效掉，否则「换源」永远命中原歌词。
+        repo.invalidateLyricsCache(song.id)
+        // 「换源」核心：把当前命中的源（如「网易云」）加入排除集，让级联从下一个源开始，
+        // 否则 force 重走一遍级联仍会命中同一个排第一的源，用户点了等于没点。
+        val currentSource = _state.value.lyricsSource
+        if (currentSource.isNullOrBlank()) {
+            lyricsExcludedSources.remove(song.id)
+        } else {
+            val set = lyricsExcludedSources[song.id].orEmpty() + currentSource
+            lyricsExcludedSources[song.id] = set
+        }
+        _state.update { it.copy(lyrics = emptyList(), lyricsSource = null) }
+        webServer.addLog("LYRICS", "手动歌词换源 ${song.title} — 排除「${currentSource ?: "无"}」后重试")
+        loadLyrics(song.id)
+    }
+
     private var mediaSession: androidx.media3.session.MediaSession? = null
     fun showEmptyLyricsNotice(songId: String, generation: Long) = lyricsFailureNotice.showWhenReady(songId,generation)
     private var lyricsJob: kotlinx.coroutines.Job? = null
@@ -409,38 +543,26 @@ class PlayerViewModel @Inject constructor(
      *  starting playback so rapidly-skipped songs don't each play for a moment. */
     private var playGen = 0
     private val playbackRequests = PlaybackRequestGate()
-    private var stationJob: kotlinx.coroutines.Job? = null
     private var relatedQueueJob: kotlinx.coroutines.Job? = null
     private var relatedRequestedGeneration = -1
     private val sourcePreparation = SourcePreparation()
     private var attachedSourceGeneration = -1
 
-    private var radioRetryJob: kotlinx.coroutines.Job? = null
-
-    /** Reserve ownership before fetching a playlist/station outside this ViewModel. */
+    /** Reserve ownership before fetching a playlist outside this ViewModel. */
     fun reservePlaybackRequest(): Long = beginPlaybackSelection()
     fun playAlbumIfCurrent(request: Long, songs: List<Song>) {
-        if (playbackRequests.isCurrent(request)) {
-            val station = _state.value.stationLaunch != null
-            if (station) stationJob = null
-            playAlbum(songs, openPlayer = !station)
-        }
+        if (playbackRequests.isCurrent(request)) playAlbum(songs)
     }
 
     private fun beginPlaybackSelection(keepDecryptFor: String? = null): Long {
-        if (_state.value.stationLaunch != null) _state.update { it.copy(stationLaunch = null,
-            emptyLyricsNoticeCompletedFor = null, exhaustedEmptyLyricsFor = null) }
         if (sourcePreparation.isPending) {
             ++playGen
             sourcePreparation.cancel()
             awaitingSongStart = null
             _state.update { it.copy(isLoading = false) }
         }
-        radioRetryJob?.cancel(); radioRetryJob = null
         prefetchJob?.cancel()
         cancelOtherDecrypts(keepDecryptFor)
-        stationJob?.cancel()
-        stationJob = null
         return playbackRequests.select()
     }
 
@@ -461,24 +583,81 @@ class PlayerViewModel @Inject constructor(
 
 
     /**
-     * The stock c2.android.aac.decoder glitches on some HE-AAC (SBR) encodes at
-     * segment boundaries (Love Me Again, Bonetrousle). The device also ships the
-     * older OMX.google.aac.decoder — a different implementation — so prefer it for
-     * AAC and see if it handles the boundaries cleanly. Both are software, so both
-     * work on the Widevine (L3) secure path.
+     * MediaCodec selection. The candidate list is always logged — that line is how we tell which
+     * decoder a box actually picked. In 软解 the older OMX AAC implementation is additionally
+     * preferred: it is the one that survives HE-AAC segment boundaries cleanly. 硬解 keeps the
+     * platform order so the real hardware decoder wins.
      */
     @OptIn(UnstableApi::class)
-    private val aacPreferOmxSelector =
+    /** 解码器排序 + 设备级黑名单（`DecoderPolicy`：硬解优先/软解优先、失败拉黑）。 */
+    private val decoderPolicy = com.veacon.veilmusic.media.DecoderPolicy(
+        context.getSharedPreferences("decoder_policy", Context.MODE_PRIVATE),
+    )
+
+    private val audioCodecSelector =
         androidx.media3.exoplayer.mediacodec.MediaCodecSelector { mimeType, secure, tunneling ->
             val infos = androidx.media3.exoplayer.mediacodec.MediaCodecUtil
                 .getDecoderInfos(mimeType, secure, tunneling)
-            if (mimeType == androidx.media3.common.MimeTypes.AUDIO_AAC) {
-                webServer.addLog("CODEC", "aac decoders (secure=$secure): ${infos.joinToString { it.name }}")
-                infos.sortedByDescending { it.name.startsWith("OMX.google.aac") }
-            } else infos
+            // 每个 mime 都记一行：切到硬解后靠这行确认平台真的挑到了解码器。
+            webServer.addLog("CODEC", "decoder=${decoderMode.key} $mimeType (secure=$secure): ${infos.joinToString { it.name }}")
+            decoderPolicy.select(
+                infos = infos,
+                mimeType = mimeType,
+                preferHardware = decoderMode == com.veacon.veilmusic.data.DecoderMode.HARDWARE,
+            ) { msg -> webServer.addLog("CODEC", msg) }
         }
 
+    /**
+     * 软解 lets the bundled FFmpeg renderer claim the audio (MediaCodec stays as the secure/DRM
+     * fallback); 硬解 drops that renderer entirely so only the platform decoders can run.
+     */
     @OptIn(UnstableApi::class)
+    private fun extensionRendererMode(): Int =
+        if (decoderMode == com.veacon.veilmusic.data.DecoderMode.HARDWARE)
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+        else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+
+    /**
+     * Every player this ViewModel builds is pinned to 1.0x with silence-skipping off.
+     *
+     * A stale playback speed is the classic "occasionally plays too fast" failure: the speed can
+     * survive a sink rebuild (or arrive from a platform AudioTrack that kept the parameters it was
+     * handed earlier), and once it is 1.5x/2x it never drifts back on its own. Pinning it at build
+     * time and re-checking it once playback is live (see [enforceNormalSpeed]) keeps it honest.
+     */
+    @OptIn(UnstableApi::class)
+    private fun ExoPlayer.pinNormalSpeed() {
+        playbackParameters = androidx.media3.common.PlaybackParameters(1f, 1f)
+        skipSilenceEnabled = false
+        repeatMode = Player.REPEAT_MODE_OFF
+    }
+
+    /** Reset a drifted playback speed back to 1.0x, and say so in the log. */
+    private fun enforceNormalSpeed(where: String) {
+        val p = player.playbackParameters
+        if (p.speed != 1f || p.pitch != 1f) {
+            webServer.addLog("SPD", "$where speed=${p.speed} pitch=${p.pitch} → 1.0")
+            player.playbackParameters = androidx.media3.common.PlaybackParameters(1f, 1f)
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    /** 统一采样率生效时的目标输出率；关掉或拿不到设备采样率时返回 0（不重采样）。 */
+    private fun outputTargetSampleRate(): Int = if (unifySampleRate) outputSampleRate else 0
+
+    /** offload 的轨道选择参数：要求可 offload，且不要求 gapless / 变速支持（本应用都锁在 1.0x）。 */
+    @OptIn(UnstableApi::class)
+    private fun offloadParameters(): androidx.media3.common.TrackSelectionParameters =
+        androidx.media3.common.TrackSelectionParameters.Builder(context)
+            .setAudioOffloadPreferences(
+                androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(
+                        androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                    .setIsGaplessSupportRequired(false)
+                    .setIsSpeedChangeSupportRequired(false)
+                    .build()
+            ).build()
+
     private fun buildExoPlayer(): ExoPlayer = run {
         // The proxy holds the HTTP connection open for a few seconds while it
         // decrypts (no bytes until mp4decrypt finishes), so give ExoPlayer
@@ -489,37 +668,31 @@ class PlayerViewModel @Inject constructor(
             .setConnectTimeoutMs(60_000)
             .setReadTimeoutMs(60_000)
             .setAllowCrossProtocolRedirects(true)
-        val dataSourceFactory =
-            androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory)
+        // 先查本地播放缓存（同一首歌重播不用再走网络），未命中再透传给上游。
+        val dataSourceFactory = playbackCache.wrap(
+            androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory),
+        )
         val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
             .setMp4ExtractorFlags(androidx.media3.extractor.mp4.Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
 
-        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                50_000,  // min buffer — standalone streams live from Apple's CDN, and
-                         // a WAN dip underruns long before a 15s floor notices
-                180_000, // max buffer: hoard as much of the track as we can
-                2_500,   // buffer to start after initial load
-                5_000,   // buffer to restart after rebuffer
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            // Byte cap, not just seconds. The default is sized for video and starves a
-            // 320kbps audio stream well before the duration targets are reached, which
-            // is what left otherside sitting at 35% buffered and skipping.
-            .setTargetBufferBytes(32 * 1024 * 1024)
-            .build()
+        // 纯音频按「扛住一次网络抖动」定标：20s 起读 / 60s 封顶 / 8MB 硬上限 + 15s 回退缓冲。
+        // 原来的 50s/180s/32MB 是按视频流媒体写的，对 3 分钟的歌等于整首预载（也是之前 OOM 的主因）。
+        val loadControl = com.veacon.veilmusic.media.PlaybackTuning.loadControl()
 
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setRenderersFactory(
+                // offload 时整条处理器链让路，律动分析拿不到 PCM，就别再挂一个空转的处理器。
                 BeatAwareRenderersFactory(context, beatAnalyzer.newProcessor().also { p ->
-                    mainProc = p; beatAnalyzer.activate(p)
-                }, com.veacon.veilmusic.media.GapConcealProcessor())
-                    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+                    mainProc = p; if (!offloadEnabled) beatAnalyzer.activate(p)
+                }, com.veacon.veilmusic.media.GapConcealProcessor(),
+                    targetSampleRate = outputTargetSampleRate(),
+                    offload = offloadEnabled)
+                    .setExtensionRendererMode(extensionRendererMode())
                     .setEnableDecoderFallback(true)
-                    .setMediaCodecSelector(aacPreferOmxSelector)
+                    .setMediaCodecSelector(audioCodecSelector)
             )
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -528,7 +701,11 @@ class PlayerViewModel @Inject constructor(
                     .build(), false, // don't yield to Fire TV Alexa audio focus steals
             )
             .setHandleAudioBecomingNoisy(false)
-            .build().also { it.repeatMode = Player.REPEAT_MODE_OFF }
+            .build().also {
+                it.pinNormalSpeed()
+                // offload 的轨道参数只能在实例上设（Builder 上没有这个方法）。
+                if (offloadEnabled) it.trackSelectionParameters = offloadParameters()
+            }
     }
 
     /** Processor feeding the beat bus for [player]; [cfProc] for the crossfade player. */
@@ -573,7 +750,7 @@ class PlayerViewModel @Inject constructor(
         clearPreparedNext()
         preparedNextJob=viewModelScope.launch {
             val source=buildStandaloneSource(song) ?: return@launch
-            if(!canPrepareNextWithoutFade(song,generation) || _state.value.stationLaunch!=null) return@launch
+            if(!canPrepareNextWithoutFade(song,generation)) return@launch
             val previousProc=cfProc
             val exo=buildCrossfadeExo()
             val proc=cfProc;cfProc=previousProc
@@ -604,79 +781,102 @@ class PlayerViewModel @Inject constructor(
         val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setConnectTimeoutMs(60_000).setReadTimeoutMs(60_000)
             .setAllowCrossProtocolRedirects(true)
-        val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory)
+        // 交叉淡入的下一首同样走缓存：淡入前它已经被 prepare 过一遍，命中缓存时能省一次完整下载。
+        val dataSourceFactory = playbackCache.wrap(
+            androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory),
+        )
         val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
             .setMp4ExtractorFlags(androidx.media3.extractor.mp4.Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
-        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 60_000, 1_500, 3_000)
-            .setPrioritizeTimeOverSizeThresholds(true).build()
+        val loadControl = com.veacon.veilmusic.media.PlaybackTuning.loadControl()
         return ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory))
             .setLoadControl(loadControl)
             .setRenderersFactory(
-                BeatAwareRenderersFactory(context, beatAnalyzer.newProcessor().also { cfProc = it }, com.veacon.veilmusic.media.GapConcealProcessor())
-                    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+                BeatAwareRenderersFactory(context, beatAnalyzer.newProcessor().also { cfProc = it }, com.veacon.veilmusic.media.GapConcealProcessor(),
+                    targetSampleRate = outputTargetSampleRate())
+                    .setExtensionRendererMode(extensionRendererMode())
                     .setEnableDecoderFallback(true)
-                    .setMediaCodecSelector(aacPreferOmxSelector)
+                    .setMediaCodecSelector(audioCodecSelector)
             )
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
             .setHandleAudioBecomingNoisy(false)
-            .build().also { it.repeatMode = Player.REPEAT_MODE_OFF }
+            .build().also { it.pinNormalSpeed() }
     }
+
+    // ── 播放看门狗 ────────────────────────────────────────────────────────────
+    // 「播着播着没声音 / 进度卡住」在电视盒子上多半是音频 HAL 卡死或 codec 被系统回收：
+    // ExoPlayer 不报错，只是停在同一个位置。这里主动发现并自愈（重建播放器 → 换解码器 → 跳下一首）。
+
+    private var watchdogJob: kotlinx.coroutines.Job? = null
+    private var watchdogSongId: String? = null
+    private var watchdogRecoveries = 0
 
     /**
-     * MediaCodec-only player for LIVE radio. Radio decodes Widevine-**secure** (L1) AAC inside
-     * ExoPlayer; the bundled FFmpeg software renderer can't read secure buffers (it throws
-     * `FfmpegAudioRenderer error … NO_UNSUPPORTED_DRM`). So this player uses
-     * EXTENSION_RENDERER_MODE_OFF — MediaCodec handles the secure path. The main [player] keeps
-     * PREFER because standalone songs need FFmpeg for HE-AAC; radio is always plain AAC-LC.
+     * 把「解码/输出」类失败回灌给策略层：
+     *  - 解码失败 → 把这个 mime 上次选中的 codec 拉黑（落盘，下次构建播放器生效）；
+     *  - AudioTrack 初始化/写入失败 → 关掉 float 输出，之后新建的播放器走 16bit。
+     * 网络/DRM/文件类失败与解码器无关，不在这里处理。
      */
-    @OptIn(UnstableApi::class)
-    private fun buildRadioExoPlayer(): ExoPlayer {
-        val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setConnectTimeoutMs(60_000).setReadTimeoutMs(60_000)
-            .setAllowCrossProtocolRedirects(true)
-        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 60_000, 2_500, 5_000)
-            .setPrioritizeTimeOverSizeThresholds(true).build()
-        return ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory)))
-            .setLoadControl(loadControl)
-            .setRenderersFactory(
-                BeatAwareRenderersFactory(context, beatAnalyzer.newProcessor().also { p ->
-                    mainProc = p; beatAnalyzer.activate(p)
-                }, com.veacon.veilmusic.media.GapConcealProcessor())
-                    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-                    .setEnableDecoderFallback(true)
-            )
-            .setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
-            .setHandleAudioBecomingNoisy(false)
-            .build().also { it.repeatMode = Player.REPEAT_MODE_OFF }
+    private fun reportPipelineFailure(error: androidx.media3.common.PlaybackException) {
+        val mime = player.audioFormat?.sampleMimeType
+        when (error.errorCode) {
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> {
+                if (mime != null) {
+                    decoderPolicy.reportFailure(mime)
+                    webServer.addLog("DEC", "decode failed mime=$mime — codec 已拉黑，下次构建生效 blacklist=${decoderPolicy.snapshot()}")
+                }
+            }
+            androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+            androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED -> {
+                if (com.veacon.veilmusic.media.BeatAwareRenderersFactory.floatOutputAllowed) {
+                    com.veacon.veilmusic.media.BeatAwareRenderersFactory.floatOutputAllowed = false
+                    webServer.addLog("DEC", "audio track failed (${error.errorCodeName}) — 后续播放器退回 16bit 输出")
+                }
+            }
+        }
     }
 
-    /** True while [player] is the MediaCodec-only radio instance. */
-    private var radioActive = false
-    /** Bounded re-prepare attempts after a live-radio decoder/network drop; reset when it recovers. */
-    private var radioRecoveries = 0
-    private var lastMemWarn = 0L
-    /** The station's own cover (Apple Music 1 logo, etc.) — shown when paused, since a paused
-     *  stream has no "current track". Kept across the metadata track-art swaps. */
-    private var radioStationArt: String? = null
-
-    /** Warn (throttled) when the device is under memory pressure — the Fire TV reclaims the media
-     *  codec when RAM runs low, which is what drops live radio. Thermal isn't readable without
-     *  privilege, but memory pressure tracks it closely here. */
-    private fun maybeWarnMemory() {
-        val am = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        val mi = android.app.ActivityManager.MemoryInfo()
-        am.getMemoryInfo(mi)
-        val now = System.currentTimeMillis()
-        if ((mi.lowMemory || mi.availMem < mi.threshold * 2) && now - lastMemWarn > 60_000L) {
-            lastMemWarn = now
-            toast(tr(R.string.msg_016))
+    private fun startWatchdog() {
+        if (watchdogJob?.isActive == true) return
+        watchdogJob = viewModelScope.launch {
+            var lastPos = -1L
+            var stallTicks = 0
+            // delay() 在取消时抛 CancellationException，不需要再判断 isActive。
+            while (true) {
+                kotlinx.coroutines.delay(WATCHDOG_TICK_MS)
+                if (!_state.value.isPlaying) break
+                val p = player
+                // 缓冲中位置本来就不动；切歌/淡入期间也会重排，都不算卡死。
+                if (p.playbackState != Player.STATE_READY || !p.playWhenReady || crossfadeInProgress) {
+                    lastPos = -1L; stallTicks = 0; continue
+                }
+                val pos = p.currentPosition
+                if (pos == lastPos) stallTicks++ else { stallTicks = 0; lastPos = pos }
+                if (stallTicks >= WATCHDOG_STALL_TICKS) { recoverFromStall(pos); break }
+            }
         }
+    }
+
+    private fun stopWatchdog() { watchdogJob?.cancel(); watchdogJob = null }
+
+    private fun recoverFromStall(atMs: Long) {
+        val song = _state.value.currentSong ?: return
+        if (watchdogSongId != song.id) { watchdogSongId = song.id; watchdogRecoveries = 0 }
+        watchdogRecoveries++
+        webServer.addLog("WDOG", "pos stuck at ${atMs}ms on ${song.title} (recovery #$watchdogRecoveries)")
+        if (watchdogRecoveries > WATCHDOG_MAX_RECOVERIES) {
+            webServer.addLog("WDOG", "giving up on ${song.title} — skipping")
+            watchdogRecoveries = 0
+            advanceQueue()
+            return
+        }
+        // 重建播放器（等价于重建 sink + 重新协商解码器），位置保留。
+        pendingRestore = RestoreInfo(song, atMs.coerceAtLeast(0L), _state.value.isFullStream)
+        startPendingRestore(autoPlay = true)
     }
 
     /** Swap the shared [player] for a fresh instance built by [factory], carrying over the listener
@@ -689,21 +889,18 @@ class PlayerViewModel @Inject constructor(
         mediaSession?.release(); mediaSession = buildMediaSession(player)
     }
 
-    /** Leaving radio → restore the FFmpeg-preferring player the rest of playback expects. */
-    @OptIn(UnstableApi::class)
-    private fun ensureMainPlayer() {
-        if (!radioActive) return
-        radioActive = false
-        radioRecoveries = 0
-        _state.update { it.copy(isLiveRadio = false) }
-        swapPlayer { buildExoPlayer() }
-    }
-
     @OptIn(UnstableApi::class)
     var player: ExoPlayer = buildExoPlayer()
         private set
 
     init {
+        webServer.addLog(
+            "DEC",
+            "pipeline ${com.veacon.veilmusic.media.PlaybackTuning.summary()} | " +
+                "${com.veacon.veilmusic.media.FfmpegSupport.describe()} | " +
+                "${com.veacon.veilmusic.media.OutputTuning.summary(unifySampleRate, offloadEnabled, outputSampleRate)} | " +
+                "cache=256MB blacklist=${decoderPolicy.snapshot()}",
+        )
         // Offset can also be changed from the phone web server — follow it live.
         viewModelScope.launch {
             lyricsOffsetPrefs.offsetMs.collect { ms ->
@@ -774,13 +971,12 @@ class PlayerViewModel @Inject constructor(
     }
 
     private val playerListener = object : Player.Listener {
-        override fun onMetadata(metadata: androidx.media3.common.Metadata) = onRadioMetadata(metadata)
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             val pos = player.currentPosition
             val song = _state.value.currentSong?.title ?: "?"
             webServer.addLog("EXO", "isPlaying=$isPlaying pos=${pos}ms song=$song source=${player.currentMediaItem?.mediaId} gen=$attachedSourceGeneration/$playGen preparing=${sourcePreparation.isPending} cfade=$crossfadeInProgress")
-            if (isPlaying && radioActive) radioRecoveries = 0   // live radio recovered
-            _state.update { it.copy(isPlaying = isPlaying, stationLaunch = if (isPlaying && radioActive && (it.stationLaunch == null || player.currentMediaItem?.mediaId == it.stationLaunch.id)) null else it.stationLaunch) }
+            if (isPlaying) { enforceNormalSpeed("PLAY"); startWatchdog() } else stopWatchdog()
+            _state.update { it.copy(isPlaying = isPlaying) }
         }
         override fun onPlaybackStateChanged(state: Int) {
             val name = when (state) {
@@ -819,14 +1015,18 @@ class PlayerViewModel @Inject constructor(
                     player.prepare(); player.play()
                 }
             }
-            if (state == Player.STATE_READY && lastFormatLoggedFor != song) {
-                lastFormatLoggedFor = song
+            // 去重键带上解码方式：切硬解/软解后要再记一行，否则无法确认新解码路径真的在工作。
+            val formatKey = "$song|${decoderMode.key}"
+            if (state == Player.STATE_READY && lastFormatLoggedFor != formatKey) {
+                lastFormatLoggedFor = formatKey
+                enforceNormalSpeed("READY")
                 val f = player.audioFormat
                 webServer.addLog(
                     "FMT",
                     "codec=${f?.sampleMimeType ?: "?"} " +
                         "bitrate=${f?.bitrate ?: -1} rate=${f?.sampleRate ?: -1}Hz " +
                         "ch=${f?.channelCount ?: -1} enc=${f?.pcmEncoding ?: -1} " +
+                        "dec=${decoderMode.key} speed=${player.playbackParameters.speed} " +
                         "path=${if (usingStandalone) "standalone" else "proxy"} " +
                         "buffered=${player.bufferedPercentage}%",
                 )
@@ -892,38 +1092,12 @@ class PlayerViewModel @Inject constructor(
         }
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             val pos = player.currentPosition
-            // Live radio: a single continuous stream, so advanceQueue() has nothing to skip to.
-            // Transient MediaCodec/network drops (esp. under thermal pressure) just kill it — so
-            // re-prepare the live source at the live edge. Bounded so a persistent failure doesn't spin.
-            if (radioActive) {
-                val sid = _state.value.currentSong?.id
-                maybeWarnMemory()   // a reclaimed codec under memory/thermal pressure is the usual cause
-                webServer.addLog("ERR", "live radio ${error.errorCodeName} — re-prepare $sid (#${radioRecoveries + 1})")
-                if (sid != null && sid.startsWith("ra.") && radioRecoveries < 6) {
-                    radioRecoveries++
-                    radioActive = false   // force a fresh MediaCodec player in playLiveStation
-                    val request = playbackRequests.revision
-                    val generation = playGen
-                    radioRetryJob?.cancel()
-                    radioRetryJob = viewModelScope.launch {
-                        kotlinx.coroutines.delay(800L * radioRecoveries)
-                        if (playbackRequests.isCurrent(request) && generation == playGen && player.playWhenReady) {
-                            radioRetryJob = null
-                            playLiveStation(sid, openPlayer = false)
-                        }
-                    }
-                } else {
-                    toast(tr(R.string.msg_018))
-                    _state.value.stationLaunch?.let { failStationIfCurrent(it.request) }
-                    _state.update { it.copy(isPlaying = false) }
-                }
-                return
-            }
             // Preserve the user's play/pause intent across error recovery — a restored-paused track
             // that fails standalone and retries via proxy must NOT auto-start playing.
             val wasPlaying = player.playWhenReady
             val song = _state.value.currentSong?.title ?: "?"
             webServer.addLog("ERR", "${error.errorCodeName} pos=${pos}ms song=$song cfade=$crossfadeInProgress cause=${error.cause?.message}")
+            reportPipelineFailure(error)
             val current=_state.value.currentSong
             // 落雪直链 TTL ≈21 分钟：过期/源端 403 时重解析一次并保持进度。
             val lxCurrent = _state.value.currentSong?.takeIf { it.id == lxSongId }
@@ -1025,7 +1199,7 @@ class PlayerViewModel @Inject constructor(
             run {
                 val cur = _state.value.queue.getOrNull(_state.value.queueIndex)
                 if (usingStandalone && !crossfadeInProgress && cur != null &&
-                    !_state.value.isLiveRadio && !cur.isMusicVideo && catalogRetriedSongId != cur.id) {
+                    !cur.isMusicVideo && catalogRetriedSongId != cur.id) {
                     val myGen = ++playGen
                     sourcePreparation.begin(myGen, wasPlaying)
                     viewModelScope.launch {
@@ -1208,9 +1382,13 @@ class PlayerViewModel @Inject constructor(
             }
         }
         pollProgress()
-        // Don't restore-and-play behind the setup screen — a first-run user would
-        // get audio over onboarding. onOnboardingFinished() picks it up instead.
-        if (onboardingPrefs.completed) restoreState()
+        // 恢复上次的书签（启动续播就靠这一步）。这里不再看引导状态：引导屏已经不在启动流程里，
+        // 而真正的首次启动本来就没有书签可恢复，所以不需要额外的门。
+        //
+        // ⚠️ 必须比构造函数晚一拍：viewModelScope 用的是 Dispatchers.Main.immediate，
+        // 在 init 里直接 launch 会当场同步执行——续播会立刻去重建播放器、取消解密任务，
+        // 而那时本类后面声明的字段（OwnedTaskRegistry 等）还没初始化，会 NPE。
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { restoreState() }
         checkServerReachable()
         viewModelScope.launch { checkAppleServiceStatus() }
     }
@@ -1305,7 +1483,6 @@ class PlayerViewModel @Inject constructor(
 
     private fun saveState() {
         val s = _state.value
-        if (s.stationLaunch != null) return
         val song = s.currentSong ?: return
         // Preserve V12's crossfade and interrupted-source bookmark rules.
         if (crossfadeInProgress) return
@@ -1320,7 +1497,7 @@ class PlayerViewModel @Inject constructor(
                 putBoolean("background_play", s.backgroundPlayEnabled)
             }
         }
-        bookmarkWriter.submit(PlaybackBookmark(song, s.queue, s.queueIndex, savedPosition, s.isFullStream))
+        bookmarkWriter.submit(PlaybackBookmark(song, s.queue, s.queueIndex, savedPosition, s.isFullStream, s.isPlaying))
     }
 
     /** True when the app should keep playing after it leaves the foreground. */
@@ -1370,23 +1547,33 @@ class PlayerViewModel @Inject constructor(
                 _videoRequest.value = VideoRequest(song, autoOpen = false, startPaused = true)
                 return@launch
             }
-            // DON'T load the track into the player on restore. Loading a media item + having a live
-            // MediaSession makes Android's media-resumption auto-RESUME playback on foreground — that
-            // was the "song autoplays on open". Stash it and load only on the user's first play press.
-            webServer.addLog("PLR", "restoreState idx=$idx posMs=$posMs song=${song.title} — deferred (paused)")
+            // 续播：上次退出时正在播放就直接从断点接着放；退出时是暂停的，就只恢复出来、等按下播放。
+            // （以前这里一律延后加载，是为了躲开 Android 媒体恢复的自动开播；现在自动续播是明确需求，
+            //   开播与否改由书签里的 was_playing 决定。）
             pendingRestore = RestoreInfo(song, posMs, full)
             // Lyrics/motion are just display — safe (and nice) to warm now.
             if (full) loadLyrics(song.id)
             loadMotion(song.id)
-        } catch (_: Exception) {}
+            if (prefs.getBoolean("was_playing", true)) {
+                webServer.addLog("PLR", "restoreState idx=$idx posMs=$posMs song=${song.title} — 续播")
+                startPendingRestore(autoPlay = true)
+            } else {
+                webServer.addLog("PLR", "restoreState idx=$idx posMs=$posMs song=${song.title} — deferred (paused)")
+            }
+        } catch (e: Exception) {
+            // 这里静默吞异常会让「启动没恢复」毫无线索，至少留一行。
+            webServer.addLog("PLR", "restoreState failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
-    /** A restored track not yet loaded into the player — loaded on the first play press so nothing
-     *  (incl. Android media resumption) can auto-start it. */
+    /** A restored track not yet loaded into the player — loaded on the first play press, or straight
+     *  away on launch when the previous session was playing (see restoreState). */
     private data class RestoreInfo(val song: Song, val posMs: Long, val full: Boolean)
     private var pendingRestore: RestoreInfo? = null
 
-    private fun startPendingRestore() {
+    /** [autoPlay] = false restores the track but stops at "ready to play" (used when the last
+     *  session was paused, so a fresh launch doesn't start audio nobody asked for). */
+    private fun startPendingRestore(autoPlay: Boolean = true) {
         val r = pendingRestore ?: return
         pendingRestore = null
         hasPlayedSomething = true
@@ -1396,21 +1583,42 @@ class PlayerViewModel @Inject constructor(
         failedPreparationSongId = null
         beginPlaybackSelection()
         val myGen = ++playGen
-        sourcePreparation.begin(myGen)
+        sourcePreparation.begin(myGen, shouldPlay = autoPlay)
         attachedSourceGeneration = -1
         player.playWhenReady = false
         player.stop(); player.clearMediaItems()
         _state.update { it.copy(isLoading = true, isPlaying = false) }
+        webServer.addLog("PLR", "startPendingRestore song=${r.song.title} pos=${r.posMs}ms autoPlay=$autoPlay lx=$lxMode standalone=$standalone")
         viewModelScope.launch {
             if (lxMode) {
-                val stream = lx.resolve(r.song)
+                // 冷启动时音源脚本还在加载（十几秒），这里先等就绪再解析：解析内部虽然也会等，
+                // 但那是阻塞等锁，会迟迟不返回。整段再套一个有界超时，卡住时明确退回「待播」状态，
+                // 而不是静静地什么也不发生。
+                webServer.addLog("LX", "等待音源就绪后解析 ${r.song.title}")
+                val stream = if (autoPlay) {
+                    kotlinx.coroutines.withTimeoutOrNull(LX_RESTORE_TIMEOUT_MS) {
+                        lx.ensureReady()
+                        lx.resolve(r.song)
+                    }
+                } else {
+                    lx.ensureReady()
+                    lx.resolve(r.song)
+                }
                 if (myGen != playGen) return@launch
+                if (stream == null && autoPlay) {
+                    // 超时/未就绪：保留待播状态，按一次播放键还能接着来。
+                    pendingRestore = RestoreInfo(r.song, r.posMs, r.full)
+                    sourcePreparation.cancel()
+                    _state.update { it.copy(isLoading = false) }
+                    webServer.addLog("LX", "启动续播未完成（${LX_RESTORE_TIMEOUT_MS}ms 内未取到直链）— 保留待播状态")
+                    return@launch
+                }
                 if (stream != null) {
                     val play = sourcePreparation.finish(myGen) ?: return@launch
                     attachedSourceGeneration = myGen
                     lxSongId = r.song.id; lxRetriedSongId = null
                     webServer.addLog("LX", "恢复播放 ${r.song.title} · ${stream.kind} ${stream.kbps}kbps")
-                    announceResolvedSource(r.song, stream)
+                    recordResolvedStream(r.song, stream)
                     player.setMediaItem(buildLxMediaItem(r.song, stream), r.posMs)
                     player.prepare(); player.playWhenReady = play
                     _state.update { it.copy(standaloneActive = false) }
@@ -1505,7 +1713,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
     fun cyclePlaybackOrder() {
-        _state.update { if (it.stationLaunch == null) it.nextPlaybackOrder() else it }
+        _state.update { it.nextPlaybackOrder() }
     }
     fun toggleRepeat() {
         _state.update { it.copy(repeatMode = when (it.repeatMode) {
@@ -1550,7 +1758,7 @@ class PlayerViewModel @Inject constructor(
         val position = if (pendingRestore != null) pendingRestore!!.posMs
             else if (crossfadeInProgress) crossfadeExo?.currentPosition ?: 0L
             else if (sourcePreparation.isPending) _state.value.progressMs else player.currentPosition
-        if (needsSource && !_state.value.isLiveRadio) {
+        if (needsSource) {
             _state.value.currentSong?.takeUnless { it.isMusicVideo }?.let {
                 pendingRestore = RestoreInfo(it, position.coerceAtLeast(0L), _state.value.isFullStream)
             }
@@ -1626,6 +1834,65 @@ class PlayerViewModel @Inject constructor(
         prefs.edit { putBoolean("volume_leveling", next) }
     }
 
+    /**
+     * 硬解 / 软解 switch. The decoder is chosen when a player is built, so the current one is
+     * rebuilt in place: position and play/pause intent are captured first, the fresh player is
+     * swapped in, and the same track is re-prepared at the same offset on the new decoder path.
+     * That makes the switch observable immediately instead of "from the next song".
+     */
+    fun setDecoderMode(mode: com.veacon.veilmusic.data.DecoderMode) {
+        if (mode == decoderMode) return
+        decoderMode = mode
+        prefs.edit { putString("decoder_mode", mode.key) }
+        _state.update { it.copy(decoderMode = mode) }
+        webServer.addLog("DEC", "decoder=${mode.key} (${if (mode == com.veacon.veilmusic.data.DecoderMode.HARDWARE) "硬解/MediaCodec" else "软解/FFmpeg"})")
+        rebuildPlayerKeepingPosition("decoder=${mode.key}")
+    }
+
+    /**
+     * 换输出形态（解码器 / 统一采样率 / offload）后必须整只播放器重建 —— 这三样都在
+     * `buildExoPlayer` 里落定。当前曲目在同一定位重新起播，切换对用户是"立刻生效"。
+     */
+    private fun rebuildPlayerKeepingPosition(reason: String) {
+        val resumable = _state.value.currentSong
+            ?.takeIf { !it.isMusicVideo && player.playbackState != Player.STATE_IDLE }
+        val position = if (resumable != null) pendingRestore?.posMs ?: player.currentPosition.coerceAtLeast(0L) else 0L
+        val wasPlaying = _state.value.isPlaying
+        crossfadeExo?.let { cf -> try { cf.stop(); cf.release() } catch (_: Exception) {} }
+        crossfadeExo = null; crossfadeInProgress = false; fadeJob?.cancel(); fadeJob = null
+        clearPreparedNext()
+        swapPlayer { buildExoPlayer() }
+        if (resumable != null) {
+            webServer.addLog("OUT", "re-preparing ${resumable.title} at ${position}ms ($reason)")
+            pendingRestore = RestoreInfo(resumable, position, _state.value.isFullStream)
+            startPendingRestore(autoPlay = wasPlaying)
+        }
+    }
+
+    /** 统一输出采样率：开启后 44.1k/48k 混排不再反复重建 AudioTrack。 */
+    fun setUnifySampleRate(on: Boolean) {
+        if (on == unifySampleRate) return
+        unifySampleRate = on
+        prefs.edit { putBoolean("unify_sample_rate", on) }
+        _state.update { it.copy(unifySampleRate = on) }
+        webServer.addLog("OUT", com.veacon.veilmusic.media.OutputTuning.summary(on, offloadEnabled, outputSampleRate))
+        rebuildPlayerKeepingPosition("unify=${on}")
+    }
+
+    /** 音频 offload：解码交给 DSP。设备探测不到支持时这里不会有任何效果。 */
+    fun setAudioOffload(on: Boolean) {
+        if (on == offloadEnabled) return
+        if (on && !com.veacon.veilmusic.media.OutputTuning.offloadSupported()) return
+        offloadEnabled = on
+        prefs.edit { putBoolean("audio_offload", on) }
+        _state.update { it.copy(audioOffload = on) }
+        webServer.addLog("OUT", com.veacon.veilmusic.media.OutputTuning.summary(unifySampleRate, on, outputSampleRate))
+        rebuildPlayerKeepingPosition("offload=$on")
+    }
+
+    /** 设置页据此决定是否显示 offload 开关。 */
+    fun audioOffloadSupported(): Boolean = com.veacon.veilmusic.media.OutputTuning.offloadSupported()
+
     fun toggleScreensaverKeepBackground() {
         val next = !_state.value.screensaverKeepBackground
         _state.update { it.copy(screensaverKeepBackground = next) }
@@ -1680,8 +1947,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun playQueueItem(idx: Int, skipFadeIn: Boolean = false, userOpened: Boolean = false) {
-        ensureMainPlayer()      // leaving live radio → restore the FFmpeg-preferring player
-        if (_state.value.isLiveRadio) _state.update { it.copy(isLiveRadio = false) }
         pendingRestore = null   // any real queue action supersedes a deferred restore
         val q = _state.value.queue
         if (q.isEmpty() || idx !in q.indices) {
@@ -1809,7 +2074,7 @@ class PlayerViewModel @Inject constructor(
                     attachedSourceGeneration = myGen
                     lxSongId = song.id; lxRetriedSongId = null
                     webServer.addLog("LX", "播放 ${song.title} · ${stream.kind} ${stream.kbps}kbps · ${stream.source}/${stream.quality} · ${stream.resolveMs}ms")
-                    announceResolvedSource(song, stream)
+                    recordResolvedStream(song, stream)
                     player.setMediaItem(buildLxMediaItem(song, stream))
                     player.prepare()
                     startPlayback(shouldPlay)
@@ -1946,245 +2211,6 @@ class PlayerViewModel @Inject constructor(
     fun addToPlaylist(playlistId: String, playlistName: String, song: com.veacon.veilmusic.data.model.Song) {
         localLibrary.addSongToPlaylist(playlistId, song)
         toast("已加入「$playlistName」")
-    }
-
-    private fun showStationLaunch(request: Long, id: String, title: String, artwork: String?, openPlayer: Boolean = true) {
-        pause() // Bookmark the real track before publishing transient station metadata.
-        ++playGen
-        sourcePreparation.cancel(); attachedSourceGeneration = -1; awaitingSongStart = null
-        pendingRestore = null; failedPreparationSongId = null
-        radioRetryJob?.cancel(); radioRetryJob = null
-        prefetchJob?.cancel(); cancelOtherDecrypts(null)
-        stationJob?.cancel(); stationJob = null
-        fadeJob?.cancel(); fadeJob = null; crossfadeInProgress = false
-        crossfadeExo?.let { cf -> cfExoErrListener?.let { cf.removeListener(it) }; cf.stop(); cf.release() }
-        crossfadeExo = null; cfExoErrListener = null
-        player.stop(); player.clearMediaItems(); player.volume = 1f; player.repeatMode = Player.REPEAT_MODE_OFF
-        clearVideoRequest()
-        _state.update { it.copy(stationLaunch = StationLaunch(request, id, title.ifBlank { "Apple Music Radio" }, artwork),
-            isPlaying = false, isLoading = true) }
-        if (openPlayer) _userPlaybackRequests.value++
-    }
-
-    fun reserveStationRequest(id: String, title: String, artwork: String?): Long {
-        val request = beginPlaybackSelection()
-        showStationLaunch(request, id, title, artwork)
-        return request
-    }
-
-    fun failStationIfCurrent(request: Long) {
-        if (!playbackRequests.isCurrent(request)) return
-        _state.update { state -> state.stationLaunch?.takeIf { it.request == request }?.let {
-            state.copy(stationLaunch = it.copy(failed = true), isLoading = false, isPlaying = false)
-        } ?: state }
-    }
-
-    fun watchStationRequest(request: Long, job: kotlinx.coroutines.Job) {
-        if (!playbackRequests.isCurrent(request)) { job.cancel(); return }
-        stationJob = job
-        job.invokeOnCompletion { if (playbackRequests.isCurrent(request)) failStationIfCurrent(request) }
-    }
-
-    fun playStation(stationId: String, stationArt: String? = null, stationTitle: String = "Apple Music Radio", openPlayer: Boolean = true) {
-        // Apple's LIVE radio stations (fixed set) stream a live Widevine HLS feed via /play/assets,
-        // not a next-tracks song queue — route them to the live path.
-        if (stationId in LIVE_STATION_IDS) { playLiveStation(stationId, stationArt, stationTitle, openPlayer); return }
-        val request = playbackRequests.station(stationId)
-        if (request == null) {
-            webServer.addLog("PLR", "station request already pending; ignored duplicate")
-            return
-        }
-        showStationLaunch(request, stationId, stationTitle, stationArt, openPlayer)
-        webServer.addLog("PLR", "station queue requested revision=$request")
-        stationJob = viewModelScope.launch {
-            try {
-                val songs = repo.getStationTracks(stationId).getOrDefault(emptyList())
-                currentCoroutineContext().ensureActive()
-                if (!playbackRequests.isCurrent(request)) {
-                    webServer.addLog("PLR", "discarded stale station queue revision=$request")
-                    return@launch
-                }
-                // Clear before playAlbum invalidates other queue requests; don't cancel ourselves.
-                stationJob = null
-                playbackRequests.finishStation(request)
-                if (songs.isNotEmpty()) playAlbum(songs, openPlayer = false)
-                else stationJob = launchLiveStation(request, stationId, stationArt, stationTitle)
-            } catch (error: Exception) {
-                if (error is kotlinx.coroutines.CancellationException) throw error
-                failStationIfCurrent(request)
-                toast(tr(R.string.msg_032))
-            } finally {
-                playbackRequests.finishStation(request)
-            }
-        }
-    }
-
-    /** "创建电台" from a song — Apple exposes a per-song radio whose id is `ra.{catalogId}`
-     *  (verified: song 6799279367 → station ra.6799279367). Library ids resolve to catalog first. */
-    fun createSongStation(song: com.veacon.veilmusic.data.model.Song): kotlinx.coroutines.Job {
-        val request = reserveStationRequest("song-station:${song.id}", tr(R.string.msg_033, song.title), song.artworkUrl(600))
-        return viewModelScope.launch {
-            val catId = if (song.id.startsWith("i."))
-                appleClient.resolveCatalogFor(song.id, mutPrefs.getMUT())
-            else song.id.filter { it.isDigit() }.ifEmpty { song.id }
-            currentCoroutineContext().ensureActive()
-            if (!playbackRequests.isCurrent(request)) return@launch
-            if (catId.isNullOrEmpty()) { failStationIfCurrent(request); toast(tr(R.string.msg_034, song.title)); return@launch }
-            toast(tr(R.string.msg_035, song.title))
-            playStation("ra.$catId", song.artworkUrl(600), tr(R.string.msg_033, song.title), openPlayer = false)
-        }.also { watchStationRequest(request, it) }
-    }
-
-    /** Genre station — shuffled top songs for the genre, played standalone. */
-    fun playGenreStation(genreId: String): kotlinx.coroutines.Job {
-        val request = beginPlaybackSelection()
-        return viewModelScope.launch {
-            val songs = repo.getGenreStation(genreId).getOrDefault(emptyList())
-            currentCoroutineContext().ensureActive()
-            if (playbackRequests.isCurrent(request) && songs.isNotEmpty()) playAlbum(songs, shuffle = true)
-        }
-    }
-
-    /** Plain internet-radio stream player. Radio UI is currently hidden — kept only so
-     *  RadioScreen still compiles. No ICY song-identification. */
-    @OptIn(UnstableApi::class)
-    fun playInternetRadio(name: String, streamUrl: String, subtitle: String = tr(R.string.msg_036)) {
-        beginPlaybackSelection()
-        ++playGen; sourcePreparation.cancel(); attachedSourceGeneration = playGen
-        awaitingSongStart = null
-        usingStandalone = false
-        lastErrorKey = null
-        prefetchJob?.cancel()
-        val fakeSong = com.veacon.veilmusic.data.model.Song(
-            id = "radio:$streamUrl", title = name, artistName = subtitle,
-            albumName = "", durationMs = 0L, artworkUrl = null, artworkBgColor = null,
-            previewUrl = null, hasLyrics = false,
-        )
-        _state.update { it.copy(queue = listOf(fakeSong), currentSong = fakeSong, song = fakeSong, queueIndex = 0, lyrics = emptyList(), isFullStream = true, motionUrl = null, isLiveRadio = true, userQueue = emptyList()) }
-        player.setMediaItem(buildMediaItem(fakeSong, streamUrl))
-        player.prepare()
-        player.volume = 1f
-        player.play()
-    }
-
-    /** In-band timed metadata from the live radio stream. Apple ships the current track as ID3
-     *  frames inside each CMAF segment: TIT2 title, TPE1 artist, TALB album, and WXXX artwork URLs
-     *  (390px + 1400px). Fires every segment, so only push a state update when the track changes. */
-    @OptIn(UnstableApi::class)
-    private fun onRadioMetadata(metadata: androidx.media3.common.Metadata) {
-        if (!radioActive) return
-        if (_state.value.stationLaunch?.let { player.currentMediaItem?.mediaId != it.id } == true) return
-        var title: String? = null
-        var artist: String? = null
-        var album: String? = null
-        var art: String? = null
-        var adamId: String? = null
-        for (i in 0 until metadata.length()) {
-            when (val e = metadata.get(i)) {
-                is androidx.media3.extractor.metadata.id3.TextInformationFrame -> {
-                    val v = e.values.firstOrNull()
-                    when (e.id) {
-                        "TIT2", "TT2" -> title = v
-                        "TPE1", "TP1" -> artist = v
-                        "TALB", "TAL" -> album = v
-                    }
-                }
-                is androidx.media3.extractor.metadata.id3.UrlLinkFrame ->
-                    if (e.id == "WXXX") { if (art == null || e.url.contains("1400")) art = e.url }
-                is androidx.media3.extractor.metadata.id3.PrivFrame ->
-                    if (e.owner == "com.apple.radio.adamid")
-                        adamId = String(e.privateData, Charsets.US_ASCII).filter { it.isDigit() }.ifEmpty { null }
-            }
-        }
-        if (title == null && artist == null) return   // a jingle/ping has no track frames
-        val cur = _state.value.currentSong
-        if (cur != null && cur.title == title && cur.artistName == artist) return  // unchanged
-        _state.update {
-            val c = it.currentSong ?: return@update it
-            val s = c.copy(
-                id = adamId ?: c.id,
-                title = title ?: c.title,
-                artistName = artist ?: c.artistName,
-                albumName = album ?: c.albumName,
-                artworkUrl = art ?: c.artworkUrl,
-            )
-            it.copy(currentSong = s, song = s, queue = listOf(s), motionUrl = null, stationLaunch = null)
-        }
-    }
-
-    fun playLiveStation(stationId: String, stationArt: String? = null, stationTitle: String = "Apple Music Radio", openPlayer: Boolean = true): kotlinx.coroutines.Job {
-        val request = beginPlaybackSelection()
-        showStationLaunch(request, stationId, stationTitle, stationArt, openPlayer)
-        return launchLiveStation(request, stationId, stationArt, stationTitle).also { stationJob = it }
-    }
-
-    private fun launchLiveStation(request: Long, stationId: String, stationArt: String?, stationTitle: String): kotlinx.coroutines.Job {
-        return viewModelScope.launch {
-          try {
-            val info = repo.getStationStream(stationId).getOrNull() ?: run { failStationIfCurrent(request); return@launch }
-            currentCoroutineContext().ensureActive()
-            if (!playbackRequests.isCurrent(request)) return@launch
-            val url = info.liveStreamUrl ?: run { failStationIfCurrent(request); return@launch }
-            ++playGen; sourcePreparation.cancel(); attachedSourceGeneration = playGen
-            awaitingSongStart = null
-            Log.d("PlayerVM", "playLiveStation id=$stationId url=${url.take(80)} keyUri=${info.drmKeyUri?.take(40)}")
-            usingStandalone = false
-            lastErrorKey = null
-            val art = stationArt ?: radioStationArt
-            radioStationArt = art
-            val fakeSong = com.veacon.veilmusic.data.model.Song(
-                id = stationId, title = stationTitle, artistName = "Apple Music",
-                albumName = "", durationMs = 0L, artworkUrl = art, artworkBgColor = null,
-                previewUrl = null, hasLyrics = false,
-            )
-            _state.update { it.copy(queue = listOf(fakeSong), currentSong = fakeSong, song = fakeSong, queueIndex = 0, lyrics = emptyList(), isFullStream = true, motionUrl = null, isLiveRadio = true, userQueue = emptyList(), radioStationArt = art) }
-
-            // Live radio uses a STANDARD Widevine proxy (raw challenge → raw license) at Apple's
-            // linear.tv key server — NOT the song `acquireWebPlaybackLicense` JSON wrapper. So the
-            // built-in HttpMediaDrmCallback is the right callback; we only add the auth headers.
-            val keyUri = info.drmKeyUri
-            if (keyUri != null) {
-                try {
-                    // Secure Widevine AAC needs the MediaCodec-only player (FFmpeg can't decode it).
-                    if (!radioActive) { swapPlayer { buildRadioExoPlayer() }; radioActive = true }
-                    val bearer = appleClient.getBearer()
-                    if (!playbackRequests.isCurrent(request)) return@launch
-                    val mut = mutPrefs.getMUT()
-                    val drmCallback = com.veacon.veilmusic.media.LiveRadioDrmCallback(
-                        keyUri = keyUri, bearer = bearer, mut = mut,
-                        adamId = info.adamId ?: stationId.removePrefix("ra."),
-                        wvKeyUri = info.wvKeyUri ?: "",
-                    )
-                    val drmManager = DefaultDrmSessionManager.Builder()
-                        .setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
-                        .setMultiSession(false)
-                        .build(drmCallback)
-                    val mediaSource = androidx.media3.exoplayer.hls.HlsMediaSource.Factory(
-                        androidx.media3.datasource.DefaultHttpDataSource.Factory()
-                    )
-                        .setDrmSessionManagerProvider { drmManager }
-                        .createMediaSource(buildMediaItem(fakeSong, url))
-                    player.setMediaSource(mediaSource)
-                    player.prepare()
-                    player.play()
-                    return@launch
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    Log.e("PlayerVM", "Live station DRM failed: ${e.message}")
-                }
-            }
-            currentCoroutineContext().ensureActive()
-            if (!playbackRequests.isCurrent(request)) return@launch
-            // No DRM key or DRM failed — try plain HLS
-            player.setMediaItem(buildMediaItem(fakeSong, url))
-            player.prepare()
-            player.play()
-          } catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error
-            failStationIfCurrent(request)
-            toast(tr(R.string.msg_032))
-          }
-        }
     }
 
     /** One metadata recovery per selection; stale network results cannot attach after a song change. */
@@ -2399,7 +2425,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun pause() {
-        radioRetryJob?.cancel(); radioRetryJob = null
         sourcePreparation.pause()
         player.pause()
         crossfadeExo?.pause()
@@ -2409,7 +2434,6 @@ class PlayerViewModel @Inject constructor(
 
     /** Explicit play is idempotent, including stopped/ended players and interrupted loads. */
     fun resume() {
-        radioRetryJob?.cancel(); radioRetryJob = null
         if (pendingRestore != null) { startPendingRestore(); return }
         if (sourcePreparation.isPending) {
             sourcePreparation.resume()
@@ -2427,7 +2451,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun togglePlayPause() {
-        if (_state.value.stationLaunch != null) return
         val wantsPlay = if (sourcePreparation.isPending) sourcePreparation.playWhenReady else player.playWhenReady
         // stop() may retain playWhenReady=true (e.g. a failed resume on V7).
         if (wantsPlay && (sourcePreparation.isPending ||
@@ -2441,8 +2464,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun next() {
-        if (_state.value.stationLaunch != null) return
-        if (radioActive) return   // live radio is a single continuous stream — no skipping
         val s = _state.value
         webServer.addLog("NAV", "next() pos=${player.currentPosition}ms idx=${s.queueIndex} userQueue=${s.userQueue.size}")
         fadeJob?.cancel(); crossfadeInProgress = false; player.volume = 1f; player.repeatMode = Player.REPEAT_MODE_OFF
@@ -2464,8 +2485,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
     fun prev() {
-        if (_state.value.stationLaunch != null) return
-        if (radioActive) return   // live radio — no skipping back
         val s = _state.value
         val pos = player.currentPosition
         webServer.addLog("NAV", "prev() pos=${pos}ms idx=${s.queueIndex}")
@@ -2557,6 +2576,38 @@ class PlayerViewModel @Inject constructor(
     // Add to end of user priority queue (plays before rest of playlist)
     fun addToQueue(song: Song) { if (!VideoPlaybackPolicy.allows(song)) return; _state.update { it.copy(userQueue = it.userQueue + song) }; prefetchSong(song) }
 
+    /**
+     * Apple 的封面地址是模板（`.../{w}x{h}bb.jpg`），原样存下来 Coil 只会得到一个灰块。
+     * 这里按固定尺寸替换掉占位符；已经不是模板的地址原样返回。
+     */
+    private fun resolveCover(url: String?, size: Int = 600): String? = url
+        ?.replace("{w}", "$size")
+        ?.replace("{h}", "$size")
+        ?.replace("{f}", "jpg")
+        ?.takeIf { it.isNotBlank() }
+
+    /**
+     * 「添加至列表」on an album / playlist page — 把整张专辑 / 整个歌单存成资料库里的一条
+     * **播放列表**（不是「歌曲」）。[originKey] 标记来源，同一张专辑重复点只补齐缺的曲目。
+     */
+    fun saveAsPlaylist(name: String, originKey: String, coverUrl: String?, songs: List<Song>) {
+        val playable = VideoPlaybackPolicy.audio(songs)
+        if (playable.isEmpty()) return
+        val cover = resolveCover(coverUrl) ?: playable.firstOrNull()?.artworkUrl(600)
+        val result = localLibrary.addAsPlaylist(name, originKey, cover, playable)
+        webServer.addLog("LIB", "saveAsPlaylist key=$originKey n=${playable.size} -> $result")
+        toast(
+            when (result) {
+                is com.veacon.veilmusic.data.local.LocalLibraryStore.PlaylistUpsert.Created ->
+                    tr(R.string.msg_329, result.playlist.name, result.added)
+                is com.veacon.veilmusic.data.local.LocalLibraryStore.PlaylistUpsert.Updated ->
+                    tr(R.string.msg_330, result.playlist.name, result.added)
+                is com.veacon.veilmusic.data.local.LocalLibraryStore.PlaylistUpsert.Unchanged ->
+                    tr(R.string.msg_331, result.playlist.name)
+            },
+        )
+    }
+
     // Insert at front of user priority queue (plays immediately next)
     fun playNext(song: Song) { if (!VideoPlaybackPolicy.allows(song)) return; _state.update { it.copy(userQueue = listOf(song) + it.userQueue) }; prefetchSong(song) }
 
@@ -2577,21 +2628,21 @@ class PlayerViewModel @Inject constructor(
     // asked for again via loadLyrics when it becomes current. Without this, both fire a full network
     // fetch for the same id at once (seen as two concurrent getLyrics in logcat). Both paths now await
     // the same Deferred.
-    private val lyricsInFlight = mutableMapOf<String, kotlinx.coroutines.Deferred<List<LyricLine>>>()
+    private val lyricsInFlight = mutableMapOf<String, kotlinx.coroutines.Deferred<com.veacon.veilmusic.data.datasource.LyricsBundle>>()
 
-    private fun fetchLyricsShared(id: String, title: String, artist: String, durationSec: Long): kotlinx.coroutines.Deferred<List<LyricLine>> {
-        lyricsCache[id]?.let { return kotlinx.coroutines.CompletableDeferred(it) }
+    private fun fetchLyricsShared(id: String, title: String, artist: String, durationSec: Long): kotlinx.coroutines.Deferred<com.veacon.veilmusic.data.datasource.LyricsBundle> {
+        lyricsCache[id]?.let { return kotlinx.coroutines.CompletableDeferred(com.veacon.veilmusic.data.datasource.LyricsBundle(it, lyricsSourceCache[id] ?: "")) }
         lyricsInFlight[id]?.let { return it }
+        val exclude = lyricsExcludedSources[id].orEmpty()
         // Register before starting, including immediate failures/cache hits; always release the slot.
         val d = viewModelScope.async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             try {
-                val lines = repo.getLyrics(id, title, artist, durationSec).getOrElse { error ->
-                    if (error is kotlinx.coroutines.CancellationException) throw error
-                    webServer.addLog("LYRICS", "fetch failed song=$id error=${error.javaClass.simpleName}")
-                    emptyList()
+                val bundle = repo.getLyricsBundle(id, title, artist, durationSec, exclude)
+                if (bundle.lines.isNotEmpty()) {
+                    lyricsCache[id] = bundle.lines
+                    if (bundle.source.isNotBlank()) lyricsSourceCache[id] = bundle.source
                 }
-                if (lines.isNotEmpty()) lyricsCache[id] = lines
-                lines
+                bundle
             } finally {
                 if (lyricsInFlight[id] === currentCoroutineContext()[kotlinx.coroutines.Job]) lyricsInFlight.remove(id)
             }
@@ -2600,6 +2651,12 @@ class PlayerViewModel @Inject constructor(
         d.start()
         return d
     }
+
+    /** 每首歌命中的歌词来源（与 lyricsCache 同生命周期）。 */
+    private val lyricsSourceCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** 「歌词换源」按歌曲累积要跳过的源标签（如 {"网易云"}）。切歌/换源清缓存时重置。 */
+    private val lyricsExcludedSources = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
 
     private fun loadLyrics(songId: String) {
         lyricsJob?.cancel()
@@ -2614,13 +2671,13 @@ class PlayerViewModel @Inject constructor(
         }
         val song = _state.value.currentSong?.takeIf { it.id == songId } ?: return
         fun stillCurrent() = lyricsLoadGeneration == generation &&
-            _state.value.currentSong?.id == songId && !_state.value.isLiveRadio && !song.isMusicVideo
+            _state.value.currentSong?.id == songId && !song.isMusicVideo
         lyricsJob = viewModelScope.launch {
             fetchLyricsWithRetries(
                 isCurrent = ::stillCurrent,
                 fetch = {
                     val request=fetchLyricsShared(songId,song.title,song.artistName,song.durationMs / 1000)
-                    try {request.await()} catch(e:kotlinx.coroutines.CancellationException) {request.cancel();throw e}
+                    try {request.await().lines} catch(e:kotlinx.coroutines.CancellationException) {request.cancel();throw e}
                 },
                 exhausted = {
                     if(stillCurrent() && _state.value.lyrics.isEmpty()) {
@@ -2630,7 +2687,7 @@ class PlayerViewModel @Inject constructor(
                     }
                 },
                 publish = { lines ->
-                    _state.update { if (stillCurrent()) it.copy(lyrics = lines) else it }
+                    _state.update { if (stillCurrent()) it.copy(lyrics = lines, lyricsSource = lyricsSourceCache[songId]) else it }
                 },
                 report = { attempt, count, error ->
                     lyricsFailureNotice.report(attempt, count)
@@ -2994,6 +3051,12 @@ class PlayerViewModel @Inject constructor(
     private fun buildMediaItem(song: Song, uri: String) = MediaItem.Builder()
         .setMediaId(song.id)
         .setUri(uri)
+        // 稳定的缓存键：直链带签名、每次解析都不一样，只有 songId + 容器后缀不变。
+        // 本地代理（127.0.0.1）本来就是本机数据，不参与缓存。
+        .apply {
+            if (com.veacon.veilmusic.data.cache.PlaybackCache.shouldCache(uri))
+                setCustomCacheKey(com.veacon.veilmusic.data.cache.PlaybackCache.keyFor(song.id, uri))
+        }
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(song.title)
@@ -3050,7 +3113,6 @@ class PlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         cancelOtherDecrypts(null)
-        radioRetryJob?.cancel()
         audioDeviceCallback?.let {
             runCatching { context.getSystemService(AudioManager::class.java)?.unregisterAudioDeviceCallback(it) }
         }
@@ -3059,7 +3121,6 @@ class PlayerViewModel @Inject constructor(
         if (bookmarkWriterDelegate.isInitialized()) bookmarkWriter.close()
         lyricsJob?.cancel()
         motionJob?.cancel()
-        stationJob?.cancel()
         relatedQueueJob?.cancel()
         fadeJob?.cancel()
         mediaSession?.release()

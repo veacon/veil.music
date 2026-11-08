@@ -204,7 +204,7 @@ class InAppWebServer @Inject constructor(
 
     private fun handle(socket: Socket) {
         try {
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
             val out = BufferedOutputStream(socket.getOutputStream())
             val reqLine = reader.readLine() ?: return
             val parts = reqLine.split(" ")
@@ -220,8 +220,18 @@ class InAppWebServer @Inject constructor(
             }
             var body = ""
             if (method == "POST") {
+                // Content-Length 是「字节数」，不是字符数。中文一个字符占 3 字节，按字符读会
+                // 越读/错位，把 UTF-8 正文（尤其导入脚本里的中文注释）切成乱码。这里按字节读、
+                // 显式 UTF-8 解码，彻底消除「源码中文消失」。
                 val len = hdrs["content-length"]?.toIntOrNull() ?: 0
-                val buf = CharArray(len); reader.read(buf, 0, len); body = String(buf)
+                val bytes = ByteArray(len.coerceAtLeast(0))
+                var off = 0
+                while (off < len) {
+                    val n = socket.getInputStream().read(bytes, off, len - off)
+                    if (n < 0) break
+                    off += n
+                }
+                body = String(bytes, 0, off, Charsets.UTF_8)
             }
             val query = android.net.Uri.parse("http://localhost$target")
             val browserLanguage = com.veacon.veilmusic.i18n.PhonePage.resolveLanguage(

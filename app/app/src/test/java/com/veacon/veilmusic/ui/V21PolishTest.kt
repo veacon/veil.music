@@ -127,25 +127,6 @@ class V21PolishTest {
         assertEquals(0,changed)
     }
 
-    @Test fun stationStatusHasSameCenterAndInsetsAsEmptyLyricsAtBothScales() {
-        var station by mutableStateOf(true);var scale by mutableFloatStateOf(1f)
-        compose.setContent {
-            Box(Modifier.fillMaxSize().background(Color.Black).padding(60.dp)) {
-                if(station) StationLaunchMessage(false,scale)
-                else FontGatedLyrics(FontDownloadState(100,100,FontDownloadPhase.Ready)) {EmptyLyrics("song",scale)}
-            }
-        }
-        for (value in listOf(1f,1.3f)) {
-            compose.runOnIdle {scale=value;station=true}
-            val pending=compose.onNodeWithText("电台启动中…").fetchSemanticsNode().boundsInRoot
-            bitmap(if(value==1f) "station-starting" else "station-starting-fullscreen-scale")
-            compose.runOnIdle {station=false}
-            val empty=compose.onNodeWithText("暂无歌词").fetchSemanticsNode().boundsInRoot
-            assertEquals(empty.center.x,pending.center.x,1f)
-            assertEquals(empty.top,pending.top,1f)
-        }
-    }
-
     @Test fun fontLoadingShowsMatchingWidthProgressThenFailureAndReadyStates() {
         var state by mutableStateOf(FontDownloadState(50,100))
         compose.setContent {Box(Modifier.fillMaxSize().background(Color.Black)) {
