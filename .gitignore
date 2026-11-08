@@ -43,3 +43,8 @@ tools/uiinfo.py
 /bench_run/
 /bench_ascii/
 /lx_candidates/
+
+# 设备诊断与临时发布产物
+.bugreport/
+.bugreport.zip
+.tmp/
