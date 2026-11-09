@@ -36,6 +36,8 @@ internal object PhonePage {
     private val LOG_RULES: List<Pair<Regex, String>> = listOf(
         Regex("""音源初始化完成：(\d+)/(\d+) 个脚本，耗时 (\d+)ms""") to
             "Audio source initialised: \$1/\$2 scripts in \$3ms",
+        // 整句替换，避免字典把「播放」单独翻成 Playback 后前半句还留中文。
+        Regex("""记入最近播放 (.+)""") to "Added to recent: \$1",
         Regex("""脚本同步 (\d+) 个：(.*)""") to "Synced \$1 scripts: \$2",
         Regex("""没有可用脚本（(.+) 为空）""") to "No usable scripts (\$1 is empty)",
         Regex("""脚本就绪 (.+?) 源=(.+)""") to "Script ready \$1 sources=\$2",
