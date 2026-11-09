@@ -34,16 +34,30 @@ import java.util.concurrent.TimeUnit
  *    DRM / license / MZPlay 等端点；[isDisplayOnlyUrl] 是所有网络出口的强制白名单守卫，
  *    [displayRequest] 只构造 GET，绝不 POST 任何播放信息；
  *  - [State] 里没有任何 URL、直链、DRM 或曲目播放标识；展示条目只保留名称字符串；
- *  - token 只写入**独立**的 `apple_display_prefs`，绝不写 `MutPreferences`
- *    (`apple_music_tv`)，因此不会被 NetworkModule / DirectNetworkModule 的拦截器带进任何请求；
- *  - 不调用 `MusicRepository.setMUT / clearMUT / syncMUTToServer / streamUrl`，
- *    不复用播放用的 OkHttp 客户端，不改动 `luoxue/` 与 `PlayerViewModel` 的播放分支；
- *    播放仍完全走落雪音源；
+ *  - token 写入独立的 `apple_display_prefs`；**登录成功后同步一份到 `MutPreferences`**
+ *    (`apple_music_tv`)，因为用户明确选择「首页 + 资料库个性化」——「立即聆听」需要
+ *    MUT 才能拿推荐，资料库需要它才能打开云端歌单。这些请求只走 Apple 的目录/推荐端点；
+ *  - 不调用 `MusicRepository.syncMUTToServer / streamUrl`，不复用播放用的 OkHttp 客户端，
+ *    不改动 `luoxue/` 与 `PlayerViewModel` 的播放分支；**播放直链仍完全走落雪音源**；
  *  - 开关默认关闭。关闭时不发起任何网络请求、不暴露任何账号状态。
  *
  * 进程单例：web 配置页、TV 设置页与测试共用同一份状态；[get] 在 Application 更换时重建，
  * 避免 Robolectric 测试间串数据。
  */
+/** 资料库云端歌单，仅含目录标识与名称。 */
+data class AppleLibraryPlaylist(val id: String, val name: String)
+
+/** 容错解析持久化的云端歌单；脏数据直接丢弃，不影响其它展示字段。 */
+internal fun parsePlaylists(raw: String): List<AppleLibraryPlaylist> = runCatching {
+    val arr = JSONArray(raw)
+    (0 until arr.length()).mapNotNull { i ->
+        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        val id = o.optString("id")
+        val name = o.optString("name")
+        AppleLibraryPlaylist(id, name).takeIf { it.id.isNotBlank() && it.name.isNotBlank() }
+    }
+}.getOrDefault(emptyList())
+
 class AppleDisplayAuth private constructor(private val appContext: Context) {
 
     data class State(
@@ -54,6 +68,8 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
         val accountName: String = "",
         /** 个性化展示条目（资料库歌单名），纯文本，绝不含播放地址。 */
         val displayItems: List<String> = emptyList(),
+        /** 资料库云端歌单（id + 名称），供「资料库」页打开歌单详情；id 不是播放地址。 */
+        val playlists: List<AppleLibraryPlaylist> = emptyList(),
         val checking: Boolean = false,
         /** disabled | idle | ready | invalid | unavailable | signed_out */
         val status: String = "disabled",
@@ -89,15 +105,20 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
         (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
     }.getOrDefault(emptyList())
 
+    private fun playlists(): List<AppleLibraryPlaylist> =
+        parsePlaylists(prefs.getString("playlists", "[]") ?: "[]")
+
     private fun cachedState(): State {
         if (!isEnabled()) return State()
+        val lists = playlists()
         return State(
             enabled = true,
             hasBearer = bearer().isNotEmpty(),
             signedIn = mut().isNotEmpty(),
             storefront = prefs.getString("storefront", "") ?: "",
             accountName = prefs.getString("account_name", "") ?: "",
-            displayItems = displayItems(),
+            displayItems = lists.map { it.name }.ifEmpty { displayItems() },
+            playlists = lists,
             status = if (mut().isNotEmpty()) "ready" else "idle",
         )
     }
@@ -162,10 +183,11 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
         }
     }
 
-    /** 退出展示登录：只清本模块的数据，不影响任何既有 token 或播放状态。 */
+    /** 退出登录：清展示数据，同时清主账号态，首页/资料库随即回到未登录内容。 */
     fun signOut() {
         job?.cancel()
-        prefs.edit { remove("mut"); remove("storefront"); remove("account_name"); remove("display_items") }
+        prefs.edit { remove("mut"); remove("storefront"); remove("account_name"); remove("display_items"); remove("playlists") }
+        MutPreferences(appContext).setMUT("")
         _state.value = State(
             enabled = isEnabled(),
             hasBearer = _state.value.hasBearer,
@@ -218,21 +240,28 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
         val storefront = runCatching {
             JSONObject(body).optJSONArray("data")?.optJSONObject(0)?.optString("id").orEmpty()
         }.getOrDefault("")
-        // 账号名与资料库歌单名都只是展示用；失败不影响登录成功的判定。
+        // 账号名与资料库歌单只是展示/目录数据；失败不影响登录成功的判定。
         val accountName = accountName(token, dev)
-        val items = loadDisplayItems(token, dev)
+        val lists = loadPlaylists(token, dev)
         prefs.edit {
             putString("storefront", storefront)
             putString("account_name", accountName)
-            putString("display_items", JSONArray().apply { items.forEach { put(it) } }.toString())
+            putString("display_items", JSONArray().apply { lists.forEach { put(it.name) } }.toString())
+            putString("playlists", JSONArray().apply {
+                lists.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) }
+            }.toString())
         }
+        // 用户选择「首页 + 资料库个性化」：登录态同步进主账号存储，让「立即聆听」走
+        // 个性化推荐、资料库能打开云端歌单。播放直链仍由落雪音源解析，不向 Apple 请求播放数据。
+        MutPreferences(appContext).setMUT(token)
         _state.value = State(
             enabled = true,
             hasBearer = true,
             signedIn = true,
             storefront = storefront,
             accountName = accountName,
-            displayItems = items,
+            displayItems = lists.map { it.name },
+            playlists = lists,
             checking = false,
             status = "ready",
         )
@@ -256,18 +285,20 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
         }.getOrDefault("")
     }
 
-    /** 个性化展示数据：资料库歌单名称列表。只取 name，不取任何播放字段。 */
-    private fun loadDisplayItems(token: String, dev: String): List<String> {
+    /** 资料库云端歌单：只取 id + name（目录数据），不取任何播放字段。 */
+    private fun loadPlaylists(token: String, dev: String): List<AppleLibraryPlaylist> {
         val req = displayRequest(
             "https://api.music.apple.com/v1/me/library/playlists?limit=6", token, dev) ?: return emptyList()
         return runCatching {
             http.newCall(req).execute().use { r ->
-                if (!r.isSuccessful) emptyList<String>() else {
+                if (!r.isSuccessful) emptyList() else {
                     val arr = JSONObject(r.body?.string().orEmpty()).optJSONArray("data")
-                        ?: return@use emptyList<String>()
+                        ?: return@use emptyList<AppleLibraryPlaylist>()
                     (0 until arr.length()).mapNotNull { i ->
-                        arr.optJSONObject(i)?.optJSONObject("attributes")?.optString("name")
-                            ?.takeIf { it.isNotBlank() }
+                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val id = o.optString("id")
+                        val name = o.optJSONObject("attributes")?.optString("name").orEmpty()
+                        AppleLibraryPlaylist(id, name).takeIf { it.id.isNotBlank() && it.name.isNotBlank() }
                     }.take(6)
                 }
             }

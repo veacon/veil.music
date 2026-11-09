@@ -117,6 +117,16 @@ fun LibraryScreen(
     fun toast(message: String) {
         android.widget.Toast.makeText(toastContext, message, android.widget.Toast.LENGTH_SHORT).show()
     }
+    // 登录后「资料库」显示 Apple Music 云端歌单；与本地歌单共用卡片和详情页，只是来源不同。
+    val appleAuth = remember(toastContext) { com.veacon.veilmusic.data.AppleDisplayAuth.get(toastContext) }
+    val appleState by appleAuth.state.collectAsState()
+    val applePlaylists = remember(appleState.playlists) {
+        appleState.playlists.map { p ->
+            LocalLibraryStore.LocalPlaylist(
+                id = p.id, name = p.name, source = LocalLibraryStore.SOURCE_APPLE,
+            )
+        }
+    }
 
     val pinnedIds by vm.pinnedIds.collectAsState()
     val orderedItems = remember(section, state, pinnedIds) {
@@ -170,7 +180,7 @@ fun LibraryScreen(
                                     PlaylistGrid(
                                         tabBarFocused = tabBarFocused,
                                         onReturnToTab = onReturnToTab,
-                                        playlists  = orderedItems.playlists,
+                                        playlists  = applePlaylists + orderedItems.playlists,
                                         pinnedIds  = pinnedIds,
                                         importing  = importing,
                                         onOpen     = { playlist ->
@@ -463,12 +473,14 @@ private fun PlaylistGrid(
     ) {
         gridItemsIndexed(playlists, key = { _, item -> item.id }) { index, playlist ->
             Box(Modifier.librarySortOnRight(index%4==3 || index==playlists.lastIndex).returnToTabOnUp(if (index < 4) onReturnToTab else null)) {
+                val isApple = playlist.source == LocalLibraryStore.SOURCE_APPLE
                 PlaylistCard(
                     playlist    = playlist,
                     pinned      = playlist.id in pinnedIds,
                     onOpen      = { onOpen(playlist) },
-                    onPlay      = { onPlay(playlist) },
-                    onMenu      = { onMenu(playlist) },
+                    // 云端歌单没有本地曲目，播放/长按都改为打开详情，避免误调本地播放与导入菜单。
+                    onPlay      = { if (isApple) onOpen(playlist) else onPlay(playlist) },
+                    onMenu      = { if (isApple) onOpen(playlist) else onMenu(playlist) },
                     modifier    = if (index == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier,
                 )
             }
@@ -574,7 +586,8 @@ private fun PlaylistCard(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(playlist.name, fontSize = 12.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary, maxLines = 1, fontWeight = FontWeight.Medium)
-                    Text("${playlist.sourceLabel} · ${playlist.trackCount} 首", fontSize = 10.sp,
+                    Text(if (playlist.source == LocalLibraryStore.SOURCE_APPLE) "${playlist.sourceLabel} · 云端"
+                         else "${playlist.sourceLabel} · ${playlist.trackCount} 首", fontSize = 10.sp,
                         color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), maxLines = 1)
                 }
                 Surface(

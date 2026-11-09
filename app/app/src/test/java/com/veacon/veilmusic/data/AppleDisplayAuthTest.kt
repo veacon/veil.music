@@ -51,6 +51,24 @@ class AppleDisplayAuthTest {
         assertEquals("", MutPreferences(context).getMUT())
     }
 
+    @Test fun signOutClearsTheMainAccountTokenToo() {
+        val prefs = context.getSharedPreferences("apple_display_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("enabled", true).putString("mut", "display-token").commit()
+        MutPreferences(context).setMUT("display-token")
+        val auth = AppleDisplayAuth.get(context)
+        auth.signOut()
+        assertFalse(auth.hasToken())
+        assertEquals("首页/资料库应回到未登录内容", "", MutPreferences(context).getMUT())
+    }
+
+    @Test fun cachedCloudPlaylistsCarryIdsSoLibraryCanOpenTheirDetails() {
+        val lists = parsePlaylists("""[{"id":"p.abc123","name":"喜爱歌曲"},{"id":"","name":"坏数据"}]""")
+        assertEquals(1, lists.size)
+        assertEquals("p.abc123", lists[0].id)
+        assertEquals("喜爱歌曲", lists[0].name)
+        assertEquals(emptyList<AppleLibraryPlaylist>(), parsePlaylists("not json"))
+    }
+
     @Test fun onlyDisplayEndpointsPassTheGuard_playbackDataNeverReachesAppleMusic() {
         listOf(
             "https://music.apple.com/",
