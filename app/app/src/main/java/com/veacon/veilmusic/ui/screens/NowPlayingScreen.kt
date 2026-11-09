@@ -185,9 +185,8 @@ fun NowPlayingScreen(
     var chromeVisible by remember { mutableStateOf(true) }
     var lastInteractionMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showSongDestinations by remember(song?.id) { mutableStateOf(false) }
-    // 长按 ↓ 的「播放信息」浮层（歌曲/音质/音源/解码器）。
+    // 菜单键唤出的「播放信息」浮层（歌曲/音质/音源/解码器）。
     var showPlaybackInfo by remember { mutableStateOf(false) }
-    var infoKeyHeld by remember { mutableStateOf(false) }
     var showLyricsMenu by remember { mutableStateOf(false) }
     var lyricsHidden by rememberSaveable { mutableStateOf(false) }
     // A portrait viewport overrides presentation without changing the user's normal choice.
@@ -300,17 +299,12 @@ fun NowPlayingScreen(
                     openWallCard(card)
                 })
             .onPreviewKeyEvent { event ->
-                // 长按 ↓ 打开播放信息浮层；短按仍然是普通的焦点下移。
-                // 遥控器按住时系统会连发 repeatCount>0 的 KeyDown，这里当作「长按」判定，
-                // 并吞掉后续重复事件，免得浮层刚出现就被自己的连发打断。
-                if (event.key == Key.DirectionDown && !albumWall) {
-                    if (event.type == KeyEventType.KeyUp) {
-                        if (infoKeyHeld) { infoKeyHeld = false; return@onPreviewKeyEvent true }
-                    } else if (event.nativeKeyEvent.repeatCount >= 1) {
-                        infoKeyHeld = true
-                        if (!showPlaybackInfo) showPlaybackInfo = true
-                        return@onPreviewKeyEvent true
-                    }
+                // 菜单键打开播放信息浮层。原来用「长按 ↓」，但多数电视遥控器按住方向键时
+                // 系统只连发 repeatCount=0 的事件、甚至直接吞掉长按，实机上很难触发；
+                // 菜单键按一下即可，且不与「下移焦点」的正常用途冲突。
+                if (event.type == KeyEventType.KeyDown && event.key == Key.Menu && !albumWall) {
+                    showPlaybackInfo = true
+                    return@onPreviewKeyEvent true
                 }
                 if (albumWall && !wallSelection && libraryWallArt.isNotEmpty() &&
                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
@@ -686,7 +680,7 @@ private fun platformLabel(raw: String?): String = when (raw?.lowercase()) {
 }
 
 /**
- * 长按 ↓ 的播放信息浮层：当前歌曲-歌手、音质、使用的音源、使用的播放器（硬解/软解）。
+ * 菜单键唤出的播放信息浮层：当前歌曲-歌手、音质、使用的音源、使用的播放器（硬解/软解）。
  *
  * 取代过去每首歌都弹一次的「准备播放 …」toast —— 同样的信息，但只在需要时出现。
  */

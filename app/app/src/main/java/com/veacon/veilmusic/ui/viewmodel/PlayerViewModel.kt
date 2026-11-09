@@ -209,7 +209,7 @@ data class PlayerState(
     val volumeLeveling: Boolean = false,
     /** 硬解 / 软解 — which decoder path the player is built with. Factory default: hardware. */
     val decoderMode: com.veacon.veilmusic.data.DecoderMode = com.veacon.veilmusic.data.DecoderMode.DEFAULT,
-    /** 当前曲目实际命中的音频流（音源/格式/码率），长按 ↓ 的播放信息框用；未解析完成时为 null。 */
+    /** 当前曲目实际命中的音频流（音源/格式/码率），播放页「菜单键」信息框用；未解析完成时为 null。 */
     val resolvedStream: ResolvedStream? = null,
     /** 统一输出采样率（P2），改档要重建播放器。 */
     val unifySampleRate: Boolean = true,
@@ -410,7 +410,7 @@ class PlayerViewModel @Inject constructor(
     fun toast(msg: String) { _toasts.tryEmit(msg) }
 
     /**
-     * 落雪命中后记下这条流的信息（音源 / 格式 / 码率），供播放页「长按 ↓」的信息框读取。
+     * 落雪命中后记下这条流的信息（音源 / 格式 / 码率），供播放页「菜单键」信息框读取。
      *
      * 以前这里会弹一条「准备播放 xxx 来源 yyy」的 toast —— 每首歌都弹、还挡字幕，
      * 现在改成按需查看：不打扰，但信息一条不少。
