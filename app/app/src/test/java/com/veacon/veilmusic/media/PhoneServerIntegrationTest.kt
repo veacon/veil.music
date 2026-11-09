@@ -180,7 +180,8 @@ class PhoneServerIntegrationTest {
             server.boot(scope)
             awaitReady(server)
             val text = java.net.URLEncoder.encode("晴天 - 周杰伦\n富士山下 - 陈奕迅", "UTF-8")
-            val response = post(server.port, "/playlist-import?json=1", "url=&text=$text")
+            // 显式固定中文：本测试回归的是「中文正文不丢失」，响应文案随界面语言切换。
+            val response = post(server.port, "/playlist-import?json=1&lang=zh", "url=&text=$text")
             assertTrue(response, response.startsWith("HTTP/1.1 200 OK"))
             assertTrue(response, response.contains("已导入"))
             assertTrue(response, response.contains("文本歌单"))

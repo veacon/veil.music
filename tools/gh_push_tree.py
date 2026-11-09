@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 TOKEN = os.environ["GH_TOKEN"]
 REPO = "veacon/veil.music"
-BRANCH = "main"
+BRANCH = os.environ.get("BRANCH", "main")
 PARENT = os.environ.get("PARENT_SHA", "")
 MESSAGE = os.environ.get(
     "COMMIT_MESSAGE",

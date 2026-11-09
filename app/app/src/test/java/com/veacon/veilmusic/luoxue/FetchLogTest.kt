@@ -1,9 +1,16 @@
 package com.veacon.veilmusic.luoxue
 
+import android.app.Application
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+/** org.json on android.jar is a stub outside Robolectric; the runner supplies a real implementation. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28], application = Application::class)
 class FetchLogTest {
     @Test fun lineCarriesTimestampElapsedSongIdentityAndOutcome() {
         val line = FetchLog.line(

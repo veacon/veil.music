@@ -714,7 +714,7 @@ ol{font-size:14px;color:#6e6e73;line-height:1.9;padding-left:18px}code{color:#fa
 </style>
 <script id="bookmark-instruction" type="application/json">${com.veacon.veilmusic.i18n.PhonePage.bookmarkJson(context, language)}</script>
 <script>
-// 动态请求（日志 / 状态 / SSE）把语言带给服务端，保证轮询返回的内容也随语言切换。
+// Dynamic requests (logs / status / SSE) carry the language to the server so polling follows the switch.
 const LANG='${language}';
 const bookmarkInstruction = JSON.parse(document.getElementById('bookmark-instruction').textContent);
 

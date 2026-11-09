@@ -118,8 +118,9 @@ class PhoneEnglishCoverageTest {
             "恢复随包脚本（清理 2 个）",
             "未找到 old.js",
             "已删除 old.js",
-            "未命中：晴天（3 次尝试 / 1200ms）",
-            "命中 晴天 → flac 999kbps (wy/flac24bit/kulao) 解析 842ms 校验 31ms",
+            // 歌名是用户数据、不参与本地化；用英文占位，避免把数据误判成未翻译的中文文案。
+            "未命中：Song A（3 次尝试 / 1200ms）",
+            "命中 Song A → flac 999kbps (wy/flac24bit/kulao) 解析 842ms 校验 31ms",
             "搜索无候选：timeout",
             "失败明细：wy timeout | qq 404",
             "标题未命中，按艺人+时长兜底…",
