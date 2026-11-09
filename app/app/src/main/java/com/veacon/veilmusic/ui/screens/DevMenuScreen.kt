@@ -213,6 +213,18 @@ fun DevMenuScreen(
             // 免登录后这里不再是「账号配置」，而是遥控器输入不便时的唯一入口：
             // 手机浏览器打开 :8080 可以导入歌单、改播放设置。
             SettingsSection(tr(R.string.msg_218)) { PhoneServerRow(state.webServerUrl, playerVm) }
+            // Apple Music 展示方案：默认关闭。开关只影响「个性化界面展示」，令牌走独立存储，
+            // 播放直链始终由落雪音源解析，本模块不向 Apple Music 请求或回传任何播放数据。
+            val displayAuth = remember(ctx) { com.veacon.veilmusic.data.AppleDisplayAuth.get(ctx) }
+            val displayState by displayAuth.state.collectAsState()
+            SettingsSection(tx("Apple Music 展示", "Apple Music display")) {
+                Toggle(
+                    tx("个性化展示数据", "Personalised display data"),
+                    displayState.enabled,
+                    tx("开启后仅读取账号、商店区域与资料库名称用于界面展示；在手机配置页登录。播放数据不会向 Apple Music 请求或回传，播放仍走落雪音源。",
+                       "When on, only account, storefront and library names are read for display; sign in from the phone setup page. No playback data is requested from or sent to Apple Music — playback stays on Luoxue."),
+                ) { displayAuth.setEnabled(!displayState.enabled) }
+            }
             SettingsSection(tx("关于", "About")) {
                 val details = when (update.phase) {
                     "checking" -> tx("正在检查更新…", "Checking for updates…")

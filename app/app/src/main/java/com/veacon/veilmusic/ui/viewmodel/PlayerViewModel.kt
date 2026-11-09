@@ -164,8 +164,8 @@ data class PlayerState(
     val motionUrl:        String?         = null,
     /** A/V-sync EXTRA the user dials on top of everything. 0 normally; the only value shown in the UI. */
     val lyricsOffsetMs:   Long            = 0L,
-    /** Automatic A/V sync: add the Bluetooth delta when a BT output is live. */
-    val avSyncAuto:       Boolean         = true,
+    /** Automatic A/V sync: add the Bluetooth delta when a BT output is live. Factory default OFF. */
+    val avSyncAuto:       Boolean         = false,
     /** A BT output is currently active. */
     val avOnBluetooth:    Boolean         = false,
     /** Total delay applied to the LYRIC clock: hidden 200 ms baseline (+ BT delta) + extra. */
@@ -207,8 +207,8 @@ data class PlayerState(
     val lowPowerMode: Boolean = false,
     /** Volume leveling (loudness AGC) on the audio path. */
     val volumeLeveling: Boolean = false,
-    /** 硬解 / 软解 — which decoder path the player is built with. */
-    val decoderMode: com.veacon.veilmusic.data.DecoderMode = com.veacon.veilmusic.data.DecoderMode.SOFTWARE,
+    /** 硬解 / 软解 — which decoder path the player is built with. Factory default: hardware. */
+    val decoderMode: com.veacon.veilmusic.data.DecoderMode = com.veacon.veilmusic.data.DecoderMode.DEFAULT,
     /** 当前曲目实际命中的音频流（音源/格式/码率），长按 ↓ 的播放信息框用；未解析完成时为 null。 */
     val resolvedStream: ResolvedStream? = null,
     /** 统一输出采样率（P2），改档要重建播放器。 */
@@ -1327,7 +1327,7 @@ class PlayerViewModel @Inject constructor(
         }
         _state.update { it.copy(
             lyricsOffsetMs = lyricsOffsetPrefs.getOffset(),
-            avSyncAuto = prefs.getBoolean("av_auto", true),
+            avSyncAuto = prefs.getBoolean("av_auto", false),
             backgroundPlayEnabled = prefs.getBoolean("background_play", false),
             nowPlayingBackground = initBg,
             fluidQuality = FluidQuality.fromName(prefs.getString("fluid_quality", null)),
@@ -2518,6 +2518,21 @@ class PlayerViewModel @Inject constructor(
     /** Public warm-up for the next AUDIO song — used by AppShell while a VIDEO is playing (the
      *  audio engine's own N+1 prefetch is idle then, so a video→song advance would be cold). */
     fun prefetchAudio(song: Song) { if (!song.isMusicVideo) prefetchSong(song) }
+
+    /**
+     * 打开专辑 / 歌单详情页时后台预热首曲直链。用户浏览曲目、看封面的这几秒里
+     * 「脚本初始化 + 三平台搜索 + 直链校验」已经跑完，点「播放」时通常直接命中
+     * 12 分钟缓存，首播不再出现长时间空白等待。与真正播放共用同一个 inflight
+     * Deferred，因此即开即点也不会重复解析。
+     *
+     * 布局类单测用 Unsafe 造空白 ViewModel（字段全为 null），用 runCatching 兜住。
+     */
+    fun prefetchLead(songs: List<Song>) {
+        runCatching {
+            val first = songs.firstOrNull { !it.isMusicVideo } ?: return@runCatching
+            if (lx.isEnabled()) lx.prefetch(first)
+        }
+    }
 
     private fun prefetchSong(song: Song) {
         if (!_state.value.isFullStream) return

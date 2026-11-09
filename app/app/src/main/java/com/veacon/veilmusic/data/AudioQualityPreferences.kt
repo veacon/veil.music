@@ -31,13 +31,13 @@ enum class AudioQuality(
     /** 192 kbps：中品质。 */
     MEDIUM("192k", listOf("192k", "128k"), 96),
 
-    /** 320 kbps：默认档，体积与兼容性平衡最好。 */
+    /** 320 kbps：体积与兼容性平衡最好。 */
     HIGH("320k", listOf("320k", "192k", "128k"), 96),
 
     /** 无损：优先 FLAC，拿不到再退 320k。 */
     LOSSLESS("flac", listOf("flac", "320k", "192k", "128k"), 96),
 
-    /** 高解析无损（Hi-Res）：优先 24bit FLAC，逐级退到普通无损。 */
+    /** 高解析无损（Hi-Res，默认档）：优先 24bit FLAC，逐级退到普通无损。 */
     HIRES("hires", listOf("flac24bit", "flac", "320k", "192k", "128k"), 96);
 
     /** 面向设置页 Stepper 的展示名。 */
@@ -69,7 +69,8 @@ enum class AudioQuality(
     }
 
     companion object {
-        val DEFAULT = HIGH
+        /** 出厂默认：Hi-Res 无损（优先 24bit FLAC），用户仍可在设置页随时改档。 */
+        val DEFAULT = HIRES
 
         fun fromKey(key: String?): AudioQuality =
             entries.firstOrNull { it.key == key } ?: DEFAULT

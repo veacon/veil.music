@@ -19,17 +19,17 @@ class AudioQualityPreferencesTest {
         context.getSharedPreferences("audio_quality_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
-    @Test fun defaultIsThreeTwentyAndSurvivesRestart() {
+    @Test fun defaultIsHiResLosslessAndSurvivesRestart() {
         val prefs = AudioQualityPreferences(context)
-        assertEquals(AudioQuality.HIGH, prefs.get())
+        assertEquals(AudioQuality.HIRES, prefs.get())
         prefs.set(AudioQuality.LOSSLESS)
         assertEquals(AudioQuality.LOSSLESS, prefs.quality.value)
         assertEquals(AudioQuality.LOSSLESS, AudioQualityPreferences(context).get())
     }
 
     @Test fun unknownOrLegacyKeyFallsBackToDefault() {
-        assertEquals(AudioQuality.HIGH, AudioQuality.fromKey(null))
-        assertEquals(AudioQuality.HIGH, AudioQuality.fromKey("master"))
+        assertEquals(AudioQuality.HIRES, AudioQuality.fromKey(null))
+        assertEquals(AudioQuality.HIRES, AudioQuality.fromKey("master"))
         assertEquals(AudioQuality.STANDARD, AudioQuality.fromKey("128k"))
     }
 

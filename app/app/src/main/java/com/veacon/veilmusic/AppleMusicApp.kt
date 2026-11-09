@@ -59,6 +59,10 @@ class AppleMusicApp : Application(), ImageLoaderFactory {
         super.onCreate()
         com.veacon.veilmusic.i18n.AppLanguage.initialize(this)
         com.veacon.veilmusic.util.CrashReporter.install(this)
+        // 音源初始化（10 个 QuickJS 脚本）在 Application 阶段就开始，与首帧绘制、首页请求
+        // 并行预热；不要等窗口尺寸闸门，更不要等用户点下第一首歌才开始加载脚本。
+        lxPlayback.logger = { msg -> webServer.addLog("LX", msg) }
+        appScope.launch { runCatching { lxPlayback.ensureReady() } }
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -77,10 +81,7 @@ class AppleMusicApp : Application(), ImageLoaderFactory {
         // Route volume-leveling diagnostics into the APP log (so they show under App Log, not Network,
         // and stream live on the :8081 event port).
         com.veacon.veilmusic.media.GainProcessor.logger = { tag, msg -> webServer.addLog(tag, msg) }
-        // 落雪音源日志并入 APP 日志（Dev 页 / :8081 可见），排查"为什么这首没命中"全靠它。
-        lxPlayback.logger = { msg -> webServer.addLog("LX", msg) }
-        // 后台把 QuickJS 脚本先跑起来：否则第一首歌要等 3 个脚本串行启动（约 1–3s）。
-        appScope.launch { runCatching { lxPlayback.ensureReady() } }
+        // 落雪音源的日志接线与后台预热已提前到 onCreate()，这里只负责依赖窗口闸门的服务。
         // Sync locally-stored MUT to proxy server on startup so ExoPlayer stream requests work
         val mut = mutPrefs.getMUT()
         if (mut.isNotEmpty()) {

@@ -9,6 +9,8 @@ import okhttp3.Request
  */
 class StreamVerifier(private val http: OkHttpClient) {
 
+    companion object { private const val SNIFF_BYTES = 16 }
+
     data class Probe(
         val ok: Boolean,
         val kind: String,
@@ -20,17 +22,30 @@ class StreamVerifier(private val http: OkHttpClient) {
     )
 
     fun probe(url: String, durationSec: Int): Probe {
+        // 校验只需要文件头的魔数（fLaC / ID3 / ftyp…）和 Content-Range 里的总长度。
+        // 原来申请并读满 64KB，在弱网/慢 CDN 上首曲要为一个字节判断多等一个往返；
+        // 缩到 16B 后立即关闭连接，解析链路里每个候选都能省下这段下载时间。
         val req = Request.Builder().url(url)
             .header("User-Agent", PlatformSearch.UA)
-            .header("Range", "bytes=0-65535")
+            .header("Range", "bytes=0-${SNIFF_BYTES - 1}")
             .build()
         return try {
             http.newCall(req).execute().use { resp ->
                 val total = resp.header("Content-Range")?.substringAfterLast('/')?.toLongOrNull()
                     ?: resp.body?.contentLength() ?: 0L
-                val head = resp.body?.source()?.let { src ->
-                    runCatching { src.readByteArray(65536) }.getOrNull()
-                } ?: ByteArray(0)
+                val head = runCatching {
+                    val source = resp.body?.source()
+                    if (source == null) ByteArray(0) else {
+                        val buf = ByteArray(SNIFF_BYTES)
+                        var off = 0
+                        while (off < SNIFF_BYTES) {
+                            val n = source.read(buf, off, SNIFF_BYTES - off)
+                            if (n < 0) break
+                            off += n
+                        }
+                        buf.copyOf(off)
+                    }
+                }.getOrDefault(ByteArray(0))
 
                 val kind = sniff(head)
                 val kbps = if (total > 0 && durationSec > 0) {
