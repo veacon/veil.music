@@ -50,6 +50,7 @@ class LocalLibraryStore @Inject constructor(
             SOURCE_NETEASE -> "网易云"
             SOURCE_KUGOU -> "酷狗"
             SOURCE_TEXT -> "文本导入"
+            SOURCE_APPLE -> "Apple Music"
             else -> "本地"
         }
         val isImported: Boolean get() = source != SOURCE_LOCAL
@@ -305,6 +306,8 @@ class LocalLibraryStore @Inject constructor(
         const val SOURCE_NETEASE = "netease"
         const val SOURCE_KUGOU = "kugou"
         const val SOURCE_TEXT = "text"
+        /** Apple Music 资料库云端歌单（只读展示，打开后走 PlaylistDetail 取目录数据）。 */
+        const val SOURCE_APPLE = "apple"
         /** 最近播放最多保留条数。 */
         const val RECENT_MAX = 100
     }

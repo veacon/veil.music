@@ -65,6 +65,10 @@ fun AlbumDetailScreen(
         loading = state.isLoading,
         beforeFocus = { tabAwareListState.scrollToItem(0) },
     )
+    // 打开专辑页就后台解析首曲直链，点「播放」时通常已命中缓存，首播不再干等解析链路。
+    LaunchedEffect(state.tracks.firstOrNull()?.id, state.tracks.size) {
+        playerVm.prefetchLead(state.tracks)
+    }
 
     FadeThrough(state, modifier = modifier.fillMaxSize(), contentKey = { when { it.isLoading && it.tracks.isEmpty() -> "loading"; it.album == null -> "empty"; else -> "content" } }) { state ->
         if (state.isLoading && state.tracks.isEmpty()) {

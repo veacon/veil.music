@@ -1,5 +1,8 @@
 package com.veacon.veilmusic.luoxue
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -13,27 +16,33 @@ import org.json.JSONObject
  */
 class PlatformSearch(private val http: OkHttpClient) {
 
-    fun searchAll(title: String, artist: String): List<Candidate> {
+    /**
+     * 三个平台并发搜索：彼此没有依赖，串行等于把首曲解析平白拖长 2 个 RTT
+     * （任一平台超时还会把后面两个一起拖住）。失败的平台独立降级为空列表。
+     */
+    suspend fun searchAll(title: String, artist: String): List<Candidate> {
         val q = listOf(title.trim(), primaryArtist(artist))
             .filter { it.isNotEmpty() }
             .joinToString(" ")
         if (q.isEmpty()) return emptyList()
-        val out = mutableListOf<Candidate>()
-        out += runCatching { netease(q) }.getOrDefault(emptyList())
-        out += runCatching { qq(q) }.getOrDefault(emptyList())
-        out += runCatching { kugou(q) }.getOrDefault(emptyList())
-        return out
+        return coroutineScope {
+            val wy = async(Dispatchers.IO) { runCatching { netease(q) }.getOrDefault(emptyList()) }
+            val tx = async(Dispatchers.IO) { runCatching { qq(q) }.getOrDefault(emptyList()) }
+            val kg = async(Dispatchers.IO) { runCatching { kugou(q) }.getOrDefault(emptyList()) }
+            wy.await() + tx.await() + kg.await()
+        }
     }
 
-    /** 跨语言曲名兜底：只按艺人搜，匹配层再用时长认歌。 */
-    fun searchByArtist(artist: String, limit: Int = 12): List<Candidate> {
+    /** 跨语言曲名兜底：只按艺人搜，匹配层再用时长认歌。同样并发。 */
+    suspend fun searchByArtist(artist: String, limit: Int = 12): List<Candidate> {
         val q = primaryArtist(artist)
         if (q.isEmpty()) return emptyList()
-        val out = mutableListOf<Candidate>()
-        out += runCatching { netease(q, limit) }.getOrDefault(emptyList())
-        out += runCatching { qq(q, limit) }.getOrDefault(emptyList())
-        out += runCatching { kugou(q, limit) }.getOrDefault(emptyList())
-        return out
+        return coroutineScope {
+            val wy = async(Dispatchers.IO) { runCatching { netease(q, limit) }.getOrDefault(emptyList()) }
+            val tx = async(Dispatchers.IO) { runCatching { qq(q, limit) }.getOrDefault(emptyList()) }
+            val kg = async(Dispatchers.IO) { runCatching { kugou(q, limit) }.getOrDefault(emptyList()) }
+            wy.await() + tx.await() + kg.await()
+        }
     }
 
     private fun primaryArtist(artist: String) =

@@ -160,6 +160,36 @@ class PhoneServerIntegrationTest {
         } finally { server.stop(); scope.cancel(); store.clear() }
     }
 
+    /** 头 + 表单正文一次性写入，复现浏览器把整个 POST 放在同一个 TCP 包里的场景。 */
+    private fun post(port: Int, path: String, form: String): String = Socket("127.0.0.1", port).use { client ->
+        client.soTimeout = 8000
+        val body = form.toByteArray(Charsets.UTF_8)
+        val header = "POST $path HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n" +
+            "Content-Type: application/x-www-form-urlencoded\r\n" +
+            "Content-Length: ${body.size}\r\nConnection: close\r\n\r\n"
+        client.getOutputStream().write(header.toByteArray(Charsets.UTF_8) + body)
+        client.getOutputStream().flush()
+        client.getInputStream().bufferedReader(Charsets.UTF_8).readText()
+    }
+
+    /** 回归：扫码打开手机配置页后，粘贴中文歌曲列表导入歌单必须收到响应并落库。 */
+    @Test fun playlistImportPostWithChineseBodyIsReceivedIntact() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val server = server().also { it.setEnabled(true) }
+        try {
+            server.boot(scope)
+            awaitReady(server)
+            val text = java.net.URLEncoder.encode("晴天 - 周杰伦\n富士山下 - 陈奕迅", "UTF-8")
+            // 显式固定中文：本测试回归的是「中文正文不丢失」，响应文案随界面语言切换。
+            val response = post(server.port, "/playlist-import?json=1&lang=zh", "url=&text=$text")
+            assertTrue(response, response.startsWith("HTTP/1.1 200 OK"))
+            assertTrue(response, response.contains("已导入"))
+            assertTrue(response, response.contains("文本歌单"))
+            // 两行都要解析出来：正文被截断时只会剩 1 首。
+            assertTrue(response, response.contains("2 首"))
+        } finally { server.stop(); scope.cancel() }
+    }
+
     @Test fun disabledServerDoesNotPublishANonfunctionalQrAddress() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val server = server()

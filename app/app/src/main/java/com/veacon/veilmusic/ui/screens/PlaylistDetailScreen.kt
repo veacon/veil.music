@@ -107,6 +107,10 @@ fun PlaylistDetailScreen(
         // Direction applies to real sort fields; DEFAULT reversed = reverse order.
         if (descending) base.reversed() else base
     }
+    // 打开页面就后台解析首曲直链：点「播放」时通常已命中缓存，首播不再干等解析链路。
+    LaunchedEffect(sortedTracks.firstOrNull()?.id, sortedTracks.size) {
+        playerVm.prefetchLead(sortedTracks)
+    }
 
     var menuSongState by remember { mutableStateOf<Song?>(null) }
     var menuFromRemote by remember {mutableStateOf(false)}

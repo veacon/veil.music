@@ -15,6 +15,8 @@ import com.veacon.veilmusic.data.LyricsOffsetPreferences
 import com.veacon.veilmusic.data.MutPreferences
 import com.veacon.veilmusic.data.ServerPreferences
 import com.veacon.veilmusic.data.StandalonePreferences
+import com.veacon.veilmusic.data.updates.DownloadSource
+import com.veacon.veilmusic.data.updates.UpdateDownloadPreferences
 import com.veacon.veilmusic.data.repository.MusicRepository
 import com.veacon.veilmusic.media.BeatAnalyzer
 import com.veacon.veilmusic.data.NetworkLog
@@ -84,13 +86,19 @@ class DevMenuViewModel @Inject constructor(
     private val beatAnalyzer: BeatAnalyzer,
     private val lxPlayback: com.veacon.veilmusic.luoxue.LxPlayback,
     private val audioQualityPrefs: com.veacon.veilmusic.data.AudioQualityPreferences,
+    private val downloadPrefs: UpdateDownloadPreferences,
 ) : ViewModel() {
 
     data class UpdateState(val phase: String = "idle", val info: com.veacon.veilmusic.data.updates.UpdateInfo? = null,
-        val progress: Int = 0, val manualResult: Boolean = false, val ready: java.io.File? = null)
+        val progress: Int = 0, val manualResult: Boolean = false, val ready: java.io.File? = null,
+        /** 「选择下载线路」弹窗是否可见。 */
+        val sourcePicker: Boolean = false)
     private val updater = com.veacon.veilmusic.data.updates.AppUpdates(context)
     private val _update = MutableStateFlow(UpdateState())
     val update: StateFlow<UpdateState> = _update
+    /** 记住上次的下载线路，弹窗默认停在它上面。 */
+    val downloadSource: StateFlow<DownloadSource> = downloadPrefs.source
+    val downloadSources: List<DownloadSource> = DownloadSource.entries
     fun dismissUpdateResult() { _update.update { it.copy(manualResult = false) } }
     fun showUpdateResult() { _update.update { it.copy(manualResult = true) } }
     fun checkUpdates(manual: Boolean = false) {
@@ -98,7 +106,7 @@ class DevMenuViewModel @Inject constructor(
         _update.value = UpdateState(phase = "checking")
         viewModelScope.launch {
             try {
-                val info = updater.check()
+                val info = updater.check(downloadPrefs.current())
                 val phase = when { info.code <= com.veacon.veilmusic.BuildConfig.VERSION_CODE -> "latest"; info.minSdk > android.os.Build.VERSION.SDK_INT -> "incompatible"; else -> "available" }
                 _update.value = UpdateState(phase = if (!manual && phase != "available") "idle" else phase, info = info, manualResult = manual)
             } catch (e: Exception) {
@@ -108,16 +116,30 @@ class DevMenuViewModel @Inject constructor(
             }
         }
     }
-    fun downloadUpdate() {
+    /** 点「更新」先弹下载线路选择，不直接开下。 */
+    fun promptDownloadSource() {
+        if (_update.value.phase != "available") return
+        _update.update { it.copy(manualResult = false, sourcePicker = true) }
+    }
+    fun dismissDownloadSource() { _update.update { it.copy(sourcePicker = false) } }
+    fun selectDownloadSource(source: DownloadSource) {
+        downloadPrefs.select(source)
+        _update.update { it.copy(sourcePicker = false) }
+        downloadUpdate(source)
+    }
+    fun downloadUpdate(source: DownloadSource = downloadPrefs.current()) {
         val info = _update.value.info ?: return
         if (_update.value.phase != "available") return
-        _update.update { it.copy(phase = "downloading", manualResult = false, progress = 0) }
+        _update.update { it.copy(phase = "downloading", manualResult = false, sourcePicker = false, progress = 0) }
         viewModelScope.launch {
             try {
-                val file = updater.download(info) { progress -> _update.update { it.copy(progress = progress) } }
+                val file = updater.download(info, { progress -> _update.update { it.copy(progress = progress) } }, source)
                 _update.update { it.copy(phase = "ready", ready = file) }
                 installUpdate()
-            } catch (_: Exception) { _update.update { it.copy(phase = "downloadError", manualResult = true) } }
+            } catch (e: Exception) {
+                android.util.Log.w("AppUpdates", "download failed via ${source.key}: ${e.message}", e)
+                _update.update { it.copy(phase = "downloadError", manualResult = true) }
+            }
         }
     }
     fun installUpdate() {

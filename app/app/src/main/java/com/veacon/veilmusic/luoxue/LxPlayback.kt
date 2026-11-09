@@ -11,6 +11,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -45,6 +46,8 @@ class LxPlayback @Inject constructor(
         /** 直链实测 TTL ≈21 分钟，留足余量。 */
         private const val CACHE_TTL_MS = 12 * 60_000L
         private const val CACHE_MAX = 24
+        /** 并发启动 QuickJS 脚本的批大小：4 个一批，兼顾电视盒子的 CPU/内存。 */
+        private const val ENGINE_INIT_PARALLELISM = 4
     }
 
     private val http: OkHttpClient by lazy {
@@ -212,23 +215,17 @@ class LxPlayback @Inject constructor(
                 log(lastError!!)
                 return false
             }
-            for (f in files) {
-                if (isDisabled(f.name)) {
-                    log("脚本已停用，跳过 ${f.name}")
-                    continue
+            val t0 = System.currentTimeMillis()
+            // 每个脚本有自己独立的单线程 QuickJS dispatcher，彼此不共享 runtime。
+            // 以前串行 start()，10 个脚本里只要有一个卡到 8s 求值超时，第一首歌就得等
+            // 全部脚本跑完（最坏几十秒）。分批并发后总耗时从「求和」降到「最慢的一批」。
+            for (batch in files.chunked(ENGINE_INIT_PARALLELISM)) {
+                val started = runBlocking(Dispatchers.IO) {
+                    batch.map { f -> async { startEngine(f) } }.awaitAll()
                 }
-                val engine = runCatching {
-                    LxScriptEngine(f.name, f.readText(), http) { line -> log(line) }
-                }.getOrNull() ?: continue
-                val ok = runCatching { runBlocking { engine.start() } }.getOrDefault(false)
-                if (ok && engine.sources.isNotEmpty()) {
-                    engines += engine
-                    log("脚本就绪 ${engine.displayName} ${engine.meta.version} 源=${engine.sources.keys}")
-                } else {
-                    runCatching { engine.close() }
-                    log("脚本不可用，已跳过 ${f.name}")
-                }
+                started.filterNotNull().forEach { engines += it }
             }
+            log("音源初始化完成：${engines.size}/${files.size} 个脚本，耗时 ${System.currentTimeMillis() - t0}ms")
             if (engines.isEmpty()) {
                 initState = 2
                 lastError = "所有脚本初始化失败"
@@ -239,6 +236,25 @@ class LxPlayback @Inject constructor(
             lastError = null
             return true
         }
+    }
+
+    /** 单个脚本的构造 + 启动；可被并发调用，结果按文件名顺序回灌到 [engines]。 */
+    private fun startEngine(f: File): LxScriptEngine? {
+        if (isDisabled(f.name)) {
+            log("脚本已停用，跳过 ${f.name}")
+            return null
+        }
+        val engine = runCatching {
+            LxScriptEngine(f.name, f.readText(), http) { line -> log(line) }
+        }.getOrNull() ?: return null
+        val ok = runCatching { runBlocking { engine.start() } }.getOrDefault(false)
+        if (ok && engine.sources.isNotEmpty()) {
+            log("脚本就绪 ${engine.displayName} ${engine.meta.version} 源=${engine.sources.keys}")
+            return engine
+        }
+        runCatching { engine.close() }
+        log("脚本不可用，已跳过 ${f.name}")
+        return null
     }
 
     /** 脚本重载：关引擎、清缓存，下一次解析时重建（脚本换掉不用重装 APK）。 */
@@ -316,7 +332,13 @@ class LxPlayback @Inject constructor(
     suspend fun resolve(song: Song, force: Boolean = false, excludeScript: String? = null): AudioStream? {
         if (!isEnabled()) return null
         songs[song.id] = song
-        if (!force && excludeScript == null) cached(song.id)?.let { return it }
+        if (!force && excludeScript == null) cached(song.id)?.let { stream ->
+            // 缓存命中也是一次「获取」：记一行零耗时记录，统计时能区分冷解析与热命中。
+            log("FETCH " + FetchLog.line(song.id, song.title, song.artistName, song.albumName,
+                System.currentTimeMillis(), 0L, "cache",
+                source = stream.source, quality = stream.quality, kbps = stream.kbps, script = stream.script))
+            return stream
+        }
         val job = synchronized(inflight) {
             inflight[song.id] ?: scope.async { doResolve(song, excludeScript) }.also { inflight[song.id] = it }
         }
@@ -350,32 +372,55 @@ class LxPlayback @Inject constructor(
     }
 
     private suspend fun doResolveInner(song: Song, excludeScript: String? = null): AudioStream? {
-        if (!ensureReadyBlocking()) return null
-        val r = resolver ?: return null
-        val durationSec = (song.durationMs / 1000).toInt()
-        val q = qualityPrefs.get()
-        val result = r.resolve(
-            title = song.title,
-            artist = song.artistName,
-            album = song.albumName,
-            durationSec = durationSec,
-            plan = QualityPlan(q.ladder, q.minKbps),
-            excludeScript = excludeScript,
-        ) { step -> log("${song.title} · $step") }
+        // 每首歌恰好一行 FETCH：时间戳 + 耗时 + 可定位标识 + 结果，成功/未命中/异常都覆盖。
+        // 只做记录，不改变解析路径与返回值。
+        val startMs = System.currentTimeMillis()
+        var outcome = "error"
+        var stream: AudioStream? = null
+        var attempts = 0
+        var reason: String? = null
+        try {
+            if (!ensureReadyBlocking()) { reason = "engine not ready"; return null }
+            val r = resolver ?: run { reason = "resolver unavailable"; return null }
+            val durationSec = (song.durationMs / 1000).toInt()
+            val q = qualityPrefs.get()
+            val resolved = r.resolve(
+                title = song.title,
+                artist = song.artistName,
+                album = song.albumName,
+                durationSec = durationSec,
+                plan = QualityPlan(q.ladder, q.minKbps),
+                excludeScript = excludeScript,
+            ) { step -> log("${song.title} · $step") }
 
-        val stream = result.stream
-        if (stream == null) {
-            lastError = "未命中：${song.title}（${result.attempts.size} 次尝试 / ${result.totalMs}ms）"
-            log(lastError!!)
-            return null
+            attempts = resolved.attempts.size
+            stream = resolved.stream
+            if (stream == null) {
+                outcome = "miss"
+                lastError = "未命中：${song.title}（$attempts 次尝试 / ${resolved.totalMs}ms）"
+                log(lastError!!)
+                return null
+            }
+            synchronized(cache) { cache[song.id] = Entry(stream, System.currentTimeMillis()) }
+            outcome = "ok"
+            log(
+                "命中 ${song.title} → ${stream.kind} ${stream.kbps}kbps " +
+                    "(${stream.source}/${stream.quality}/${stream.script}) " +
+                    "解析 ${resolved.totalMs}ms 校验 ${stream.verifyMs}ms"
+            )
+            return stream
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            reason = "${e.javaClass.simpleName}: ${e.message}"
+            throw e
+        } finally {
+            log("FETCH " + FetchLog.line(
+                songId = song.id, title = song.title, artist = song.artistName, album = song.albumName,
+                startMs = startMs, elapsedMs = System.currentTimeMillis() - startMs,
+                result = outcome, source = stream?.source, quality = stream?.quality,
+                kbps = stream?.kbps ?: 0, script = stream?.script, attempts = attempts, reason = reason,
+            ))
         }
-        synchronized(cache) { cache[song.id] = Entry(stream, System.currentTimeMillis()) }
-        log(
-            "命中 ${song.title} → ${stream.kind} ${stream.kbps}kbps " +
-                "(${stream.source}/${stream.quality}/${stream.script}) " +
-                "解析 ${result.totalMs}ms 校验 ${stream.verifyMs}ms"
-        )
-        return stream
     }
 
     // ── 诊断 ────────────────────────────────────────────────────────────────

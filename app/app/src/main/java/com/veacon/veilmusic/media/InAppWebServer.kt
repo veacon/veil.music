@@ -37,7 +37,8 @@ class InAppWebServer @Inject constructor(
     private val playlistImporter: com.veacon.veilmusic.data.local.PlaylistImporter,
 ) {
     private val logs = ArrayDeque<String>(300)
-    private val sseClients = java.util.concurrent.CopyOnWriteArrayList<java.io.OutputStream>()
+    /** SSE client -> language: live log lines must follow the language of the page that opened them. */
+    private val sseClients = java.util.concurrent.ConcurrentHashMap<java.io.OutputStream, String>()
     // Port 8001: live event stream for curl
     private val eventClients = java.util.concurrent.CopyOnWriteArrayList<java.io.OutputStream>()
     private var job: Job? = null
@@ -182,10 +183,14 @@ class InAppWebServer @Inject constructor(
 
     /** Push one line to every live listener — SSE (web page) and the raw :8081 event stream. */
     private fun broadcastLive(line: String) {
-        val sseData = "data: ${line.replace("\n", " ")}\n\n".toByteArray()
+        val raw = line.replace("\n", " ")
         val deadSse = mutableListOf<java.io.OutputStream>()
-        for (out in sseClients) { try { out.write(sseData); out.flush() } catch (_: Exception) { deadSse.add(out) } }
-        sseClients.removeAll(deadSse)
+        for ((client, language) in sseClients) {
+            val text = com.veacon.veilmusic.i18n.PhonePage.localize(context, raw, language)
+            try { client.write("data: $text\n\n".toByteArray()); client.flush() }
+            catch (_: Exception) { deadSse.add(client) }
+        }
+        deadSse.forEach { sseClients.remove(it) }
         val eventLine = "${line.replace("\n", " ")}\n".toByteArray()
         appScope?.launch(kotlinx.coroutines.Dispatchers.IO) {
             val dead = mutableListOf<java.io.OutputStream>()
@@ -202,40 +207,127 @@ class InAppWebServer @Inject constructor(
         return "http://${current.address}:${current.port}"
     }
 
-    private fun handle(socket: Socket) {
-        try {
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
-            val out = BufferedOutputStream(socket.getOutputStream())
-            val reqLine = reader.readLine() ?: return
-            val parts = reqLine.split(" ")
-            val method = parts.getOrNull(0) ?: "GET"
-            val target = parts.getOrNull(1) ?: "/"
-            val path = target.substringBefore('?')
-            val hdrs = mutableMapOf<String, String>()
-            var line = reader.readLine()
-            while (!line.isNullOrBlank()) {
-                val idx = line.indexOf(": ")
-                if (idx > 0) hdrs[line.substring(0, idx).lowercase()] = line.substring(idx + 2)
-                line = reader.readLine()
+    private data class RequestHead(val requestLine: String, val headers: Map<String, String>)
+
+    /**
+     * 逐字节读请求头，绝不做跨过 `CRLF CRLF` 的预读。
+     *
+     * 回归说明：之前用 `BufferedReader(InputStreamReader(...))` 读头、再回到
+     * `socket.getInputStream()` 按 Content-Length 读正文。InputStreamReader 内部有 8KB
+     * 缓冲，浏览器把「头 + 表单正文」放在同一个 TCP 包里发来时会把正文一起吞进解码器缓冲，
+     * 后面从裸 socket 再读就永远读不到字节（无 soTimeout 时直接挂死）——表现就是
+     * 手机扫码打开配置页后，「粘贴链接导入歌单」提交后一直没响应/失败。
+     * 现在头部与正文共用同一个 BufferedInputStream，预读的字节不会丢。
+     */
+    private fun readHeaders(input: BufferedInputStream): RequestHead? {
+        val buf = ByteArrayOutputStream()
+        var state = 0
+        while (state < 4) {
+            val b = input.read()
+            if (b < 0) return null
+            buf.write(b)
+            state = when (state) {
+                0 -> if (b == '\r'.code) 1 else 0
+                1 -> if (b == '\n'.code) 2 else if (b == '\r'.code) 1 else 0
+                2 -> if (b == '\r'.code) 3 else 0
+                3 -> if (b == '\n'.code) 4 else if (b == '\r'.code) 1 else 0
+                else -> 0
             }
-            var body = ""
-            if (method == "POST") {
-                // Content-Length 是「字节数」，不是字符数。中文一个字符占 3 字节，按字符读会
-                // 越读/错位，把 UTF-8 正文（尤其导入脚本里的中文注释）切成乱码。这里按字节读、
-                // 显式 UTF-8 解码，彻底消除「源码中文消失」。
-                val len = hdrs["content-length"]?.toIntOrNull() ?: 0
-                val bytes = ByteArray(len.coerceAtLeast(0))
+        }
+        // 请求头按 HTTP 规范是 ASCII/Latin-1；正文另按 UTF-8 解，互不干扰。
+        val lines = String(buf.toByteArray(), Charsets.ISO_8859_1).split("\r\n")
+        val headers = HashMap<String, String>()
+        for (i in 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val colon = line.indexOf(':')
+            if (colon <= 0) continue
+            headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
+        }
+        return RequestHead(lines.firstOrNull().orEmpty(), headers)
+    }
+
+    private fun readAsciiLine(input: BufferedInputStream): String? {
+        val sb = StringBuilder()
+        while (true) {
+            val b = input.read()
+            if (b < 0) return if (sb.isEmpty()) null else sb.toString()
+            if (b == '\n'.code) return sb.toString().trimEnd('\r')
+            sb.append(b.toChar())
+        }
+    }
+
+    /** 按 Content-Length 读满字节再解 UTF-8；顺带兼容 chunked，避免大表单被截断。 */
+    private fun readBody(input: BufferedInputStream, headers: Map<String, String>): String {
+        val out = ByteArrayOutputStream()
+        if (headers["transfer-encoding"].equals("chunked", ignoreCase = true)) {
+            while (true) {
+                val sizeLine = readAsciiLine(input) ?: break
+                val size = sizeLine.substringBefore(';').trim().toIntOrNull(16) ?: break
+                if (size == 0) { readAsciiLine(input); break }   // trailer
+                val chunk = ByteArray(size)
                 var off = 0
-                while (off < len) {
-                    val n = socket.getInputStream().read(bytes, off, len - off)
+                while (off < size) {
+                    val n = input.read(chunk, off, size - off)
                     if (n < 0) break
                     off += n
                 }
-                body = String(bytes, 0, off, Charsets.UTF_8)
+                out.write(chunk, 0, off)
+                readAsciiLine(input)                              // chunk 后的 CRLF
+                if (off < size) break
+            }
+        } else {
+            val len = headers["content-length"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+            val bytes = ByteArray(len)
+            var off = 0
+            while (off < len) {
+                val n = input.read(bytes, off, len - off)
+                if (n < 0) break
+                off += n
+            }
+            out.write(bytes, 0, off)
+        }
+        return String(out.toByteArray(), Charsets.UTF_8)
+    }
+
+    private fun handle(socket: Socket) {
+        try {
+            // 单个请求只用一个缓冲输入流；同时给个读超时，避免异常客户端永久占住协程。
+            socket.soTimeout = 30_000
+            val input = BufferedInputStream(socket.getInputStream(), 8192)
+            val out = BufferedOutputStream(socket.getOutputStream())
+            val head = readHeaders(input) ?: return
+            val parts = head.requestLine.split(" ")
+            val method = parts.getOrNull(0) ?: "GET"
+            val target = parts.getOrNull(1) ?: "/"
+            val path = target.substringBefore('?')
+            val hdrs = head.headers
+            var body = ""
+            if (method == "POST" || method == "PUT" || method == "PATCH") {
+                if (hdrs["expect"].equals("100-continue", ignoreCase = true)) {
+                    out.write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray()); out.flush()
+                }
+                body = readBody(input, hdrs)
             }
             val query = android.net.Uri.parse("http://localhost$target")
+            // TV 端的「界面语言」作为浏览器没有给出语言偏好时的兜底；手动切换 (?lang=) 与
+            // Cookie 仍优先。页面、动态提示、日志、SSE 全部使用同一个 language。
             val browserLanguage = com.veacon.veilmusic.i18n.PhonePage.resolveLanguage(
-                query.getQueryParameter("lang"), hdrs["cookie"], hdrs["accept-language"])
+                query.getQueryParameter("lang"), hdrs["cookie"], hdrs["accept-language"],
+                com.veacon.veilmusic.i18n.AppLanguage.code)
+            val lang = browserLanguage
+            fun line(key: String, vararg args: Any?) =
+                com.veacon.veilmusic.i18n.PhoneText.of(key, lang, *args)
+            fun dynamic(text: String) =
+                com.veacon.veilmusic.i18n.PhonePage.localize(context, text, lang)
+            /** 导入器的错误是中文整句（含动态异常），按 key / 字典转成当前语言。 */
+            fun importerError(msg: String): String {
+                if (lang == "zh") return msg
+                val prefix = "导入失败："
+                return if (msg.startsWith(prefix)) line("import.fail", msg.removePrefix(prefix))
+                       else dynamic(msg)
+            }
+            val appleDisplay = com.veacon.veilmusic.data.AppleDisplayAuth.get(context)
             if (path == "/" && query.getQueryParameter("lang") in listOf("zh", "en")) {
                 out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
                     "Set-Cookie: amtv_lang=$browserLanguage; Path=/; SameSite=Lax\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray())
@@ -243,12 +335,12 @@ class InAppWebServer @Inject constructor(
                 return
             }
             when {
-                method == "GET"  && path == "/"            -> send(out, 200, "text/html", html(tokenSaved = query.getQueryParameter("token") == "saved" && prefs.hasMUT(), tokenError = query.getQueryParameter("token") == "invalid", tokenUnavailable = query.getQueryParameter("token") == "unavailable", language = browserLanguage))
+                method == "GET"  && path == "/"            -> send(out, 200, "text/html", html(tokenSaved = query.getQueryParameter("token") == "saved" && prefs.hasMUT(), tokenError = query.getQueryParameter("token") == "invalid", tokenUnavailable = query.getQueryParameter("token") == "unavailable", language = lang))
                 method == "GET"  && path == "/status"      -> send(out, 200, "application/json", status())
-                method == "GET"  && path == "/logs"        -> send(out, 200, "application/json", logsJson())
-                method == "GET"  && path == "/stream"      -> { handleSse(socket, out); return }
+                method == "GET"  && path == "/logs"        -> send(out, 200, "application/json", logsJson(lang))
+                method == "GET"  && path == "/stream"      -> { handleSse(socket, out, lang); return }
 
-                method == "GET"  && path == "/netlogs"     -> send(out, 200, "application/json", netLogsJson())
+                method == "GET"  && path == "/netlogs"     -> send(out, 200, "application/json", netLogsJson(lang))
                 method == "GET"  && path == "/lx"          -> send(out, 200, "application/json", lx.statsJson())
                 method == "POST" && path == "/set-lx"      -> { applyLxEnabled(parseField(body, "lx")); redirect(out, "/") }
                 // 脚本管理：导入/删除/重载/回滚，全部走「落盘 → 热重载」，不用重装 APK。
@@ -257,6 +349,7 @@ class InAppWebServer @Inject constructor(
                         name = parseField(body, "name").trim(),
                         url = parseField(body, "url").trim(),
                         text = parseField(body, "text"),
+                        language = lang,
                     )
                     if (query.getQueryParameter("json") == "1") {
                         send(out, 200, "application/json", org.json.JSONObject().put("msg", msg).toString())
@@ -264,20 +357,20 @@ class InAppWebServer @Inject constructor(
                 }
                 method == "POST" && path == "/lx-delete"   -> {
                     val msg = runCatching { kotlinx.coroutines.runBlocking { lx.deleteScript(parseField(body, "name")) } }
-                        .getOrElse { "删除失败：${it.message}" }
+                        .getOrElse { line("lx.delete.fail", it.message) }.let { dynamic(it) }
                     addLog("LX", msg); redirect(out, "/")
                 }
                 method == "POST" && path == "/lx-reload"   -> {
                     val msg = runCatching { kotlinx.coroutines.runBlocking { lx.forceReload() } }
-                        .getOrElse { "重载失败：${it.message}" }
+                        .getOrElse { line("lx.reload.fail", it.message) }.let { dynamic(it) }
                     addLog("LX", msg); redirect(out, "/")
                 }
                 method == "POST" && path == "/lx-reset"    -> {
                     val msg = runCatching { kotlinx.coroutines.runBlocking { lx.resetScripts() } }
-                        .getOrElse { "恢复失败：${it.message}" }
+                        .getOrElse { line("lx.reset.fail", it.message) }.let { dynamic(it) }
                     addLog("LX", msg); redirect(out, "/")
                 }
-                method == "GET"  && path == "/report"      -> send(out, 200, "text/plain", bugReport(), "Content-Disposition: attachment; filename=\"amtv-bugreport.txt\"\r\n")
+                method == "GET"  && path == "/report"      -> send(out, 200, "text/plain", bugReport(lang), "Content-Disposition: attachment; filename=\"amtv-bugreport.txt\"\r\n")
                 method == "POST" && path == "/clear-crash"        -> { com.veacon.veilmusic.util.CrashReporter.clear(context); addLog("OK", "Crash log cleared"); redirect(out, "/") }
                 // 歌单导入：在电脑/手机上粘贴链接，App 端解析后落本地资料库
                 method == "POST" && path == "/playlist-import"    -> {
@@ -286,11 +379,11 @@ class InAppWebServer @Inject constructor(
                         kotlinx.coroutines.runBlocking {
                             when (val r = playlistImporter.import(raw, parseField(body, "name").ifBlank { null })) {
                                 is com.veacon.veilmusic.data.local.PlaylistImporter.Result.Ok ->
-                                    "已导入「${r.playlist.name}」${r.imported} 首"
-                                is com.veacon.veilmusic.data.local.PlaylistImporter.Result.Err -> r.message
+                                    line("import.ok", r.playlist.name, r.imported)
+                                is com.veacon.veilmusic.data.local.PlaylistImporter.Result.Err -> importerError(r.message)
                             }
                         }
-                    }.getOrElse { "导入失败：${it.message}" }
+                    }.getOrElse { line("import.fail", it.message ?: it.javaClass.simpleName) }
                     addLog("LIB", msg)
                     if (query.getQueryParameter("json") == "1")
                         send(out, 200, "application/json", org.json.JSONObject().put("msg", msg).toString())
@@ -301,6 +394,42 @@ class InAppWebServer @Inject constructor(
                     com.veacon.veilmusic.data.auth.TokenVerification.Invalid -> "/?token=invalid"
                     else -> "/?token=unavailable" }) }
                 method == "POST" && path == "/clear-token"         -> { prefs.setMUT(""); addLog("WARN","Token cleared"); redirect(out, "/") }
+                // Apple Music 展示方案（默认关闭）：令牌只进 AppleDisplayAuth 的独立存储，
+                // 仅用于展示个性化数据；播放数据绝不向 Apple Music 请求或回传。
+                method == "POST" && path == "/set-apple-display"   -> {
+                    val on = parseField(body, "on") == "1"
+                    appleDisplay.setEnabled(on)
+                    val msg = line(if (on) "apple.toggle.on" else "apple.toggle.off")
+                    addLog("APPLE", msg)
+                    if (query.getQueryParameter("json") == "1")
+                        send(out, 200, "application/json",
+                            org.json.JSONObject().put("msg", msg).put("enabled", on).toString())
+                    else redirect(out, "/")
+                }
+                method == "POST" && path == "/set-apple-display-token" -> {
+                    val outcome = appleDisplay.signIn(parseField(body, "mut"))
+                    val key = when (outcome) {
+                        "ok" -> "apple.signin.ok"
+                        "invalid" -> "apple.signin.invalid"
+                        "unavailable" -> "apple.signin.unavailable"
+                        else -> "apple.signin.disabled"
+                    }
+                    val msg = if (outcome == "ok")
+                        line(key, appleDisplay.state.value.storefront.ifBlank { "—" }) else line(key)
+                    addLog("APPLE", msg)
+                    if (query.getQueryParameter("json") == "1")
+                        send(out, 200, "application/json",
+                            org.json.JSONObject().put("msg", msg).put("result", outcome).toString())
+                    else redirect(out, "/")
+                }
+                method == "POST" && path == "/clear-apple-display-token" -> {
+                    appleDisplay.signOut()
+                    val msg = line("apple.signout.ok")
+                    addLog("APPLE", msg)
+                    if (query.getQueryParameter("json") == "1")
+                        send(out, 200, "application/json", org.json.JSONObject().put("msg", msg).toString())
+                    else redirect(out, "/")
+                }
                 method == "POST" && path == "/set-lyrics-offset"   -> { applyLyricsOffset(parseField(body, "offset")); redirect(out, "/") }
                 method == "POST" && path == "/set-beat-latency"    -> { applyBeatLatency(parseField(body, "latency")); redirect(out, "/") }
                 method == "POST" && path == "/set-crossfade"       -> { applyCrossfade(parseField(body, "crossfade")); redirect(out, "/") }
@@ -310,8 +439,13 @@ class InAppWebServer @Inject constructor(
                 method == "POST" && path == "/set-background-play" -> { applyBackgroundPlay(parseField(body, "bg")); redirect(out, "/") }
                 else -> send(out, 404, "text/plain", "Not found")
             }
-            out.flush(); socket.close()
-        } catch (_: Exception) {}
+            out.flush()
+        } catch (e: Exception) {
+            // 不能静默吞掉：手机提交「没反应」时，Dev 页日志要能看到原因。
+            addLog("WARN", "phone request failed: ${e.javaClass.simpleName}: ${e.message}")
+        } finally {
+            runCatching { socket.close() }
+        }
     }
 
     private fun applyBeatLatency(raw: String) {
@@ -339,8 +473,9 @@ class InAppWebServer @Inject constructor(
         addLog("OK", "Luoxue audio source ${if (on) "ON" else "OFF"} — takes effect from the next song")
     }
 
-    /** 导入脚本：优先用粘贴的文本，其次按 URL 下载；文件名缺省时从 URL 末段推断。 */
-    private fun applyLxImport(name: String, url: String, text: String): String {
+    /** 导入脚本：优先用粘贴的文本，其次按 URL 下载；文件名缺省时从 URL 末段推断。
+     *  返回的消息按当前页面语言生成，导入结果同时写入应用日志。 */
+    private fun applyLxImport(name: String, url: String, text: String, language: String = "zh"): String {
         val body = text.trim()
         val fileName = when {
             name.isNotBlank() -> if (name.endsWith(".js", true)) name else "$name.js"
@@ -348,17 +483,20 @@ class InAppWebServer @Inject constructor(
                 .ifBlank { "imported.js" }.let { if (it.endsWith(".js", true)) it else "$it.js" }
             else -> "imported-${System.currentTimeMillis() / 1000}.js"
         }
-        val msg = try {
-            kotlinx.coroutines.runBlocking {
+        val (msg, ok) = try {
+            val raw = kotlinx.coroutines.runBlocking {
                 if (body.isNotEmpty()) lx.importScript(fileName, body) else if (url.isNotBlank()) {
                     lx.importFromUrl(fileName, url)
-                } else "没有内容（文本和 URL 都是空的）"
+                } else com.veacon.veilmusic.i18n.PhoneText.of("lx.empty", language)
             }
+            val failed = if (language == "en") raw.startsWith("Import failed") else raw.startsWith("导入失败")
+            (com.veacon.veilmusic.i18n.PhonePage.localize(context, raw, language) to !failed)
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            "导入失败：${e.message ?: e.javaClass.simpleName}"
+            (com.veacon.veilmusic.i18n.PhoneText.of(
+                "lx.import.fail", language, e.message ?: e.javaClass.simpleName) to false)
         }
-        addLog(if (msg.startsWith("导入失败")) "ERR" else "LX", msg)
+        addLog(if (ok) "LX" else "ERR", msg)
         return msg
     }
 
@@ -421,16 +559,23 @@ class InAppWebServer @Inject constructor(
             val out = socket.getOutputStream()
             // Drain HTTP request headers
             var line = reader.readLine()
+            val requestLine = line.orEmpty()
             while (!line.isNullOrBlank()) { line = reader.readLine() }
+            val target = requestLine.split(" ").getOrNull(1).orEmpty()
+            val language = com.veacon.veilmusic.i18n.PhonePage.resolveLanguage(
+                android.net.Uri.parse("http://localhost$target").getQueryParameter("lang"),
+                null, null, com.veacon.veilmusic.i18n.AppLanguage.code)
+            fun local(text: String) =
+                com.veacon.veilmusic.i18n.PhonePage.localize(context, text, language)
             val header = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\n"
             out.write(header.toByteArray()); out.flush()
             // Dump EVERYTHING on connect: network request log + full app log backlog,
-            // then keep streaming live app logs. `curl http://<firetv-ip>:8081`.
+            // then keep streaming live app logs. `curl http://<firetv-ip>:8081/?lang=en`.
             out.write("===== NETWORK REQUESTS =====\n".toByteArray())
-            for (n in NetworkLog.getAll()) { out.write("${n}\n".toByteArray()) }
+            for (n in NetworkLog.getAll()) { out.write("${local(n)}\n".toByteArray()) }
             out.write("===== APP LOG =====\n".toByteArray())
             val backlog = synchronized(logs) { logs.toList() }
-            for (l in backlog) { out.write("${l}\n".toByteArray()) }
+            for (l in backlog) { out.write("${local(l)}\n".toByteArray()) }
             out.write("===== LIVE =====\n".toByteArray()); out.flush()
             eventClients.add(out)
             try { while (!socket.isClosed) Thread.sleep(500) } catch (_: Exception) {}
@@ -439,10 +584,10 @@ class InAppWebServer @Inject constructor(
         try { socket.close() } catch (_: Exception) {}
     }
 
-    private fun handleSse(socket: Socket, out: BufferedOutputStream) {
+    private fun handleSse(socket: Socket, out: BufferedOutputStream, language: String) {
         val header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\n"
         out.write(header.toByteArray()); out.flush()
-        sseClients.add(out)
+        sseClients[out] = language
         try { while (!socket.isClosed) Thread.sleep(1000) } catch (_: Exception) {}
         sseClients.remove(out)
         try { socket.close() } catch (_: Exception) {}
@@ -457,14 +602,20 @@ class InAppWebServer @Inject constructor(
 
     private fun redirect(out: BufferedOutputStream, to: String) = send(out, 303, "text/plain", "", "Location: $to\r\n")
 
-    private fun parseField(body: String, field: String) =
-        body.split("&").find { it.startsWith("$field=") }?.removePrefix("$field=")
-            ?.replace("+", " ")?.let { URLDecoder.decode(it, "UTF-8") } ?: ""
+    private fun parseField(body: String, field: String): String {
+        val raw = body.split("&").find { it.startsWith("$field=") }
+            ?.removePrefix("$field=")?.replace("+", " ") ?: return ""
+        // 用户直接粘的链接里可能带裸 '%'（不是合法百分号转义），URLDecoder 会抛异常；
+        // 早期实现让整个请求在 catch(_: Exception){} 里静默死掉，表现为「导入没反应」。
+        // 解码失败就退回原文，至少保证表单能被处理。
+        return runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
+    }
 
     /** A single self-contained text dump for bug reports: environment + crash + logs. */
-    private fun bugReport(): String {
+    private fun bugReport(language: String = "zh"): String {
         val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         val crash = com.veacon.veilmusic.util.CrashReporter.lastCrash(context)
+        fun local(text: String) = com.veacon.veilmusic.i18n.PhonePage.localize(context, text, language)
         return buildString {
             appendLine("===== Apple Music — bug report =====")
             appendLine("Generated: $ts")
@@ -476,16 +627,20 @@ class InAppWebServer @Inject constructor(
             appendLine(crash ?: "(none recorded)")
             appendLine()
             appendLine("===== NETWORK REQUESTS =====")
-            NetworkLog.getAll().forEach { appendLine(it) }
+            NetworkLog.getAll().forEach { appendLine(local(it)) }
             appendLine()
             appendLine("===== APP LOG =====")
-            getLogs().forEach { appendLine(it) }
+            getLogs().forEach { appendLine(local(it)) }
         }
     }
 
     private fun status() = """{"hasMUT":${prefs.hasMUT()},"mutLen":${prefs.getMUT().length},"url":"${serverUrl()}","hasCrash":${com.veacon.veilmusic.util.CrashReporter.lastCrash(context) != null}}"""
-    private fun logsJson() = "[${getLogs().joinToString(",") { "\"${it.replace("\"","'")}\"" }}]"
-    private fun netLogsJson() = "[${NetworkLog.getAll().joinToString(",") { "\"${it.replace("\"","'")}\"" }}]"
+    private fun logsJson(language: String = "zh") = getLogs()
+        .map { com.veacon.veilmusic.i18n.PhonePage.localize(context, it, language).replace("\"", "'") }
+        .joinToString(",", "[", "]") { "\"$it\"" }
+    private fun netLogsJson(language: String = "zh") = NetworkLog.getAll()
+        .map { com.veacon.veilmusic.i18n.PhonePage.localize(context, it, language).replace("\"", "'") }
+        .joinToString(",", "[", "]") { "\"$it\"" }
 
     internal fun html(tokenSaved: Boolean = false, tokenError: Boolean = false, tokenUnavailable: Boolean = false, language: String = "zh"): String {
         val currentOffset = lyricsOffsetPrefs.getOffset()
@@ -497,15 +652,20 @@ class InAppWebServer @Inject constructor(
         val bgPlayOn = pp.getBoolean("background_play", false)
         val currentCrossfade = crossfadePrefs.getDuration()
         val crossfadeSec = "%.1f".format(currentCrossfade / 1000f)
-        val logRows = getLogs().reversed().take(80).joinToString("") { log ->
+        // 首屏日志行也是「可见状态信息」：注入前就按页面语言本地化。
+        fun local(text: String) = com.veacon.veilmusic.i18n.PhonePage.localize(context, text, language)
+        val logRows = getLogs().reversed().take(80).joinToString("") { raw ->
+            val log = local(raw)
             val cls = when { log.contains("[OK]") -> "g"; log.contains("[ERROR]") -> "r"; log.contains("[WARN]") -> "y"; else -> "d" }
             "<div class=$cls>${log.replace("<","&lt;")}</div>"
-        }.ifEmpty { "<div class=d>No logs yet.</div>" }
-        val netRows = NetworkLog.getAll().reversed().take(100).joinToString("") { log ->
+        }.ifEmpty { "<div class=d>暂无日志。</div>" }
+        val netRows = NetworkLog.getAll().reversed().take(100).joinToString("") { raw ->
+            val log = local(raw)
             val cls = when { log.contains("✓") -> "g"; log.contains("✗") -> "r"; else -> "d" }
             "<div class=$cls>${log.replace("<","&lt;")}</div>"
-        }.ifEmpty { "<div class=d>No requests yet.</div>" }
-        val lxCard = buildLxCard()
+        }.ifEmpty { "<div class=d>暂无请求。</div>" }
+        val lxCard = buildLxCard(language)
+        val appleCard = buildAppleCard(language)
         val page = """<!DOCTYPE html><html lang="${if (language == "zh") "zh-CN" else "en"}"><head><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>AMusic 配置</title><style>
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#1d1d1f;padding:32px 20px;max-width:620px;margin:auto;line-height:1.6}
@@ -554,6 +714,8 @@ ol{font-size:14px;color:#6e6e73;line-height:1.9;padding-left:18px}code{color:#fa
 </style>
 <script id="bookmark-instruction" type="application/json">${com.veacon.veilmusic.i18n.PhonePage.bookmarkJson(context, language)}</script>
 <script>
+// Dynamic requests (logs / status / SSE) carry the language to the server so polling follows the switch.
+const LANG='${language}';
 const bookmarkInstruction = JSON.parse(document.getElementById('bookmark-instruction').textContent);
 
 function legacyCopyInstruction() {
@@ -587,29 +749,29 @@ async function copyBookmarkInstruction(button) {
       legacyCopyInstruction();
     }
     button.textContent = '已复制';
-    feedback.textContent = '';
+    if (feedback) feedback.textContent = '';
   } catch (error) {
     button.textContent = '复制指令';
-    feedback.textContent = '复制未成功，请长按上方指令，全选后复制。';
+    if (feedback) feedback.textContent = '复制未成功，请长按上方指令，全选后复制。';
   }
 }
 function refresh(){
-  fetch('/status').then(r=>r.json()).then(s=>{
+  fetch('/status?lang='+LANG).then(r=>r.json()).then(s=>{
     const el=document.getElementById('status');
     if(el)el.innerHTML=s.hasMUT?'<div class="row"><div class="dot dot-g"></div><div><div class=label>用户令牌已配置</div></div></div>':'<div class="row"><div class="dot dot-r"></div><div><div class=label>尚未配置令牌</div></div></div>';
   });
-  fetch('/logs').then(r=>r.json()).then(logs=>{
+  fetch('/logs?lang='+LANG).then(r=>r.json()).then(logs=>{
     const el=document.getElementById('applogs');
     if(el)el.innerHTML=logs.reverse().slice(0,80).map(l=>{const c=l.includes('[OK]')?'g':l.includes('[ERROR]')?'r':l.includes('[WARN]')?'y':'d';return'<div class='+c+'>'+l.replace(/</g,'&lt;')+'</div>';}).join('')||'<div class=d>暂无日志。</div>';
   });
-  fetch('/netlogs').then(r=>r.json()).then(logs=>{
+  fetch('/netlogs?lang='+LANG).then(r=>r.json()).then(logs=>{
     const el=document.getElementById('netlogs');
     if(el)el.innerHTML=logs.reverse().slice(0,100).map(l=>{const c=l.includes('✓')?'g':l.includes('✗')?'r':'d';return'<div class='+c+'>'+l.replace(/</g,'&lt;')+'</div>';}).join('')||'<div class=d>暂无请求。</div>';
   });
 }
 setInterval(refresh,3000);
 function copyLogs(id){
-  fetch(id==='applogs'?'/logs':'/netlogs').then(r=>r.json()).then(logs=>{
+  fetch((id==='applogs'?'/logs':'/netlogs')+'?lang='+LANG).then(r=>r.json()).then(logs=>{
     const text=logs.reverse().join('\n');
     const b=document.getElementById('copy-'+id);
     const done=()=>{const orig=b.textContent;b.textContent='已复制';setTimeout(()=>b.textContent=orig,1500);};
@@ -622,14 +784,15 @@ function copyLogs(id){
   });
 }
 function legacyCopy(text,done,b){
+  const label=b.getAttribute('data-label')||b.textContent;
   try{
     const ta=document.createElement('textarea');
     ta.value=text;ta.style.position='fixed';ta.style.top='0';ta.style.left='0';ta.style.opacity='0';
     document.body.appendChild(ta);ta.focus();ta.select();
     const ok=document.execCommand('copy');
     document.body.removeChild(ta);
-    if(ok)done();else{b.textContent='复制失败';setTimeout(()=>b.textContent='复制',1500);}
-  }catch(e){b.textContent='复制失败';setTimeout(()=>b.textContent='复制',1500);}
+    if(ok)done();else{b.textContent='复制失败';setTimeout(()=>b.textContent=label,1500);}
+  }catch(e){b.textContent='复制失败';setTimeout(()=>b.textContent=label,1500);}
 }
 </script>
 </head><body>
@@ -647,6 +810,8 @@ function legacyCopy(text,done,b){
 <button class="btn btn-p" type=submit>导入到资料库</button>
 </form>
 </div>
+
+@AMTV_APPLE_CARD@
 
 <details class=more>
 <summary>播放与音源设置</summary>
@@ -673,7 +838,7 @@ function legacyCopy(text,done,b){
 
 <div class=card>
 <h2>电脑代理服务器</h2>
-<div class=row><div class=label>当前</div><div class=sub2 style=color:#6e6e73>${if (serverIp.isEmpty()) "未设置" else serverIp}</div></div>
+<div class=row><div class=label>当前值</div><div class=sub2 style=color:#6e6e73>${if (serverIp.isEmpty()) "未设置" else serverIp}</div></div>
 <form method=POST action=/set-server-ip>
 <input name=serverip type=text inputmode=decimal placeholder="192.168.1.190" value="$serverIp" style="width:100%;box-sizing:border-box;padding:10px;margin-top:8px;border-radius:6px;border:1px solid #333;background:#e8e8ed;color:#1d1d1f;font-family:monospace;font-size:15px">
 <button class="btn btn-p" type=submit style=margin-top:8px>设置电脑 IP</button>
@@ -683,30 +848,30 @@ function legacyCopy(text,done,b){
 
 <div class=card>
 <h2>本机模式（无需电脑）</h2>
-<div class=row><div class=label>状态</div><div class=sub2 style="color:${if (standaloneOn) "#6bcb77" else "#aaa"}">${if (standaloneOn) "已开启，全部在本机处理" else "已关闭，使用电脑服务器"}</div></div>
+<div class=row><div class=label>当前状态</div><div class=sub2 style="color:${if (standaloneOn) "#6bcb77" else "#aaa"}">${if (standaloneOn) "已开启，全部在本机处理" else "已关闭，使用电脑服务器"}</div></div>
 <form method=POST action=/set-standalone>
 <input type=hidden name=standalone value="${if (standaloneOn) "0" else "1"}">
-<button class="btn ${if (standaloneOn) "" else "btn-p"}" type=submit ${if (!serverPrefs.hasPcServer()) "disabled" else ""} style=margin-top:8px>${if (!serverPrefs.hasPcServer()) "未配置代理，仅使用本机" else if (standaloneOn) "关闭" else "开启"}</button>
+<button class="btn ${if (standaloneOn) "" else "btn-p"}" type=submit ${if (!serverPrefs.hasPcServer()) "disabled" else ""} style=margin-top:8px>${if (!serverPrefs.hasPcServer()) "未配置代理，仅使用本机" else if (standaloneOn) "关闭本机模式" else "开启本机模式"}</button>
 </form>
 <div style="font-size:10px;color:#555;margin-top:8px">直接连接 Apple，提供浏览、资料库、搜索、封面、歌词和播放，无需电脑。部分歌曲可能出现分段间隙；电脑代理模式可修复此类间隙。设置从下一首生效。</div>
 </div>
 
 <div class=card>
 <h2>音量均衡</h2>
-<div class=row><div class=label>状态</div><div class=sub2 style="color:${if (volLevelOn) "#6bcb77" else "#aaa"}">${if (volLevelOn) "已开启，均衡歌曲响度" else "已关闭，保留原有响度"}</div></div>
+<div class=row><div class=label>当前状态</div><div class=sub2 style="color:${if (volLevelOn) "#6bcb77" else "#aaa"}">${if (volLevelOn) "已开启，均衡歌曲响度" else "已关闭，保留原有响度"}</div></div>
 <form method=POST action=/set-volume-leveling>
 <input type=hidden name=vol value="${if (volLevelOn) "0" else "1"}">
-<button class="btn ${if (volLevelOn) "" else "btn-p"}" type=submit style=margin-top:8px>${if (volLevelOn) "关闭" else "开启"}</button>
+<button class="btn ${if (volLevelOn) "" else "btn-p"}" type=submit style=margin-top:8px>${if (volLevelOn) "关闭音量均衡" else "开启音量均衡"}</button>
 </form>
 <div style="font-size:10px;color:#555;margin-top:8px">自动缓慢调整增益，使不同歌曲的响度更均衡。立即生效，可在应用日志的 VOL 条目中查看。</div>
 </div>
 
 <div class=card>
 <h2>后台播放</h2>
-<div class=row><div class=label>状态</div><div class=sub2 style="color:${if (bgPlayOn) "#6bcb77" else "#aaa"}">${if (bgPlayOn) "已开启，后台继续播放" else "已关闭，离开时暂停"}</div></div>
+<div class=row><div class=label>当前状态</div><div class=sub2 style="color:${if (bgPlayOn) "#6bcb77" else "#aaa"}">${if (bgPlayOn) "已开启，后台继续播放" else "已关闭，离开时暂停"}</div></div>
 <form method=POST action=/set-background-play>
 <input type=hidden name=bg value="${if (bgPlayOn) "0" else "1"}">
-<button class="btn ${if (bgPlayOn) "" else "btn-p"}" type=submit style=margin-top:8px>${if (bgPlayOn) "关闭" else "开启"}</button>
+<button class="btn ${if (bgPlayOn) "" else "btn-p"}" type=submit style=margin-top:8px>${if (bgPlayOn) "关闭后台播放" else "开启后台播放"}</button>
 </form>
 <div style="font-size:10px;color:#555;margin-top:8px">下次启动应用时生效。</div>
 </div>
@@ -727,7 +892,7 @@ function legacyCopy(text,done,b){
 
 <div class=card>
 <h2>问题报告</h2>
-<div class=row><div class=label>最近崩溃</div><div class=sub2 style="color:${if (com.veacon.veilmusic.util.CrashReporter.lastCrash(context) != null) "#ff3b30" else "#6bcb77"}">${if (com.veacon.veilmusic.util.CrashReporter.lastCrash(context) != null) "已记录崩溃" else "无"}</div></div>
+<div class=row><div class=label>最近崩溃</div><div class=sub2 style="color:${if (com.veacon.veilmusic.util.CrashReporter.lastCrash(context) != null) "#ff3b30" else "#6bcb77"}">${if (com.veacon.veilmusic.util.CrashReporter.lastCrash(context) != null) "已记录崩溃" else "无崩溃记录"}</div></div>
 <a class="btn btn-p" href=/report download style=text-decoration:none>下载问题报告</a>
 <form method=POST action=/clear-crash><button class="btn btn-s" type=submit>清除崩溃日志</button></form>
 <div style="font-size:10px;color:#555;margin-top:8px">将应用版本、设备信息、最近崩溃、应用和网络日志汇总为文本文件。</div>
@@ -735,23 +900,84 @@ function legacyCopy(text,done,b){
 
 
 <div class=card>
-<div class=rbar><h2 style=margin:0>网络活动</h2><div style=display:flex;gap:6px><button class=rbtn id=copy-netlogs onclick="copyLogs('netlogs')">复制</button><button class=rbtn onclick=refresh()>↻</button></div></div>
+<div class=rbar><h2 style=margin:0>网络活动</h2><div style=display:flex;gap:6px><button class=rbtn id=copy-netlogs data-label=复制请求 onclick="copyLogs('netlogs')">复制请求</button><button class=rbtn onclick=refresh()>↻</button></div></div>
 <div class=logs id=netlogs>@AMTV_NETWORK_LOGS@</div>
 </div>
 
 <div class=card>
-<div class=rbar><h2 style=margin:0>应用日志</h2><div style=display:flex;gap:6px><button class=rbtn id=copy-applogs onclick="copyLogs('applogs')">复制</button><button class=rbtn onclick=refresh()>↻</button></div></div>
+<div class=rbar><h2 style=margin:0>应用日志</h2><div style=display:flex;gap:6px><button class=rbtn id=copy-applogs data-label=复制日志 onclick="copyLogs('applogs')">复制日志</button><button class=rbtn onclick=refresh()>↻</button></div></div>
 <div class=logs id=applogs>@AMTV_APP_LOGS@</div>
 </div>
 </details>
 </body></html>"""
-        return com.veacon.veilmusic.i18n.PhonePage.render(context, page, language)
-            .replace("@AMTV_NETWORK_LOGS@", netRows).replace("@AMTV_APP_LOGS@", logRows)
+        // 先拼成完整 HTML 再翻译：LX 卡片、Apple 卡片、首屏日志行都进入字典管线。
+        // 2.1 的 bug 正是「占位符在 render 之后注入」，导致音源卡片整块中文漏翻。
+        val full = page
+            .replace("@AMTV_NETWORK_LOGS@", netRows)
+            .replace("@AMTV_APP_LOGS@", logRows)
             .replace("@AMTV_LX_CARD@", lxCard)
+            .replace("@AMTV_APPLE_CARD@", appleCard)
+        return com.veacon.veilmusic.i18n.PhonePage.render(context, full, language)
+    }
+
+    /**
+     * Apple Music 展示方案卡片：只有开关开启时才出现。
+     * 令牌只由 `AppleDisplayAuth` 保管，页面显示的是纯展示状态；不提供任何播放数据入口。
+     */
+    private fun buildAppleCard(language: String): String {
+        val auth = com.veacon.veilmusic.data.AppleDisplayAuth.get(context)
+        val note = "仅用于界面展示：读取账号、商店区域与资料库歌单名称；播放数据不会向 Apple Music 请求或回传，播放仍走落雪音源。"
+        if (!auth.isEnabled()) return buildString {
+            append("<div class=card><h2>Apple Music 展示账号</h2>")
+            append("<p class=sub style=margin-bottom:10px>$note</p>")
+            append("<div class=row><div class=label>展示开关</div><div class=sub2>未开启</div></div>")
+            append("<form method=POST action=/set-apple-display>")
+            append("<input type=hidden name=on value=1>")
+            append("<button class=\"btn btn-p\" type=submit>开启展示</button></form>")
+            append("</div>")
+        }
+        val s = auth.state.value
+        val statusText = when (s.status) {
+            "ready" -> "已登录"
+            "idle" -> "未登录"
+            "invalid" -> "令牌无效"
+            "unavailable" -> "暂时无法连接"
+            "signed_out" -> "已退出"
+            "checking" -> "检查中"
+            else -> "未登录"
+        }
+        val bearer = if (s.hasBearer) "已获取" else "未获取"
+        val items = if (s.displayItems.isEmpty()) "" else
+            "<div class=sub2 style=margin-top:8px>资料库歌单：${s.displayItems.joinToString(" · ") { esc(it) }}</div>"
+        return buildString {
+            append("<div class=card><h2>Apple Music 展示账号</h2>")
+            append("<p class=sub style=margin-bottom:10px>$note</p>")
+            append("<div class=row><div class=label>Bearer 令牌</div><div class=sub2>$bearer</div></div>")
+            append("<div class=row><div class=label>登录状态</div><div class=sub2>$statusText</div></div>")
+            if (s.storefront.isNotBlank())
+                append("<div class=row><div class=label>商店区域</div><div class=sub2>${esc(s.storefront)}</div></div>")
+            if (s.accountName.isNotBlank())
+                append("<div class=row><div class=label>账号名称</div><div class=sub2>${esc(s.accountName)}</div></div>")
+            append(items)
+            append("<form method=POST action=/set-apple-display-token style=margin-top:10px>")
+            append("<label class=token-label for=applemut>Apple Music 用户令牌</label>")
+            append("<input id=applemut name=mut type=text autocomplete=off autocapitalize=off spellcheck=false placeholder=\"在此粘贴用户令牌\" style=\"width:100%;background:#e8e8ed;border:1.5px solid #d2d2d7;border-radius:8px;color:#1d1d1f;font-size:13px;padding:12px;outline:none;box-sizing:border-box\">")
+            append("<button class=\"btn btn-p\" type=submit>登录并展示</button></form>")
+            append("<div style=\"display:flex;gap:8px;margin-top:8px\">")
+            append("<button class=\"btn btn-s\" type=button style=margin:0 onclick=\"copyBookmarkInstruction(this)\">复制令牌获取指令</button>")
+            append("<form method=POST action=/clear-apple-display-token style=flex:1;margin:0>")
+            append("<button class=\"btn btn-s\" type=submit style=margin:0>退出展示登录</button></form></div>")
+            append("<div id=copy-feedback class=copy-feedback></div>")
+            append("<div style=\"font-size:10px;color:#555;margin-top:8px\">在 Safari 打开 music.apple.com 并登录，运行书签指令即可复制 media-user-token；粘贴到上方后登录。</div>")
+            append("<form method=POST action=/set-apple-display style=margin-top:10px>")
+            append("<input type=hidden name=on value=0>")
+            append("<button class=\"btn btn-s\" type=submit>关闭展示</button></form>")
+            append("</div>")
+        }
     }
 
     /** 设置页的「落雪音源」卡片：开关 + 脚本清单 + 导入/重载/回滚。 */
-    private fun buildLxCard(): String {
+    private fun buildLxCard(language: String): String {
         val inputStyle = "width:100%;background:#e8e8ed;border:1.5px solid #d2d2d7;border-radius:8px;" +
             "color:#1d1d1f;font-family:monospace;font-size:13px;padding:10px;outline:none;margin-top:8px"
         val views = runCatching { lx.scriptViews() }.getOrDefault(emptyList())
@@ -782,8 +1008,8 @@ function legacyCopy(text,done,b){
             append("<div class=card><h2>音源配置</h2>")
             append("<div class=row><div class=\"dot ${if (on) "dot-g" else "dot-r"}\"></div>")
             append("<div class=label>${if (on) "已开启，播放走音源直链" else "已关闭，无可用音源"}</div></div>")
-            append("<div class=sub2>脚本 $loaded 个 · 命中率 $hit · 缓存 $cache 首")
-            if (!err.isNullOrBlank()) append(" · 最近失败：${esc(err)}")
+            append("<div class=sub2>${com.veacon.veilmusic.i18n.PhoneText.of("lx.stats", language, loaded, hit, cache)}")
+            if (!err.isNullOrBlank()) append(com.veacon.veilmusic.i18n.PhoneText.of("lx.lastError", language, esc(err)))
             append("</div>")
             append("<form method=POST action=/set-lx style=margin-top:10px>")
             append("<input type=hidden name=lx value=\"${if (on) "0" else "1"}\">")

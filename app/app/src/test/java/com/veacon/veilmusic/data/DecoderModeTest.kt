@@ -8,9 +8,14 @@ class DecoderModeTest {
         for (mode in DecoderMode.entries) assertEquals(mode, DecoderMode.fromKey(mode.key))
     }
 
-    @Test fun missingOrUnknownPreferenceFallsBackToTheHistoricalSoftwarePath() {
-        assertEquals(DecoderMode.SOFTWARE, DecoderMode.fromKey(null))
-        assertEquals(DecoderMode.SOFTWARE, DecoderMode.fromKey(""))
-        assertEquals(DecoderMode.SOFTWARE, DecoderMode.fromKey("auto"))
+    @Test fun missingOrUnknownPreferenceFallsBackToTheHardwareDefault() {
+        assertEquals(DecoderMode.HARDWARE, DecoderMode.fromKey(null))
+        assertEquals(DecoderMode.HARDWARE, DecoderMode.fromKey(""))
+        assertEquals(DecoderMode.HARDWARE, DecoderMode.fromKey("auto"))
+    }
+
+    @Test fun storedSoftwareChoiceStillWinsOverTheNewDefault() {
+        assertEquals(DecoderMode.SOFTWARE, DecoderMode.fromKey("sw"))
+        assertEquals(DecoderMode.HARDWARE, DecoderMode.fromKey("hw"))
     }
 }
