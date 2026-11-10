@@ -342,5 +342,5 @@
     <string name="msg_333" formatted="false">"Switch lyrics source"</string>
     <string name="msg_334" formatted="false">"Switching source…"</string>
     <string name="msg_335" formatted="false">"Word-by-word lyrics"</string>
-    <string name="msg_336" formatted="false">"Light up the current line character by character. Turn off to highlight the whole line at once."</string>
+    <string name="msg_336" formatted="false">"True per-character timing only when signed in to Apple Music; otherwise timing is spread evenly across the line. Off = whole line lights up at once."</string>
 </resources>

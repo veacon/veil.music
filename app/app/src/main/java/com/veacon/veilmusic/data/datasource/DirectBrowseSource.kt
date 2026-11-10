@@ -27,7 +27,11 @@ class DirectBrowseSource @Inject constructor(
 
     /** The proxy drops anything without artwork — a card with no image looks broken. */
     private fun itemFromRaw(item: Map<*, *>): AlbumDto? {
-        if (com.veacon.veilmusic.data.VideoPlaybackPolicy.isVideo(item["type"] as? String ?: "")) return null
+        val type = item["type"] as? String ?: ""
+        if (com.veacon.veilmusic.data.VideoPlaybackPolicy.isVideo(type)) return null
+        // 电台（stations / ra.*）已下线：首页推荐里仍会混进「专属电台推荐」这类卡片，
+        // 点进去也没有可播内容，统一在这里过滤掉，避免每个数据入口都写一遍。
+        if (type == "stations" || (item["id"] as? String)?.startsWith("ra.") == true) return null
         val attrs = item["attributes"] as? Map<*, *> ?: return null
         val url = art((attrs["artwork"] as? Map<*, *>)?.get("url") as? String) ?: return null
         val ea = attrs["editorialArtwork"] as? Map<*, *>
@@ -36,7 +40,7 @@ class DirectBrowseSource @Inject constructor(
             title = (attrs["name"] ?: "Unknown") as? String ?: "Unknown",
             artistName = (attrs["artistName"] ?: attrs["curatorName"] ?: "") as? String ?: "",
             artworkUrl = url,
-            type = item["type"] as? String ?: "albums",
+            type = type.ifEmpty { "albums" },
             artworkBgColor = (attrs["artwork"] as? Map<*, *>)?.get("bgColor") as? String,
             releaseDate = attrs["releaseDate"] as? String,
             trackCount = (attrs["trackCount"] as? Number)?.toInt() ?: 0,

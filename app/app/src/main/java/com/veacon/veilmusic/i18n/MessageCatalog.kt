@@ -347,6 +347,6 @@ internal object MessageCatalog {
         R.string.msg_333 to ("歌词换源" to "Switch lyrics source"),
         R.string.msg_334 to ("正在换源…" to "Switching source…"),
         R.string.msg_335 to ("歌词逐字播放" to "Word-by-word lyrics"),
-        R.string.msg_336 to ("当前行按时间逐字点亮；关闭后整句直接亮起，其余表现不变。" to "Light up the current line character by character. Turn off to highlight the whole line at once."),
+        R.string.msg_336 to ("仅登录 Apple 账号后才是真实逐字时间轴；未登录时按行时长均分模拟。关闭后整句直接亮起。" to "True per-character timing only when signed in to Apple Music; otherwise timing is spread evenly across the line. Off = whole line lights up at once."),
     )
 }

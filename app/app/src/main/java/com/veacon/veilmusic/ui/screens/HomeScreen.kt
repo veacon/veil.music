@@ -119,6 +119,12 @@ internal fun RestorePostLoginHomeTop(
     }
 }
 
+/**
+ * 首页所有封面行的卡片尺寸。此前 picks 行用 210、普通行用 130，同一屏里两种大小
+ * 并排看起来像排版错乱；统一成一个尺寸，行与行之间只靠标题分隔。
+ */
+private const val HOME_CARD_SIZE = 210
+
 @Composable
 private fun ContentRow(
     section: HomeSection,
@@ -149,7 +155,7 @@ private fun ContentRow(
             ) {
                 items(section.albums, key = { it.id }, contentType = { "picks" }) { album ->
                     AlbumCard(
-                        album = album, size = 210,
+                        album = album, size = HOME_CARD_SIZE,
                         onClick = { openCard(album) },
                         onLongClick = { if (album.id.startsWith("pl.") || album.id.startsWith("p.")) playerVm.shufflePlayPlaylist(album.id) },
                         motionEnabled = motionEnabled,
@@ -171,7 +177,7 @@ private fun ContentRow(
             ) {
                 items(section.albums, key = { it.id }, contentType = { "gradient" }) { album ->
                     com.veacon.veilmusic.ui.components.GradientCard(
-                        album = album, width = 250,
+                        album = album, width = HOME_CARD_SIZE,
                         onClick = { openCard(album) },
                         onLongClick = { if (album.id.startsWith("pl.") || album.id.startsWith("p.")) playerVm.shufflePlayPlaylist(album.id) },
                         motionEnabled = motionEnabled,
@@ -199,7 +205,7 @@ private fun ContentRow(
                 val isCategory = album.id.startsWith("ac-") || album.id.startsWith("c-") || album.id.startsWith("mr-")
                 AlbumCard(
                     album = album,
-                    size = 130,
+                    size = HOME_CARD_SIZE,
                     onClick = {
                         when {
                             isCategory -> onCategoryClick(album.id)
