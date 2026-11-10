@@ -58,6 +58,7 @@ class OrientationUiTest {
             lyrics=listOf(LyricLine(0, 10000, "第一行歌词"),LyricLine(10000,20000,"第二行歌词")),lyricsScale=.85f))
         field("_state",state);field("state",state)
         field("artworkCentered", MutableStateFlow(false))
+        field("wordByWordLyrics", MutableStateFlow(true))
         field("albumWallPrefetch", kotlinx.coroutines.CompletableDeferred(emptyList<com.veacon.veilmusic.ui.wall.CachedWallCard>()))
         val player=Proxy.newProxyInstance(ExoPlayer::class.java.classLoader,arrayOf(ExoPlayer::class.java)) { _,m,_ ->
             if (m.name !in listOf("equals", "hashCode", "toString")) playerCalls+=m.name

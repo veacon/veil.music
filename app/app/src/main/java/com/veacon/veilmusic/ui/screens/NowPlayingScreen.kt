@@ -164,6 +164,8 @@ fun NowPlayingScreen(
     onBrowse: () -> Unit = {},
 ) {
     val playbackState by playerVm.state.collectAsState()
+    // 逐字歌词开关：关掉后当前行整句直接亮起，其余样式与滚动行为完全不变。
+    val wordByWord by playerVm.wordByWordLyrics.collectAsState()
     val artworkCentered by playerVm.artworkCentered.collectAsState()
     val state = playbackState
     val fontState = com.veacon.veilmusic.ui.theme.LocalAppFontState.current
@@ -463,6 +465,7 @@ fun NowPlayingScreen(
                     },
                     hideArtwork = coverMoving,
                     onArtworkPosition = { rect -> if (!albumWall && !coverMoving) coverOrigin = rect.translate(-playerOrigin) },
+                    wordByWord = wordByWord,
                 )
             } else {
                 PlayerPlayFocusEffect(playFocus,chromeVisible, suppressInitialFocus = transferCoverFocus)
@@ -590,7 +593,7 @@ fun NowPlayingScreen(
                                 if (panel == "lyrics") LyricsPanel(
                                     lyrics = state.lyrics, progressState = smoothProgress, offsetMs = state.avLyricsMs,
                                     onSeek = { playerVm.player.seekTo(it) }, playFocus = playFocus,
-                                    fontScale = state.lyricsScale,
+                                    fontScale = state.lyricsScale, wordByWord = wordByWord,
                                 )
                                 else if (panel == "empty" && !state.isLoading) EmptyLyrics(song.id, state.lyricsScale, emptyPanelIsCurrent && emptyLyricsNoticeVisible(state,currentLyricsState), centered=centeredControls)
                                 }
@@ -938,6 +941,8 @@ internal fun FullScreenLyrics(
     songInfoMenu: @Composable () -> Unit = {},
     hideArtwork: Boolean = false,
     onArtworkPosition: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    /** 逐字播放开关，透传给 [LyricsPanel]。 */
+    wordByWord: Boolean = true,
 ) {
     // Focus lands on the play button (not the top lyric line). Passing it to LyricsPanel
     // as playFocus also makes RIGHT jump here and the 7s idle auto-return work, so the
@@ -970,6 +975,7 @@ internal fun FullScreenLyrics(
                 playFocus = playFocus,
                 fontScale = 1.3f * lyricsScale,
                 autoReturnMs = 5_000L,
+                wordByWord = wordByWord,
             )
             else if (!loading) EmptyLyrics(song.id, 1.3f * lyricsScale, showEmptyLyrics)
             }
@@ -1729,6 +1735,8 @@ internal fun LyricsPanel(
     playFocus: FocusRequester? = null,
     fontScale: Float = 1f,
     autoReturnMs: Long = 7000L,
+    /** 逐字播放开关：关闭时当前行整句亮起，不做逐字渐变。 */
+    wordByWord: Boolean = true,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -1930,6 +1938,7 @@ internal fun LyricsPanel(
                     isActive = isActive,
                     isPast = isPast,
                     progress = progressProvider,
+                    wordByWord = wordByWord,
                     fontScale = fontScale,
                     focusRequester = if (isActive) activeLineFocus else null,
                     onSeek = { onSeek(line.startMs) },
@@ -1966,8 +1975,7 @@ private fun MusicalDots(
 @Composable
 private fun WordWipeLine(
     text: String,
-    words: List<LyricWord>,
-    activeIdx: Int,
+    spans: List<LyricCharSpan>,
     progressMs: Long,
     live: Boolean = true,
     fontSize: androidx.compose.ui.unit.TextUnit = 32.sp,
@@ -1976,17 +1984,18 @@ private fun WordWipeLine(
     sungColor: Color = Color.White,
     unsungColor: Color = Color.White.copy(alpha = 0.40f),
 ) {
+    val activeIdx = spans.indexOfLast { it.startMs <= progressMs }
     val paragraph = buildAnnotatedString {
         append(text)
         var cursor = 0
-        words.forEachIndexed { index, word ->
-            val start = text.indexOf(word.text, startIndex = cursor)
+        spans.forEachIndexed { index, span ->
+            val start = text.indexOf(span.text, startIndex = cursor)
             if (start >= 0) {
-                val end = start + word.text.length
+                val end = start + span.text.length
                 val fraction = when {
                     index < activeIdx -> 1f
-                    index == activeIdx && live -> ((progressMs - word.startMs).toFloat() /
-                        (word.endMs - word.startMs).coerceAtLeast(1L)).coerceIn(0f, 1f)
+                    index == activeIdx && live -> ((progressMs - span.startMs).toFloat() /
+                        (span.endMs - span.startMs).coerceAtLeast(1L)).coerceIn(0f, 1f)
                     else -> 0f
                 }
                 addStyle(SpanStyle(color = androidx.compose.ui.graphics.lerp(unsungColor, sungColor, fraction)), start, end)
@@ -2008,6 +2017,8 @@ internal fun LyricLineRow(
     isPast: Boolean,
     progress: () -> Long,
     onSeek: () -> Unit,
+    /** 关闭时当前行整句直接亮起（不做逐字渐变），其余表现不变。 */
+    wordByWord: Boolean = true,
     fontScale: Float = 1f,
     focusRequester: FocusRequester? = null,
 ) {
@@ -2016,6 +2027,11 @@ internal fun LyricLineRow(
     // Reading the provider here subscribes only this row: the active row (live clock)
     // recomposes per frame; inactive rows read a constant and never re-run on tick.
     val progressMs = progress()
+    // 逐字时间：优先用歌词自带的 words；行级 LRC 没有 words，就按行时长合成。
+    val wipeSpans = remember(line) {
+        if (line.words.isNotEmpty()) lyricCharSpans(line.words)
+        else estimateCharSpans(line.text, line.startMs, line.endMs)
+    }
     val targetOpacity = when {
         isActive -> 1f
         isPast   -> 0.35f
@@ -2048,10 +2064,9 @@ internal fun LyricLineRow(
             border = ClickableSurfaceDefaults.border(border = Border.None, focusedBorder = Border.None),
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-                if (isActive && line.words.isNotEmpty()) {
-                    // Timing highlights live inside one naturally wrapped paragraph.
-                    val activeIdx = line.words.indexOfLast { it.startMs <= progressMs }
-                    WordWipeLine(text = line.text, words = line.words, activeIdx = activeIdx, progressMs = progressMs, fontSize = (32f * fontScale).sp, lineHeight = (44f * fontScale).sp)
+                if (isActive && wordByWord && wipeSpans.isNotEmpty()) {
+                    // 逐字高亮：有逐字时间就用它，只有行级时间就按字均分合成，都在同一段里完成。
+                    WordWipeLine(text = line.text, spans = wipeSpans, progressMs = progressMs, fontSize = (32f * fontScale).sp, lineHeight = (44f * fontScale).sp)
                 } else {
                     // Inactive sentences are pure white; only the animated row alpha dims them.
                     val style = when {
@@ -2078,9 +2093,9 @@ internal fun LyricLineRow(
                     ) {
                         if (bg.words.isNotEmpty()) {
                             // Same soft left→right wipe as the lead line, just smaller/dimmer.
-                            val bgActiveIdx = bg.words.indexOfLast { it.startMs <= bgProgress }
                             WordWipeLine(
-                                text = bg.text, words = bg.words, activeIdx = bgActiveIdx, progressMs = bgProgress,
+                                text = bg.text, spans = remember(bg.words) { lyricCharSpans(bg.words) },
+                                progressMs = bgProgress,
                                 live = bgLive,
                                 fontSize = 19.sp, lineHeight = 24.sp, weight = FontWeight.SemiBold,
                                 sungColor = Color.White,

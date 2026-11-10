@@ -61,6 +61,7 @@ fun DevMenuScreen(
 ) {
     val vm: DevMenuViewModel = hiltViewModel()
     val state by vm.state.collectAsState()
+    val wordByWordLyrics by vm.wordByWordLyrics.collectAsState()
     val update by vm.update.collectAsState()
     val selectedSource by vm.downloadSource.collectAsState()
     val pstate by remember(playerVm) {
@@ -215,17 +216,52 @@ fun DevMenuScreen(
             // 免登录后这里不再是「账号配置」，而是遥控器输入不便时的唯一入口：
             // 手机浏览器打开 :8080 可以导入歌单、改播放设置。
             SettingsSection(tr(R.string.msg_218)) { PhoneServerRow(state.webServerUrl, playerVm) }
-            // Apple Music 展示方案：默认关闭。开关只影响「个性化界面展示」，令牌走独立存储，
+            // 实验室功能：把还没完全定型、需要单独说明的能力集中在这里，
+            // 避免和「播放」「歌词」这些稳定设置混在一起。
+            // Apple Music 展示仍是默认关闭：开关只影响界面展示，令牌走独立存储，
             // 播放直链始终由落雪音源解析，本模块不向 Apple Music 请求或回传任何播放数据。
             val displayAuth = remember(ctx) { com.veacon.veilmusic.data.AppleDisplayAuth.get(ctx) }
             val displayState by displayAuth.state.collectAsState()
-            SettingsSection(tx("Apple Music 展示", "Apple Music display")) {
+            SettingsSection(tx("实验室功能", "Lab & experiments")) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        tx("实验性能力，行为可能随版本调整。关闭后所有表现与旧版本完全一致。",
+                           "Experimental features that may change between versions. Turned off, everything behaves exactly as before."),
+                        fontSize = 12.sp, lineHeight = 18.sp,
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)),
+                    )
+                }
+                SettingDivider()
+                Toggle(tr(R.string.msg_335), wordByWordLyrics, tr(R.string.msg_336)) {
+                    vm.setWordByWordLyrics(!wordByWordLyrics)
+                }
+                SettingDivider()
                 Toggle(
-                    tx("个性化展示数据", "Personalised display data"),
+                    tx("Apple Music 展示", "Apple Music display"),
                     displayState.enabled,
-                    tx("开启后仅读取账号、商店区域与资料库名称用于界面展示；在手机配置页登录。播放数据不会向 Apple Music 请求或回传，播放仍走落雪音源。",
-                       "When on, only account, storefront and library names are read for display; sign in from the phone setup page. No playback data is requested from or sent to Apple Music — playback stays on Luoxue."),
+                    tx("开启后读取账号、商店区域与资料库歌单用于界面展示（首页个性化、云端歌单）；在手机配置页登录。播放数据不会向 Apple Music 请求或回传，播放仍走落雪音源。",
+                       "When on, the account, storefront and library playlists are read for the UI (personalised home, cloud playlists); sign in from the phone setup page. No playback data is requested from or sent to Apple Music — playback stays on Luoxue."),
                 ) { displayAuth.setEnabled(!displayState.enabled) }
+                if (displayState.enabled) {
+                    SettingDivider()
+                    val statusLine = when (displayState.status) {
+                        "ready", "checking" -> tx("已登录", "Signed in") +
+                            displayState.accountName.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty() +
+                            displayState.storefront.takeIf { it.isNotBlank() }?.let { " · ${it.uppercase()}" }.orEmpty()
+                        "invalid" -> tx("令牌无效，请在手机配置页重新登录", "Token invalid — sign in again on the phone setup page")
+                        "unavailable" -> tx("暂时连不上 Apple Music，稍后重试", "Can't reach Apple Music right now — try again later")
+                        else -> tx("未登录，请在手机配置页粘贴令牌", "Not signed in — paste a token on the phone setup page")
+                    }
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(statusLine, fontSize = 12.sp, lineHeight = 18.sp,
+                            color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+                        if (displayState.playlists.isNotEmpty()) Text(
+                            tx("云端歌单 ${displayState.playlists.size} 个", "${displayState.playlists.size} cloud playlists"),
+                            fontSize = 12.sp, lineHeight = 18.sp,
+                            color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
+                        )
+                    }
+                }
             }
             SettingsSection(tx("关于", "About")) {
                 val details = when (update.phase) {

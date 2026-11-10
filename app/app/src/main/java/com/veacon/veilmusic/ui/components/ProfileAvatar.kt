@@ -34,8 +34,10 @@ fun AppleSymbol(modifier: Modifier = Modifier, color: Color = com.veacon.veilmus
 @Composable
 fun ProfileAvatar(url: String?, modifier: Modifier = Modifier, onLoadError: () -> Unit = {}) {
     var failed by remember(url) { mutableStateOf(false) }
-    Box(modifier.size(44.dp).clip(CircleShape).background(Color.White)
-        .border(0.5.dp, com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFD9D9DE), Color(0xFF48484D)), CircleShape), Alignment.Center) {
+    // 圆底也要跟随主题：深色界面下若是纯白底，浅色的苹果符号会白底白图标、完全看不见。
+    Box(modifier.size(44.dp).clip(CircleShape)
+        .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color.White, Color(0xFF3A3A3F)))
+        .border(0.5.dp, com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFD9D9DE), Color(0xFF5A5A60)), CircleShape), Alignment.Center) {
         AppleSymbol(Modifier.size(width = 23.dp, height = 30.dp))
         if (url != null && !failed) AsyncImage(model = url, contentDescription = null,
             contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),

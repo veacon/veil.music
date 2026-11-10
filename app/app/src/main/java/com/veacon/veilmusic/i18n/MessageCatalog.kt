@@ -346,5 +346,7 @@ internal object MessageCatalog {
         R.string.msg_332 to ("歌曲换源" to "Switch song source"),
         R.string.msg_333 to ("歌词换源" to "Switch lyrics source"),
         R.string.msg_334 to ("正在换源…" to "Switching source…"),
+        R.string.msg_335 to ("歌词逐字播放" to "Word-by-word lyrics"),
+        R.string.msg_336 to ("当前行按时间逐字点亮；关闭后整句直接亮起，其余表现不变。" to "Light up the current line character by character. Turn off to highlight the whole line at once."),
     )
 }

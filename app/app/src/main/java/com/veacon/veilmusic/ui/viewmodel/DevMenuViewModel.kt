@@ -81,6 +81,7 @@ class DevMenuViewModel @Inject constructor(
     private val mutPrefs: MutPreferences,
     private val serverPrefs: ServerPreferences,
     private val lyricsOffsetPrefs: LyricsOffsetPreferences,
+    private val lyricsMotionPrefs: com.veacon.veilmusic.data.LyricsMotionPreferences,
     private val crossfadePrefs: CrossfadePreferences,
     private val standalonePrefs: StandalonePreferences,
     private val beatAnalyzer: BeatAnalyzer,
@@ -88,6 +89,11 @@ class DevMenuViewModel @Inject constructor(
     private val audioQualityPrefs: com.veacon.veilmusic.data.AudioQualityPreferences,
     private val downloadPrefs: UpdateDownloadPreferences,
 ) : ViewModel() {
+
+    /** 歌词逐字播放开关：与播放页共享同一份偏好，改完立即生效。 */
+    val wordByWordLyrics: kotlinx.coroutines.flow.StateFlow<Boolean> = lyricsMotionPrefs.wordByWord
+
+    fun setWordByWordLyrics(enabled: Boolean) = lyricsMotionPrefs.setWordByWord(enabled)
 
     data class UpdateState(val phase: String = "idle", val info: com.veacon.veilmusic.data.updates.UpdateInfo? = null,
         val progress: Int = 0, val manualResult: Boolean = false, val ready: java.io.File? = null,

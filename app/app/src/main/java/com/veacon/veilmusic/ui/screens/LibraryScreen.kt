@@ -48,6 +48,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -209,21 +211,12 @@ fun LibraryScreen(
         }
     }
 
-    // 导入歌单：贴链接 → 解析 → 落本地
+    // 导入歌单：只弹二维码，链接在手机上粘（电视端输入框会卡住遥控器）
     FadeThrough(showImport, contentKey = { if (it) true else null }) { visible ->
         if (visible) {
             ImportPlaylistDialog(
-                importing = importing,
                 serverUrl = vm.serverUrl(),
-                onDismiss = { if (!importing) showImport = false },
-                onImport = { raw ->
-                    importing = true
-                    vm.importPlaylist(raw) { message ->
-                        importing = false
-                        showImport = false
-                        toast(message)
-                    }
-                },
+                onDismiss = { showImport = false },
             )
         }
     }
@@ -922,115 +915,107 @@ private fun SongLoadError(message: String, isLoading: Boolean, onRetry: () -> Un
     }
 }
 
-/** 导入歌单弹窗：粘贴链接或「歌名 - 歌手」列表。 */
+/**
+ * 导入歌单弹窗：只做「扫码去手机导入」。
+ *
+ * 曾经这里有个输入框，但电视端单行输入框会吃掉方向键与返回键 —— 遥控器一旦进去就
+ * 既到不了按钮也关不掉弹窗。歌单链接本来就该在手机上粘，所以直接去掉输入框，
+ * 只留二维码 + 三步说明 + 一个默认聚焦的关闭按钮。
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ImportPlaylistDialog(
-    importing: Boolean,
     serverUrl: String,
     onDismiss: () -> Unit,
-    onImport: (String) -> Unit,
 ) {
-    var text by remember { mutableStateOf("") }
-    val fieldFocus = remember { FocusRequester() }
-    val cancelFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
+    val closeFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { closeFocus.requestFocus() } }
 
-    com.veacon.veilmusic.ui.components.MotionDialog(onDismissRequest = { if (!importing) onDismiss() }) {
+    com.veacon.veilmusic.ui.components.MotionDialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(760.dp).clip(RoundedCornerShape(18.dp))
-                .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)))
-                .padding(26.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.width(720.dp).clip(RoundedCornerShape(20.dp))
+                .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF1C1C1E)))
+                .padding(horizontal = 34.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Text("导入歌单", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+            Text("用手机导入歌单", fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
             Text(
-                "粘贴 QQ 音乐 / 网易云 / 酷狗的公开歌单链接；也可以直接粘贴多行「歌名 - 歌手」。",
-                fontSize = 12.sp,
+                "遥控器输入长长一条歌单链接太费劲，扫码到手机上粘贴最快。",
+                fontSize = 13.sp, lineHeight = 19.sp,
                 color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)),
             )
-            Text(
-                "遥控器输入不便时，可在手机上打开「设置 · 手机配置网页」，用网页里的导入表单完成同样的事。",
-                fontSize = 12.sp,
-                color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.weight(1f).height(56.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFFFFFFF), Color(0xFF2C2C31)))
-                        .padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    BasicTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        singleLine = true,
-                        textStyle = TextStyle(color = com.veacon.veilmusic.ui.theme.AppPalette.primary, fontSize = 15.sp),
-                        cursorBrush = SolidColor(Color(0xFFFA233B)),
-                        modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus)
-                            .onPreviewKeyEvent { ev ->
-                                // 单行输入框会把方向键当光标移动、把返回当输入处理：
-                                // 遥控器一旦进来就既到不了按钮也关不掉弹窗，必须在这里开口子。
-                                if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                                when (ev.key) {
-                                    Key.Back -> { if (!importing) onDismiss(); true }
-                                    Key.DirectionDown -> runCatching { cancelFocus.requestFocus() }.isSuccess
-                                    else -> false
-                                }
-                            },
-                        decorationBox = { inner ->
-                            if (text.isEmpty()) Text(
-                                "https://y.qq.com/n/ryqq/playlist/…",
-                                fontSize = 14.sp,
-                                color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(26.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                // 左：二维码（白底黑块，深色主题下也清晰可扫）
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(16.dp)).background(Color.White).padding(10.dp),
+                    ) {
+                        if (serverUrl.isNotBlank()) {
+                            com.veacon.veilmusic.ui.components.QrCode(
+                                content = serverUrl, size = 208.dp, cornerRadius = 12.dp, padding = 8.dp,
                             )
-                            inner()
-                        },
+                        } else {
+                            Box(Modifier.size(208.dp), Alignment.Center) {
+                                Text("配置网页未启动", fontSize = 12.sp,
+                                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
+                            }
+                        }
+                    }
+                    Text(serverUrl.ifBlank { "—" }, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.Center,
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
+                }
+
+                // 右：三步说明
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    ImportStep(1, "手机连同一个 Wi-Fi", "电视和手机要在同一个网络下，扫码才打得开。")
+                    ImportStep(2, "扫描左侧二维码", "相机或微信扫一扫都可以。")
+                    ImportStep(3, "粘贴歌单链接", "支持 QQ 音乐 / 网易云 / 酷狗，也能直接粘「歌名 - 歌手」多行文本。")
+                    Text(
+                        "导入完成后会自动出现在「资料库 · 播放列表」。",
+                        fontSize = 12.sp, lineHeight = 18.sp,
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
                     )
                 }
-                // 二维码：扫码直达手机配置网页，用手机粘贴链接导入（遥控器输入不便的兜底）。
-                if (serverUrl.isNotBlank()) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        com.veacon.veilmusic.ui.components.QrCode(content = serverUrl, size = 104.dp, cornerRadius = 12.dp, padding = 8.dp)
-                        Text("扫码用手机导入", fontSize = 10.sp,
-                            color = com.veacon.veilmusic.ui.theme.AppPalette.secondary)
-                    }
-                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    onClick = { if (!importing) onDismiss() },
-                    modifier = Modifier.focusRequester(cancelFocus),
-                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-                    colors = com.veacon.veilmusic.ui.components.contentActionColors(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
-                    border = com.veacon.veilmusic.ui.components.contentActionBorder(RoundedCornerShape(50)),
-                ) {
-                    Text("取消", fontSize = 14.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
-                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
-                }
-                Surface(
-                    onClick = { if (!importing && text.isNotBlank()) onImport(text) },
-                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = if (importing) Color(0xFFB23A46) else Color(0xFFFA233B),
-                        focusedContainerColor = Color(0xFFFF4757),
-                    ),
-                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-                ) {
-                    Row(Modifier.padding(horizontal = 24.dp, vertical = 11.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        if (importing) CircularProgressIndicator(
-                            color = Color.White, modifier = Modifier.size(14.dp), strokeWidth = 2.dp,
-                        )
-                        Text(if (importing) "导入中…" else "导入", fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold, color = Color.White)
-                    }
-                }
+
+            Surface(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth().focusRequester(closeFocus),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = com.veacon.veilmusic.ui.theme.AppPalette.accent,
+                    focusedContainerColor = Color(0xFFFF4757),
+                ),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+            ) {
+                Text("关闭", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    color = Color.White, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp))
             }
+        }
+    }
+}
+
+/** 教程步骤：圆形序号 + 标题 + 说明。 */
+@Composable
+private fun ImportStep(index: Int, title: String, detail: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.size(24.dp).clip(RoundedCornerShape(50))
+                .background(com.veacon.veilmusic.ui.theme.AppPalette.accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("$index", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
+            Text(detail, fontSize = 12.sp, lineHeight = 17.sp,
+                color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
         }
     }
 }

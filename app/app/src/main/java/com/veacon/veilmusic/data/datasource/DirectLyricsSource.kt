@@ -74,12 +74,35 @@ class DirectLyricsSource @Inject constructor(
         cached(songId)?.let { return@withContext LyricsBundle(it, sourceOf(songId)) }
         Log.i("DirectLyrics", "getLyrics song=$songId title='$title' artist='$artist' exclude=$excludeSources")
 
-        // 歌词只走国内五大平台（网易云 → QQ → 酷狗 → 酷我 → 咪咕），Apple TTML 已移除。
-        // 「歌词换源」会通过 excludeSources 跳过当前命中的源，让级联落到下一个平台。
+        // 级联顺序（登录 Apple 时）：
+        //   1) Apple syllable-lyrics —— 只有它带逐字时间轴，播放页的逐字动画依赖 words；
+        //   2) 五大平台（网易云 → QQ → 酷狗 → 酷我 → 咪咕）—— 中文歌词覆盖最全；
+        //   3) Apple 行级 lyrics —— 中文平台都没命中时的兜底；
+        //   4) lrclib。
+        // 未登录（没有 Music-User-Token）时 Apple 两个接口都是 403/404，直接跳过，
+        // 避免每首歌白白多等两次请求。
+        val appleAllowed = "Apple Music" !in excludeSources &&
+            mutPrefs.hasMUT() && !songId.startsWith("imp-")
+        val isLibrary = songId.startsWith("i.")
+
+        if (appleAllowed) {
+            val wordTimed = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), listOf("syllable-lyrics"))
+            if (wordTimed.isNotEmpty()) return@withContext LyricsBundle(wordTimed, "Apple Music").also {
+                store(songId, it.lines); rememberSource(songId, "Apple Music")
+            }
+        }
+
         if (title.isNotEmpty() && artist.isNotEmpty()) {
             val third = thirdParty.fetch(title, artist, durationSec, excludeSources)
             if (third.lines.isNotEmpty()) return@withContext LyricsBundle(third.lines, third.source).also {
                 store(songId, it.lines); rememberSource(songId, it.source)
+            }
+        }
+
+        if (appleAllowed) {
+            val lineOnly = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), listOf("lyrics"))
+            if (lineOnly.isNotEmpty()) return@withContext LyricsBundle(lineOnly, "Apple Music").also {
+                store(songId, it.lines); rememberSource(songId, "Apple Music")
             }
         }
 
@@ -117,6 +140,7 @@ class DirectLyricsSource @Inject constructor(
         sf: String,
         isLibrary: Boolean,
         headers: Map<String, String>,
+        suffixes: List<String> = listOf("syllable-lyrics", "lyrics"),
     ): List<LyricLine> {
         val bases = buildList {
             if (isLibrary) add("https://amp-api-edge.music.apple.com/v1/me/library/songs/$songId")
@@ -126,7 +150,7 @@ class DirectLyricsSource @Inject constructor(
         // endpoint before ever settling for line-only "lyrics". A library song whose
         // library relationship only carries line lyrics used to short-circuit here and
         // never reach the catalog's syllable-lyrics — so word-by-word silently vanished.
-        for (suffix in listOf("syllable-lyrics", "lyrics")) {
+        for (suffix in suffixes) {
             for (base in bases) {
                 try {
                     // NOTE: the @Named("direct") client's interceptor already attaches

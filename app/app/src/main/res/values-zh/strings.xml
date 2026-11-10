@@ -341,4 +341,6 @@
     <string name="msg_332" formatted="false">"歌曲换源"</string>
     <string name="msg_333" formatted="false">"歌词换源"</string>
     <string name="msg_334" formatted="false">"正在换源…"</string>
+    <string name="msg_335" formatted="false">"歌词逐字播放"</string>
+    <string name="msg_336" formatted="false">"当前行按时间逐字点亮；关闭后整句直接亮起，其余表现不变。"</string>
 </resources>

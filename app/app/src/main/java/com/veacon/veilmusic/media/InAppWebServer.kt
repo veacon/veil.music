@@ -710,6 +710,10 @@ ol{font-size:14px;color:#6e6e73;line-height:1.9;padding-left:18px}code{color:#fa
 .tutorial .instruction-code{display:block;margin-top:8px;padding:10px;background:#e8e8ed;border-radius:8px;height:96px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:11px/1.6 monospace;color:#555;user-select:text;-webkit-user-select:text}.tutorial .instruction-code code{font:inherit;color:inherit}
 .tutorial .web-open-hint{font-size:12px;color:#6e6e73;line-height:1.6;margin-top:8px}
 .copy-feedback{font-size:12px;color:#6e6e73;margin-top:6px}.copy-feedback:empty{display:none}
+.apple-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.pill{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:12px;font-size:12px;font-weight:600;flex-shrink:0}
+.pill.ok{background:#e7f7ea;color:#248a3d}.pill.off{background:#ececf0;color:#6e6e73}.pill.bad{background:#ffe9ea;color:#b22222}
+.apple-meta{font-size:12px;color:#555;line-height:1.7;word-break:break-word}
 .brand-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}.brand-row .brand{margin:0}.language-switch{display:inline-flex;align-items:center;gap:6px;color:#fa233b;text-decoration:none;font-size:14px;font-weight:500;line-height:1.6;white-space:nowrap}.language-switch svg{flex:none}.language-switch:active{opacity:.65}
 </style>
 <script id="bookmark-instruction" type="application/json">${com.veacon.veilmusic.i18n.PhonePage.bookmarkJson(context, language)}</script>
@@ -923,55 +927,90 @@ function legacyCopy(text,done,b){
     /**
      * Apple Music 展示方案卡片：只有开关开启时才出现。
      * 令牌只由 `AppleDisplayAuth` 保管，页面显示的是纯展示状态；不提供任何播放数据入口。
+     *
+     * 令牌不是「点一下就有的」——必须先登录 music.apple.com 再跑一段书签指令，
+     * 所以这里内嵌一份分步教程（可折叠），否则用户只会看到空白输入框无从下手。
      */
     private fun buildAppleCard(language: String): String {
         val auth = com.veacon.veilmusic.data.AppleDisplayAuth.get(context)
-        val note = "仅用于界面展示：读取账号、商店区域与资料库歌单名称；播放数据不会向 Apple Music 请求或回传，播放仍走落雪音源。"
+        fun t(zh: String, en: String) = if (language == "zh") zh else en
+        val note = t(
+            "仅用于界面展示：读取账号、商店区域与资料库歌单名称；播放数据不会向 Apple Music 请求或回传，播放仍走落雪音源。",
+            "Display only: reads the account, storefront and library playlist names. Playback never touches Apple Music — audio still resolves through Luoxue sources.",
+        )
         if (!auth.isEnabled()) return buildString {
-            append("<div class=card><h2>Apple Music 展示账号</h2>")
-            append("<p class=sub style=margin-bottom:10px>$note</p>")
-            append("<div class=row><div class=label>展示开关</div><div class=sub2>未开启</div></div>")
+            append("<div class=card><h2>${t("Apple Music 展示账号", "Apple Music display account")}</h2>")
+            append("<p class=help style=margin-bottom:12px>$note</p>")
+            append("<div class=apple-status><span class=\"pill off\">${t("未开启", "Off")}</span>")
+            append("<span class=apple-meta>${t("开启后可用 Apple 账号个性化首页与云端歌单", "Enable to personalise the home page and show cloud playlists")}</span></div>")
             append("<form method=POST action=/set-apple-display>")
             append("<input type=hidden name=on value=1>")
-            append("<button class=\"btn btn-p\" type=submit>开启展示</button></form>")
+            append("<button class=\"btn btn-p\" type=submit>${t("开启展示", "Enable")}</button></form>")
             append("</div>")
         }
         val s = auth.state.value
-        val statusText = when (s.status) {
-            "ready" -> "已登录"
-            "idle" -> "未登录"
-            "invalid" -> "令牌无效"
-            "unavailable" -> "暂时无法连接"
-            "signed_out" -> "已退出"
-            "checking" -> "检查中"
-            else -> "未登录"
+        val (pillCls, statusText) = when (s.status) {
+            "ready" -> "ok" to t("已登录", "Signed in")
+            "idle" -> "off" to t("未登录", "Not signed in")
+            "invalid" -> "bad" to t("令牌无效", "Invalid token")
+            "unavailable" -> "off" to t("暂时无法连接", "Temporarily unreachable")
+            "signed_out" -> "off" to t("已退出", "Signed out")
+            "checking" -> "off" to t("检查中", "Checking")
+            else -> "off" to t("未登录", "Not signed in")
         }
-        val bearer = if (s.hasBearer) "已获取" else "未获取"
+        val bearer = if (s.hasBearer) t("已获取", "obtained") else t("未获取", "missing")
+        val meta = buildList {
+            if (s.accountName.isNotBlank()) add(esc(s.accountName))
+            if (s.storefront.isNotBlank()) add(t("商店区域 ${esc(s.storefront)}", "Storefront ${esc(s.storefront)}"))
+            add(t("Bearer $bearer", "Bearer $bearer"))
+        }.joinToString(" · ")
         val items = if (s.displayItems.isEmpty()) "" else
-            "<div class=sub2 style=margin-top:8px>资料库歌单：${s.displayItems.joinToString(" · ") { esc(it) }}</div>"
+            "<div class=apple-meta style=margin-bottom:10px>${t("资料库歌单", "Library playlists")}：${s.displayItems.joinToString(" · ") { esc(it) }}</div>"
+        val bookmark = com.veacon.veilmusic.i18n.PhonePage.bookmarkHtml(context, language)
         return buildString {
-            append("<div class=card><h2>Apple Music 展示账号</h2>")
-            append("<p class=sub style=margin-bottom:10px>$note</p>")
-            append("<div class=row><div class=label>Bearer 令牌</div><div class=sub2>$bearer</div></div>")
-            append("<div class=row><div class=label>登录状态</div><div class=sub2>$statusText</div></div>")
-            if (s.storefront.isNotBlank())
-                append("<div class=row><div class=label>商店区域</div><div class=sub2>${esc(s.storefront)}</div></div>")
-            if (s.accountName.isNotBlank())
-                append("<div class=row><div class=label>账号名称</div><div class=sub2>${esc(s.accountName)}</div></div>")
+            append("<div class=card><h2>${t("Apple Music 展示账号", "Apple Music display account")}</h2>")
+            append("<p class=help style=margin-bottom:12px>$note</p>")
+
+            // 状态：胶囊 + 账号/区域/令牌一行说明
+            append("<div class=apple-status><span class=\"pill $pillCls\">$statusText</span>")
+            append("<span class=apple-meta>${esc(meta)}</span></div>")
             append(items)
-            append("<form method=POST action=/set-apple-display-token style=margin-top:10px>")
-            append("<label class=token-label for=applemut>Apple Music 用户令牌</label>")
-            append("<input id=applemut name=mut type=text autocomplete=off autocapitalize=off spellcheck=false placeholder=\"在此粘贴用户令牌\" style=\"width:100%;background:#e8e8ed;border:1.5px solid #d2d2d7;border-radius:8px;color:#1d1d1f;font-size:13px;padding:12px;outline:none;box-sizing:border-box\">")
-            append("<button class=\"btn btn-p\" type=submit>登录并展示</button></form>")
-            append("<div style=\"display:flex;gap:8px;margin-top:8px\">")
-            append("<button class=\"btn btn-s\" type=button style=margin:0 onclick=\"copyBookmarkInstruction(this)\">复制令牌获取指令</button>")
-            append("<form method=POST action=/clear-apple-display-token style=flex:1;margin:0>")
-            append("<button class=\"btn btn-s\" type=submit style=margin:0>退出展示登录</button></form></div>")
+
+            // 令牌输入
+            append("<form method=POST action=/set-apple-display-token style=margin-top:4px>")
+            append("<label class=token-label for=applemut>${t("Apple Music 用户令牌（media-user-token）", "Apple Music user token (media-user-token)")}</label>")
+            append("<input id=applemut name=mut type=text autocomplete=off autocapitalize=off spellcheck=false placeholder=\"${t("在此粘贴用户令牌", "Paste the user token here")}\" style=\"width:100%;background:#e8e8ed;border:1.5px solid #d2d2d7;border-radius:8px;color:#1d1d1f;font-size:13px;padding:12px;outline:none;box-sizing:border-box\">")
+            append("<button class=\"btn btn-p\" type=submit>${t("登录并展示", "Sign in")}</button></form>")
+
+            // 教程：第一次登录时默认展开
+            append("<details class=tutorial ${if (s.status != "ready") "open" else ""}>")
+            append("<summary>${t("怎么拿到这个令牌？（分步教程）", "How do I get this token? (step by step)")}</summary>")
+            append("<ol>")
+            append("<li><h3>${t("在浏览器里登录 Apple Music", "Sign in to Apple Music in a browser")}</h3>")
+            append("<p>${t("用手机或电脑浏览器打开 <a href=\"https://music.apple.com\" target=_blank rel=noopener>music.apple.com</a>，登录你的 Apple 账号。", "Open <a href=\"https://music.apple.com\" target=_blank rel=noopener>music.apple.com</a> in any browser and sign in with your Apple ID.")}</p></li>")
+
+            append("<li><h3>${t("把「令牌指令」存成书签", "Save the token command as a bookmark")}</h3>")
+            append("<p>${t("复制下面这段以 <code>javascript:</code> 开头的指令，新建一个书签，把书签地址整段替换成它（Safari 可以先随便收藏一个页面，再到书签里编辑地址）。", "Copy the <code>javascript:</code> command below, create a bookmark, and replace its address with it (on Safari, bookmark any page first, then edit that bookmark's address).")}</p>")
+            append("<button class=\"btn btn-s\" type=button onclick=\"copyBookmarkInstruction(this)\">${t("复制令牌获取指令", "Copy token command")}</button>")
             append("<div id=copy-feedback class=copy-feedback></div>")
-            append("<div style=\"font-size:10px;color:#555;margin-top:8px\">在 Safari 打开 music.apple.com 并登录，运行书签指令即可复制 media-user-token；粘贴到上方后登录。</div>")
-            append("<form method=POST action=/set-apple-display style=margin-top:10px>")
+            append("<div class=instruction-code><code>$bookmark</code></div>")
+            append("</li>")
+
+            append("<li><h3>${t("回到 Apple Music 页面运行书签", "Run the bookmark on the Apple Music page")}</h3>")
+            append("<p>${t("保持登录状态，在 music.apple.com 页面点一下刚才的书签，令牌会弹出并自动复制。", "While still signed in, tap that bookmark on music.apple.com — the token pops up and is copied automatically.")}</p></li>")
+
+            append("<li><h3>${t("回到本页粘贴并登录", "Paste it back here and sign in")}</h3>")
+            append("<p>${t("把复制到的令牌粘到上方的输入框，点「登录并展示」，状态变成「已登录」就成功了。", "Paste the token into the field above and hit Sign in — the status turns “Signed in” when it works.")}</p></li>")
+            append("</ol>")
+            append("<p class=web-open-hint>${t("令牌只保存在本机 App 的独立存储中，不上传任何服务器；点「退出展示登录」即清除。", "The token is stored only in this app's private storage on the device. It is never uploaded; “Sign out” clears it.")}</p>")
+            append("</details>")
+
+            // 退出 / 关闭
+            append("<form method=POST action=/clear-apple-display-token style=margin-top:14px>")
+            append("<button class=\"btn btn-s\" type=submit>${t("退出展示登录", "Sign out")}</button></form>")
+            append("<form method=POST action=/set-apple-display style=margin-top:8px>")
             append("<input type=hidden name=on value=0>")
-            append("<button class=\"btn btn-s\" type=submit>关闭展示</button></form>")
+            append("<button class=\"btn btn-s\" type=submit>${t("关闭展示", "Turn off")}</button></form>")
             append("</div>")
         }
     }

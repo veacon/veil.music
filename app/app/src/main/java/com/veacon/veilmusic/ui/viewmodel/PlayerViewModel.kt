@@ -248,6 +248,7 @@ class PlayerViewModel @Inject constructor(
     private val serverPrefs: ServerPreferences,
     private val appleClient: AppleDirectClient,
     private val lyricsOffsetPrefs: LyricsOffsetPreferences,
+    private val lyricsMotionPrefs: com.veacon.veilmusic.data.LyricsMotionPreferences,
     private val crossfadePrefs: com.veacon.veilmusic.data.CrossfadePreferences,
     private val onboardingPrefs: com.veacon.veilmusic.data.OnboardingPreferences,
     private val standalonePrefs: com.veacon.veilmusic.data.StandalonePreferences,
@@ -257,6 +258,9 @@ class PlayerViewModel @Inject constructor(
     private val playbackCache: com.veacon.veilmusic.data.cache.PlaybackCache,
     val beatAnalyzer: BeatAnalyzer,
 ) : ViewModel() {
+
+    /** 歌词逐字播放开关：设置页改，播放页通过 StateFlow 即时生效。 */
+    val wordByWordLyrics: kotlinx.coroutines.flow.StateFlow<Boolean> = lyricsMotionPrefs.wordByWord
 
     private var albumWallPrefetch: kotlinx.coroutines.Deferred<List<com.veacon.veilmusic.ui.wall.CachedWallCard>>? = null
 
