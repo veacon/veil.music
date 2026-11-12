@@ -47,6 +47,7 @@ class LibraryViewModel @Inject constructor(
     private val store: LocalLibraryStore,
     private val importer: PlaylistImporter,
     private val webServer: com.veacon.veilmusic.media.InAppWebServer,
+    private val repo: com.veacon.veilmusic.data.repository.MusicRepository,
 ) : ViewModel() {
 
     /** 手机配置网页地址，用于导入歌单弹窗的二维码。 */
@@ -150,6 +151,53 @@ class LibraryViewModel @Inject constructor(
                     onDone("已导入「${result.playlist.name}」${result.imported} 首")
                 is PlaylistImporter.Result.Err -> onDone(result.message)
             }
+        }
+    }
+
+    /** 「从 Apple Music 同步歌单」的进度；running=false 且 total=0 表示空闲。 */
+    data class AppleSync(val running: Boolean = false, val done: Int = 0, val total: Int = 0)
+    private val _appleSync = MutableStateFlow(AppleSync())
+    val appleSync: StateFlow<AppleSync> = _appleSync
+    private var appleSyncJob: Job? = null
+    private val mutPrefs = com.veacon.veilmusic.data.MutPreferences(context)
+
+    /**
+     * 把 Apple Music 资料库里的歌单同步进本地资料库：按 Apple id 覆盖刷新（本地 id 加 `apple-` 前缀），
+     * 曲目原样存下，播放时照旧由落雪音源解析。需要先在「设置 · Apple Music 展示」里登录。
+     */
+    fun syncApplePlaylists(onDone: (String) -> Unit) {
+        if (appleSyncJob?.isActive == true) return
+        if (!mutPrefs.hasMUT()) {
+            onDone("请先在「设置 · Apple Music」里登录，再同步歌单")
+            return
+        }
+        _appleSync.value = AppleSync(running = true)
+        appleSyncJob = viewModelScope.launch {
+            val lists = repo.getLibraryPlaylists()
+            val playlists = lists.getOrNull().orEmpty()
+            if (playlists.isEmpty()) {
+                _appleSync.value = AppleSync()
+                onDone(lists.exceptionOrNull()?.let { "同步失败：${it.message ?: it.javaClass.simpleName}" }
+                    ?: "Apple Music 里没有可同步的歌单")
+                return@launch
+            }
+            var tracks = 0
+            playlists.forEachIndexed { index, pl ->
+                _appleSync.value = AppleSync(running = true, done = index, total = playlists.size)
+                val songs = repo.getPlaylistTracks(pl.id).getOrNull().orEmpty()
+                tracks += songs.size
+                store.saveImported(
+                    LocalLibraryStore.LocalPlaylist(
+                        id = "apple-" + pl.id,
+                        name = pl.name.ifBlank { "Apple 歌单" },
+                        coverUrl = pl.artworkUrl,
+                        source = LocalLibraryStore.SOURCE_APPLE,
+                        songs = songs,
+                    )
+                )
+            }
+            _appleSync.value = AppleSync()
+            onDone("已同步 ${playlists.size} 个歌单，共 $tracks 首")
         }
     }
 

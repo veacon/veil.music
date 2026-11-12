@@ -155,6 +155,7 @@ class PageLayoutUiTest {
         val songs=(0..7).map {Song("s$it","Song $it","Artist","",180000,null,null,null)}
         val flow=MutableStateFlow(LibraryState(songs=songs,sort=SortState(SortField.DEFAULT,SortDir.ASC),albums=listOf(Album("a","Library album","Artist",artworkUrl=null)),artists=listOf(Artist("r","Library artist",null))))
         set(vm,"_state",flow);set(vm,"state",flow)
+        val appleSyncFlow=MutableStateFlow(LibraryViewModel.AppleSync());set(vm,"_appleSync",appleSyncFlow);set(vm,"appleSync",appleSyncFlow)
         val pins=MutableStateFlow(emptySet<String>());set(vm,"_pinnedIds",pins);set(vm,"pinnedIds",pins)
         mount(960,600) {LibraryScreen(vm,player())}
         val title=compose.onNodeWithText("资料库").fetchSemanticsNode().boundsInRoot
@@ -174,6 +175,7 @@ class PageLayoutUiTest {
         val songs=(0..2).map {Song("s$it","Song $it","Artist","",180000,null,null,null)}
         val flow=MutableStateFlow(LibraryState(songs=songs,sort=SortState(SortField.DEFAULT,SortDir.ASC)))
         set(vm,"_state",flow);set(vm,"state",flow)
+        val appleSyncFlow=MutableStateFlow(LibraryViewModel.AppleSync());set(vm,"_appleSync",appleSyncFlow);set(vm,"appleSync",appleSyncFlow)
         val pins=MutableStateFlow(emptySet<String>());set(vm,"_pinnedIds",pins);set(vm,"pinnedIds",pins)
         val entry=androidx.compose.ui.focus.FocusRequester()
         mount(960,600) {LibraryScreen(vm=vm,playerVm=player(),contentFocusRequester=entry) }
@@ -193,6 +195,7 @@ class PageLayoutUiTest {
         val songs=(0..2).map {Song("s$it","Song $it","Artist","",180000,null,null,null)}
         val flow=MutableStateFlow(LibraryState(songs=songs,sort=SortState(SortField.DEFAULT,SortDir.ASC)))
         set(vm,"_state",flow);set(vm,"state",flow)
+        val appleSyncFlow=MutableStateFlow(LibraryViewModel.AppleSync());set(vm,"_appleSync",appleSyncFlow);set(vm,"appleSync",appleSyncFlow)
         val pins=MutableStateFlow(emptySet<String>());set(vm,"_pinnedIds",pins);set(vm,"pinnedIds",pins)
         val entry=androidx.compose.ui.focus.FocusRequester()
         compose.setContent {

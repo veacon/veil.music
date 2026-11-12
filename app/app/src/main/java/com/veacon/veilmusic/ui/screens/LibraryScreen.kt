@@ -115,6 +115,8 @@ fun LibraryScreen(
     val openImport: () -> Unit = { section = LibrarySection.Playlists; showImport = true }
     var importing by remember { mutableStateOf(false) }
     var playlistMenu by remember { mutableStateOf<LocalLibraryStore.LocalPlaylist?>(null) }
+    // 删除歌单前先弹二次确认，避免误删。
+    var confirmDelete by remember { mutableStateOf<LocalLibraryStore.LocalPlaylist?>(null) }
     val toastContext = androidx.compose.ui.platform.LocalContext.current
     fun toast(message: String) {
         android.widget.Toast.makeText(toastContext, message, android.widget.Toast.LENGTH_SHORT).show()
@@ -122,6 +124,8 @@ fun LibraryScreen(
     // 登录后「资料库」显示 Apple Music 云端歌单；与本地歌单共用卡片和详情页，只是来源不同。
     val appleAuth = remember(toastContext) { com.veacon.veilmusic.data.AppleDisplayAuth.get(toastContext) }
     val appleState by appleAuth.state.collectAsState()
+    // 「从 Apple Music 同步歌单」的进度（空闲时 running=false）。
+    val appleSync by vm.appleSync.collectAsState()
     val applePlaylists = remember(appleState.playlists) {
         appleState.playlists.map { p ->
             LocalLibraryStore.LocalPlaylist(
@@ -216,7 +220,27 @@ fun LibraryScreen(
         if (visible) {
             ImportPlaylistDialog(
                 serverUrl = vm.serverUrl(),
+                sync = appleSync,
+                onSyncApple = { vm.syncApplePlaylists { message -> toast(message) } },
                 onDismiss = { showImport = false },
+            )
+        }
+    }
+
+    // 删除歌单前的二次确认
+    FadeThrough(confirmDelete, contentKey = { it?.id }) { target ->
+        target?.let { pl ->
+            com.veacon.veilmusic.ui.components.ConfirmationDialog(
+                title = "删除歌单？",
+                message = "「${pl.name}」将从本地资料库移除，共 ${pl.trackCount} 首，删除后无法恢复。",
+                confirmLabel = "删除",
+                onDismiss = { confirmDelete = null },
+                onConfirm = {
+                    confirmDelete = null
+                    vm.deletePlaylist(pl.id)
+                    toast("已删除「${pl.name}」")
+                },
+                confirmColor = Color(0xFFFF3B30),
             )
         }
     }
@@ -241,8 +265,7 @@ fun LibraryScreen(
                 onTogglePin = { playlistMenu = null; vm.togglePin(pl.id) },
                 onDelete = {
                     playlistMenu = null
-                    vm.deletePlaylist(pl.id)
-                    toast("已删除「${pl.name}」")
+                    confirmDelete = pl
                 },
             )
         }
@@ -926,6 +949,8 @@ private fun SongLoadError(message: String, isLoading: Boolean, onRetry: () -> Un
 @Composable
 private fun ImportPlaylistDialog(
     serverUrl: String,
+    sync: com.veacon.veilmusic.ui.viewmodel.LibraryViewModel.AppleSync,
+    onSyncApple: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val closeFocus = remember { FocusRequester() }
@@ -979,6 +1004,36 @@ private fun ImportPlaylistDialog(
                         fontSize = 12.sp, lineHeight = 18.sp,
                         color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
                     )
+                }
+            }
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(
+                com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("从 Apple Music 同步歌单", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
+                    Text(
+                        if (sync.running) "正在同步… ${sync.done}/${sync.total}"
+                        else "把 Apple 账号里的歌单拉进本地资料库，之后就能直接播放。",
+                        fontSize = 12.sp, lineHeight = 17.sp,
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
+                    )
+                }
+                Surface(
+                    onClick = { if (!sync.running) onSyncApple() },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                        focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.accent,
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+                ) {
+                    Text(if (sync.running) "同步中…" else "开始同步", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(120.dp).padding(vertical = 12.dp))
                 }
             }
 
