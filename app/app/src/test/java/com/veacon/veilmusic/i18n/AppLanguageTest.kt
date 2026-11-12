@@ -87,4 +87,21 @@ class AppLanguageTest {
         assertEquals("歌词字体加载中，12%",tr(R.string.msg_301,12))
         assertEquals("更小",com.veacon.veilmusic.ui.screens.lyricsScaleLabel(0.8f))
     }
+
+    /** 「正在播放」行：只显示歌名，超过 7 个字直接丢弃（不加省略号）。 */
+    @Test fun nowPlayingRowShowsOnlyTheSongNameTruncatedToSevenChars() {
+        fun label(title: String?, fallback: String = "未在播放") =
+            com.veacon.veilmusic.ui.screens.nowPlayingLabel(title, fallback)
+        assertEquals("小星星", label("小星星"))
+        assertEquals("歌名歌名歌", label("歌名歌名歌"))
+        assertEquals("歌名歌名歌名歌", label("歌名歌名歌名歌"))
+        assertEquals("歌名歌名歌名歌", label("歌名歌名歌名歌名歌名歌"))
+        assertEquals("Hello", label("Hello"))
+        assertEquals("Hello W", label("Hello World"))
+        // 前后空格不算字数
+        assertEquals("小星星", label("  小星星  "))
+        // 空白 / 无歌曲 → 回退到「未在播放」
+        assertEquals("未在播放", label(null))
+        assertEquals("未在播放", label("   "))
+    }
 }

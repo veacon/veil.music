@@ -41,7 +41,8 @@ class PhoneServerIntegrationTest {
         val importer = com.veacon.veilmusic.data.local.PlaylistImporter(okhttp3.OkHttpClient(),
             com.veacon.veilmusic.data.local.LocalLibraryStore(context, com.veacon.veilmusic.data.di.NetworkModule.provideMoshi()))
         return InAppWebServer(context, MutPreferences(context), repo, LyricsOffsetPreferences(context),
-            CrossfadePreferences(context), StandalonePreferences(context), ServerPreferences(context), BeatAnalyzer(), verifier, lx, importer)
+            CrossfadePreferences(context), StandalonePreferences(context), ServerPreferences(context), BeatAnalyzer(), verifier, lx, importer,
+            LyricsScriptPreferences(context))
     }
 
     private fun awaitReady(server: InAppWebServer) = runBlocking {

@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
@@ -86,6 +87,8 @@ fun TopNavBar(
     focusEntryId: Int = 0,
     navigationHasFocus: Boolean = true,
     focusEnabled: Boolean = true,
+    /** 实验室开关开启时传入当前歌名：用它替换「正在播放」四个字。 */
+    nowPlayingTitle: String? = null,
 ) {
     val selectionTransition = updateTransition(selected, label = "topTabSelection")
     var pillTab by remember { mutableStateOf(selected) }
@@ -200,7 +203,14 @@ fun TopNavBar(
                             .heightIn(min = 40.dp).padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (tab == TopNavTab.Search) Icon(Glyph.SEARCH, size = 19.dp, color = ink)
-                            else Text(tab.label, color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            else Text(
+                                // 「正在播放」这一格可以被实验室开关换成当前歌名（超长按码点截断）。
+                                if (tab == TopNavTab.NowPlaying)
+                                    com.veacon.veilmusic.ui.screens.nowPlayingLabel(nowPlayingTitle, tab.label)
+                                else tab.label,
+                                color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                             if (tab == TopNavTab.NowPlaying && isPlaying) EqBars(beatAnalyzer)
                         }
                     } }

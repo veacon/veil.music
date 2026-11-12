@@ -113,7 +113,10 @@ class PlaylistImporter @Inject constructor(
         }
         val name = cd.optString("dissname").ifBlank { preferredName ?: "QQ 歌单" }
         val cover = cd.optString("logo").ifBlank { cd.optString("headurl") }.takeIf { it.isNotBlank() }
-        return save(name, cover, LocalLibraryStore.SOURCE_QQ, "https://y.qq.com/n/ryqq/playlist/$id", songs, list.length())
+        // 旧接口一次性返回全部曲目（实测 1292 首也完整）；如果哪天变了，日志里能立刻看出来。
+        val declared = cd.optInt("total_song_num", list.length())
+        if (declared > list.length()) Log.w(TAG, "QQ playlist $id truncated: ${list.length()}/$declared")
+        return save(name, cover, LocalLibraryStore.SOURCE_QQ, "https://y.qq.com/n/ryqq/playlist/$id", songs, maxOf(declared, songs.size))
     }
 
     private fun importNetease(id: String, preferredName: String?): Result {
@@ -121,35 +124,44 @@ class PlaylistImporter @Inject constructor(
         val body = get(url, mapOf("Referer" to "https://music.163.com/")) ?: return Result.Err("网易云接口无响应")
         val root = JSONObject(body)
         val pl = root.optJSONObject("playlist") ?: return Result.Err("歌单不存在或已设为私密")
-        val tracks = pl.optJSONArray("tracks") ?: return Result.Err("该歌单没有公开曲目")
-        val songs = ArrayList<Song>(tracks.length())
-        for (i in 0 until tracks.length()) {
-            val t = tracks.optJSONObject(i) ?: continue
-            val title = t.optString("name")
-            if (title.isBlank()) continue
-            val artists = buildList {
-                t.optJSONArray("ar")?.let { arr ->
-                    for (j in 0 until arr.length()) {
-                        arr.optJSONObject(j)?.optString("name")?.takeIf { it.isNotBlank() }?.let(::add)
-                    }
-                }
-            }
-            val album = t.optJSONObject("al")
-            val pic = album?.optString("picUrl").orEmpty()
-            songs += Song(
-                id = "imp-ne-${t.optLong("id")}",
-                title = title,
-                artistName = artists.joinToString(" / ").ifBlank { "未知艺人" },
-                albumName = album?.optString("name").orEmpty(),
-                durationMs = t.optLong("dt", 0L),
-                artworkUrl = pic.takeIf { it.isNotBlank() }?.let { "$it?param=500y500" },
-                artworkBgColor = null,
-                previewUrl = null,
-            )
-        }
+        val declared = maxOf(pl.optInt("trackCount", 0), pl.optInt("songCount", 0))
+
+        // 未登录时 /playlist/detail 的 `tracks` 会被服务端截断（实测用户歌单只回前 10 首，
+        // `n=1000` 也无效），但 `trackIds` 是**完整**的。缺的曲目用 /song/detail 分片补齐，
+        // 这样「网易云导入只显示几首」就不存在了。
+        val ids = neteaseTrackIds(pl)
+        val inline = neteaseDetailSongs(pl)
+        val songs = if (ids.isNotEmpty() && ids.size > inline.size) {
+            val missing = ids.filter { trackId -> inline.none { it.id == "imp-ne-$trackId" } }
+            Log.i(TAG, "netease detail returned ${inline.size}/${ids.size} tracks; fetching ${missing.size} more")
+            mergeNeteaseSongs(ids, inline, fetchNeteaseDetails(missing))
+        } else inline
+
+        if (songs.isEmpty()) return Result.Err("该歌单没有公开曲目")
         val name = pl.optString("name").ifBlank { preferredName ?: "网易云歌单" }
         val cover = pl.optString("coverImgUrl").takeIf { it.isNotBlank() }
-        return save(name, cover, LocalLibraryStore.SOURCE_NETEASE, "https://music.163.com/#/playlist?id=$id", songs, tracks.length())
+        return save(
+            name, cover, LocalLibraryStore.SOURCE_NETEASE,
+            "https://music.163.com/#/playlist?id=$id", songs,
+            declared.coerceAtLeast(songs.size),
+        )
+    }
+
+    /** 用 `trackIds` 分片拉取完整曲目（POST /api/v3/song/detail，`c=[{id:..}]`）。 */
+    private fun fetchNeteaseDetails(ids: List<Long>): List<Song> {
+        if (ids.isEmpty()) return emptyList()
+        val out = ArrayList<Song>(ids.size)
+        for (chunk in neteaseIdChunks(ids, DETAIL_CHUNK)) {
+            val c = chunk.joinToString(",", "[", "]") { "{\"id\":\"$it\"}" }
+            val body = postForm(
+                "https://music.163.com/api/v3/song/detail",
+                mapOf("c" to c),
+                mapOf("Referer" to "https://music.163.com/"),
+            ) ?: continue
+            runCatching { out += neteaseSongsFromDetail(JSONObject(body)) }
+                .onFailure { Log.w(TAG, "netease song/detail parse failed: ${it.message}") }
+        }
+        return out
     }
 
     private fun importKugou(id: String, preferredName: String?): Result {
@@ -181,7 +193,8 @@ class PlaylistImporter @Inject constructor(
         val songs = ArrayList<Song>()
         var total = 0
         var page = 1
-        while (page <= 10) {
+        // 每页 100、最多 1000 首（与 MAX_TRACKS 对齐）；够数就提前退出，不白拉空页。
+        while (page <= 10 && songs.size < MAX_TRACKS) {
             val body = get(
                 "http://mobilecdn.kugou.com/api/v3/special/song?specialid=$id&page=$page&pagesize=100&version=8000&plat=0",
                 emptyMap(),
@@ -324,8 +337,95 @@ class PlaylistImporter @Inject constructor(
         null
     }
 
+    /** 表单 POST：网易云的 song/detail 只接受 `c=[...]` 这种表单体。 */
+    private fun postForm(url: String, fields: Map<String, String>, headers: Map<String, String>): String? = runCatching {
+        val form = okhttp3.FormBody.Builder()
+        fields.forEach { (k, v) -> form.add(k, v) }
+        val builder = Request.Builder().url(url).header("User-Agent", ua).post(form.build())
+        headers.forEach { (k, v) -> builder.header(k, v) }
+        client.newCall(builder.build()).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                Log.w(TAG, "HTTP ${resp.code} POST $url")
+                return@use null
+            }
+            resp.body?.string()
+        }
+    }.getOrElse {
+        Log.w(TAG, "request failed POST $url: ${it.message}")
+        null
+    }
+
     companion object {
         private const val TAG = "PlaylistImporter"
         private const val MAX_TRACKS = 1000
+
+        /** song/detail 单次最多带的 id 数：网易云对超长 `c=` 会直接 400，200 实测稳定。 */
+        internal const val DETAIL_CHUNK = 200
     }
+}
+
+// ── 网易云解析（纯函数，便于离线单测）─────────────────────────────────────
+
+/** `playlist.detail` 的 `trackIds`：完整曲目 id（未登录时 `tracks` 会被截断，这里不会）。 */
+internal fun neteaseTrackIds(playlist: JSONObject): List<Long> {
+    val arr = playlist.optJSONArray("trackIds") ?: return emptyList()
+    val out = ArrayList<Long>(arr.length())
+    for (i in 0 until arr.length()) {
+        val id = arr.optJSONObject(i)?.optLong("id", 0L) ?: 0L
+        if (id > 0L) out += id
+    }
+    return out
+}
+
+/** 把网易云的 track/song 对象映射成导入用 [Song]（`tracks` 与 `song/detail` 字段一致）。 */
+internal fun neteaseSong(track: JSONObject): Song? {
+    val title = track.optString("name")
+    if (title.isBlank()) return null
+    val artists = buildList {
+        track.optJSONArray("ar")?.let { arr ->
+            for (j in 0 until arr.length()) {
+                arr.optJSONObject(j)?.optString("name")?.takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }
+    val album = track.optJSONObject("al")
+    val pic = album?.optString("picUrl").orEmpty()
+    return Song(
+        id = "imp-ne-${track.optLong("id")}",
+        title = title,
+        artistName = artists.joinToString(" / ").ifBlank { "未知艺人" },
+        albumName = album?.optString("name").orEmpty(),
+        durationMs = track.optLong("dt", 0L),
+        artworkUrl = pic.takeIf { it.isNotBlank() }?.let { "$it?param=500y500" },
+        artworkBgColor = null,
+        previewUrl = null,
+    )
+}
+
+/** `playlist.detail` 内嵌的 `tracks`（可能被服务端截断）。 */
+internal fun neteaseDetailSongs(playlist: JSONObject): List<Song> {
+    val tracks = playlist.optJSONArray("tracks") ?: return emptyList()
+    return (0 until tracks.length()).mapNotNull { tracks.optJSONObject(it)?.let(::neteaseSong) }
+}
+
+/** `/api/v3/song/detail` 返回的 `songs`。 */
+internal fun neteaseSongsFromDetail(json: JSONObject): List<Song> {
+    val songs = json.optJSONArray("songs") ?: return emptyList()
+    return (0 until songs.length()).mapNotNull { songs.optJSONObject(it)?.let(::neteaseSong) }
+}
+
+/** 按 [ids] 的原始顺序合并两个来源：内嵌的优先，缺的用详情接口补齐，多的丢弃。 */
+internal fun mergeNeteaseSongs(ids: List<Long>, primary: List<Song>, extra: List<Song>): List<Song> {
+    if (ids.isEmpty()) return primary
+    val byId = HashMap<String, Song>(primary.size + extra.size)
+    for (s in primary) byId[s.id] = s
+    for (s in extra) byId.putIfAbsent(s.id, s)
+    return ids.mapNotNull { byId["imp-ne-$it"] }
+}
+
+/** 把 id 列表切成每片 [size] 个。 */
+internal fun neteaseIdChunks(ids: List<Long>, size: Int): List<List<Long>> {
+    if (ids.isEmpty()) return emptyList()
+    require(size > 0) { "chunk size must be positive" }
+    return ids.chunked(size)
 }

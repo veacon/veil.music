@@ -120,6 +120,8 @@ import com.veacon.veilmusic.ui.viewmodel.NowPlayingBackground
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
 import com.veacon.veilmusic.ui.components.Glyph
 import com.veacon.veilmusic.ui.components.TouchSeekBar
+import com.veacon.veilmusic.ui.components.artworkCornerClip
+import com.veacon.veilmusic.ui.components.artworkCorners
 import com.veacon.veilmusic.ui.background.MacBackground
 import com.veacon.veilmusic.ui.components.touchClick
 import com.veacon.veilmusic.util.TvDevice
@@ -466,6 +468,7 @@ fun NowPlayingScreen(
                     hideArtwork = coverMoving,
                     onArtworkPosition = { rect -> if (!albumWall && !coverMoving) coverOrigin = rect.translate(-playerOrigin) },
                     wordByWord = wordByWord,
+                    artworkCompat = state.renderCompat,
                 )
             } else {
                 PlayerPlayFocusEffect(playFocus,chromeVisible, suppressInitialFocus = transferCoverFocus)
@@ -494,9 +497,12 @@ fun NowPlayingScreen(
                         Box(
                             Modifier.size(coverSize)
                                 .onGloballyPositioned { if (!albumWall && !coverMoving) coverOrigin = it.boundsInRoot().translate(-playerOrigin) }
-                                .graphicsLayer { alpha = if (coverMoving) 0f else 1f }
+                                // 不再常驻一张 alpha 图层：只有翻开/收起封面墙时才需要遮住封面。
+                                // 常驻离屏层会在个别电视 GPU（Realtek RTD2886 等）上于封面区域留下马赛克。
+                                .then(if (coverMoving) Modifier.graphicsLayer { alpha = 0f } else Modifier)
                                 .albumCoverFocus(splitCoverFocus, if (state.artworkRounded) 10.dp else 0.dp) { openAlbumWall() }
-                                .clip(RoundedCornerShape(if (state.artworkRounded) 10.dp else 0.dp))
+                                // 圆角：马赛克修复开启时用画布裁剪（不开离屏图层），否则保持旧路径。
+                                .artworkCorners(if (state.artworkRounded) 10.dp else 0.dp, state.renderCompat)
                                 .background(Color(0xFF181818)),
                         ) {
                             AsyncImage(
@@ -505,7 +511,9 @@ fun NowPlayingScreen(
                                 contentDescription = song.title, contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
-                            if (state.motionArtworkEnabled && !state.lowPowerMode) state.motionUrl?.let { url ->
+                            // 渲染兼容模式只改圆角的合成路径（画布裁剪代替离屏图层）；
+                            // 且开关开启时不再叠加动态封面（歌单卡片与精选页不受影响）。
+                            if (state.motionArtworkEnabled && !state.lowPowerMode && !state.renderCompat) state.motionUrl?.let { url ->
                                 com.veacon.veilmusic.ui.components.MotionArtwork(
                                     url, play = state.isPlaying, modifier = Modifier.fillMaxSize(),
                                     startDelayMs = 250L, maxVideoSize = 640,
@@ -618,7 +626,7 @@ fun NowPlayingScreen(
             AsyncImage(
                 model = song.artworkUrl(900), contentDescription = null, contentScale = ContentScale.Crop,
                 modifier = Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), y.roundToInt()) }
-                    .size(with(density) { size.toDp() }).clip(RoundedCornerShape(10.dp)),
+                    .size(with(density) { size.toDp() }).artworkCorners(10.dp, state.renderCompat),
             )
         }
         NextUpToast(
@@ -901,7 +909,7 @@ private fun AmbientScreensaver(song: com.veacon.veilmusic.data.model.Song, onWak
                     model = song.artworkUrl(160),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)),
+                    modifier = Modifier.size(64.dp).artworkCornerClip(with(LocalDensity.current) { 10.dp.toPx() }),
                 )
             }
             Column {
@@ -943,6 +951,8 @@ internal fun FullScreenLyrics(
     onArtworkPosition: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     /** 逐字播放开关，透传给 [LyricsPanel]。 */
     wordByWord: Boolean = true,
+    /** 封面马赛克修复开关（见 [com.veacon.veilmusic.util.RenderCompat]）：开启时封面圆角走画布裁剪。 */
+    artworkCompat: Boolean = false,
 ) {
     // Focus lands on the play button (not the top lyric line). Passing it to LyricsPanel
     // as playFocus also makes RIGHT jump here and the 7s idle auto-return work, so the
@@ -995,8 +1005,10 @@ internal fun FullScreenLyrics(
                 if (song.artworkUrl != null) AsyncImage(
                     model = song.artworkUrl(160), contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.size(64.dp).onGloballyPositioned { onArtworkPosition(it.boundsInRoot()) }
-                        .graphicsLayer { alpha = if (hideArtwork) 0f else 1f }
-                        .albumCoverFocus(coverFocusRequester, 10.dp, onArtworkClick).clip(RoundedCornerShape(10.dp)).testTag("fullscreenArtwork"),
+                        // 只在需要遮住封面时才加图层（常驻图层会在个别电视 GPU 上残留缓冲区）。
+                        .then(if (hideArtwork) Modifier.graphicsLayer { alpha = 0f } else Modifier)
+                        .albumCoverFocus(coverFocusRequester, 10.dp, onArtworkClick)
+                        .artworkCorners(10.dp, artworkCompat).testTag("fullscreenArtwork"),
                 )
                 Box(Modifier.weight(1f)) {
                     SongInfoFocusSurface(chromeAlpha = ctlAlpha, onClick = onSongInfoClick, compact = true) {
@@ -1032,8 +1044,10 @@ internal fun FullScreenLyrics(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(64.dp).onGloballyPositioned { onArtworkPosition(it.boundsInRoot()) }
-                        .graphicsLayer { alpha = if (hideArtwork) 0f else 1f }
-                        .albumCoverFocus(coverFocusRequester, 10.dp, onArtworkClick).clip(RoundedCornerShape(10.dp)).testTag("fullscreenArtwork"),
+                        // 只在需要遮住封面时才加图层（常驻图层会在个别电视 GPU 上残留缓冲区）。
+                        .then(if (hideArtwork) Modifier.graphicsLayer { alpha = 0f } else Modifier)
+                        .albumCoverFocus(coverFocusRequester, 10.dp, onArtworkClick)
+                        .artworkCorners(10.dp, artworkCompat).testTag("fullscreenArtwork"),
                 )
             }
             Box(Modifier.widthIn(max = landscapeTitleWidth)) {

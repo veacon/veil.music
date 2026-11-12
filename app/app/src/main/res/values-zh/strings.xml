@@ -203,7 +203,7 @@
     <string name="msg_200" formatted="false">"歌词大小"</string>
     <string name="msg_201" formatted="false">"调整歌词的文字大小"</string>
     <string name="msg_202" formatted="false">"动态封面"</string>
-    <string name="msg_203" formatted="false">"播放可用的专辑封面动画"</string>
+    <string name="msg_203" formatted="false">"如封面出现马赛克，可关闭本项或开启实验室·马赛克修复"</string>
     <string name="msg_204" formatted="false">"封面圆角"</string>
     <string name="msg_205" formatted="false">"为专辑封面显示柔和圆角"</string>
     <string name="msg_206" formatted="false">"播放页闲置约 8 秒后自动隐藏控件，轻触屏幕或按方向键恢复。"</string>
@@ -244,7 +244,7 @@
     <string name="msg_241" formatted="false">"手机配置网页"</string>
     <string name="msg_242" formatted="false">"在同一网络用手机导入歌单、调整播放设置"</string>
     <string name="msg_243" formatted="false">"连接 Wi-Fi 或网线后可访问配置网页。"</string>
-    <string name="msg_244" formatted="false">"在手机浏览器打开此地址"</string>
+    <string name="msg_244" formatted="false">"点击打开二维码，用手机扫码进入网页界面进行设置"</string>
     <string name="msg_245" formatted="false">"下载问题报告"</string>
     <string name="msg_246" formatted="false">"在手机浏览器打开下方地址，下载设备信息、最近崩溃与运行日志。"</string>
     <string name="msg_247" formatted="false">"连接 Wi-Fi 或网线后可访问报告网页。"</string>
@@ -342,5 +342,28 @@
     <string name="msg_333" formatted="false">"歌词换源"</string>
     <string name="msg_334" formatted="false">"正在换源…"</string>
     <string name="msg_335" formatted="false">"歌词逐字播放"</string>
-    <string name="msg_336" formatted="false">"仅登录 Apple 账号后才是真实逐字时间轴；未登录时按行时长均分模拟。关闭后整句直接亮起。"</string>
+    <string name="msg_336" formatted="false">"登录 Apple 账号后才是真实逐字时间轴，否则按行均分模拟"</string>
+    <string name="msg_337" formatted="false">"实验性功能"</string>
+    <string name="msg_338" formatted="false">"开启后可单独配置下列实验项；关闭时表现与旧版本完全一致。"</string>
+    <string name="msg_339" formatted="false">"未在播放"</string>
+    <string name="msg_340" formatted="false">"歌词字形"</string>
+    <string name="msg_341" formatted="false">"简体"</string>
+    <string name="msg_342" formatted="false">"繁体"</string>
+    <string name="msg_343" formatted="false">"Apple 歌词多为繁体，这里统一字形；英日文不受影响"</string>
+    <string name="msg_344" formatted="false">"封面马赛克修复"</string>
+    <string name="msg_348" formatted="false">"修复部分电视封面花屏的显示缺陷；正常机型不受影响"</string>
+    <string name="msg_349" formatted="false">"已开启：封面圆角改用画布裁剪，且封面不再叠加动态封面（歌单卡片与精选页不受影响）。感谢小红书用户@再睡五分钟咯"</string>
+    <string name="msg_350" formatted="false">"已手动关闭：保持旧版渲染路径，不会再自动开启。"</string>
+    <string name="msg_351" formatted="false">"顶部栏显示歌名"</string>
+    <string name="msg_352" formatted="false">"把顶部栏「正在播放」换成当前歌名，关闭则保持原字样"</string>
+    <string name="msg_ui_section" formatted="false">"界面设置"</string>
+    <string name="msg_app_section" formatted="false">"应用设置"</string>
+    <string name="msg_playback_settings" formatted="false">"播放设置"</string>
+    <string name="msg_playback_settings_sub" formatted="false">"音质、解码方式、音量均衡、后台播放等"</string>
+    <string name="msg_353" formatted="false">"显示界面设置"</string>
+    <string name="msg_354" formatted="false">"语言、外观、播放界面"</string>
+    <string name="msg_355" formatted="false">"显示应用设置"</string>
+    <string name="msg_356" formatted="false">"遥控与同步、缓存、重置"</string>
+    <string name="msg_357" formatted="false">"简繁切换"</string>
+    <string name="msg_358" formatted="false">"打开显示繁体，关闭显示简体"</string>
 </resources>

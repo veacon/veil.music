@@ -5,6 +5,8 @@ import com.veacon.veilmusic.data.CrossfadePreferences
 import com.veacon.veilmusic.data.ServerPreferences
 import com.veacon.veilmusic.data.StandalonePreferences
 import com.veacon.veilmusic.data.LyricsOffsetPreferences
+import com.veacon.veilmusic.data.LyricsScript
+import com.veacon.veilmusic.data.LyricsScriptPreferences
 import com.veacon.veilmusic.data.MutPreferences
 import com.veacon.veilmusic.data.NetworkLog
 import com.veacon.veilmusic.data.repository.MusicRepository
@@ -35,6 +37,7 @@ class InAppWebServer @Inject constructor(
     private val tokenVerifier: com.veacon.veilmusic.data.auth.TokenVerifier,
     private val lx: com.veacon.veilmusic.luoxue.LxPlayback,
     private val playlistImporter: com.veacon.veilmusic.data.local.PlaylistImporter,
+    private val lyricsScriptPrefs: LyricsScriptPreferences,
 ) {
     private val logs = ArrayDeque<String>(300)
     /** SSE client -> language: live log lines must follow the language of the page that opened them. */
@@ -430,6 +433,9 @@ class InAppWebServer @Inject constructor(
                         send(out, 200, "application/json", org.json.JSONObject().put("msg", msg).toString())
                     else redirect(out, "/")
                 }
+                // 实验室功能也能在手机配置页改：写的是同一份 prefs，电视端即时跟随。
+                method == "POST" && path == "/set-lyrics-script"   -> { applyLyricsScript(parseField(body, "script")); redirect(out, "/") }
+                method == "POST" && path == "/set-render-compat"   -> { applyRenderCompat(parseField(body, "compat")); redirect(out, "/") }
                 method == "POST" && path == "/set-lyrics-offset"   -> { applyLyricsOffset(parseField(body, "offset")); redirect(out, "/") }
                 method == "POST" && path == "/set-beat-latency"    -> { applyBeatLatency(parseField(body, "latency")); redirect(out, "/") }
                 method == "POST" && path == "/set-crossfade"       -> { applyCrossfade(parseField(body, "crossfade")); redirect(out, "/") }
@@ -534,6 +540,31 @@ class InAppWebServer @Inject constructor(
         addLog("OK", "Lyrics offset set to ${ms}ms")
     }
 
+    /**
+     * 歌词字形（简体 / 繁体）：与 TV 端实验室开关写同一份偏好。
+     * 偏好是 StateFlow，PlayerViewModel 会跟着清缓存并重取当前曲目，所以这里不用另外触发。
+     */
+    private fun applyLyricsScript(raw: String) {
+        val script = LyricsScript.entries.firstOrNull { it.name.equals(raw.trim(), ignoreCase = true) }
+        if (script == null) { addLog("ERROR", "Invalid lyrics script: $raw"); return }
+        lyricsScriptPrefs.setScript(script)
+        addLog("OK", "Lyrics script set to ${script.name}")
+    }
+
+    /**
+     * 封面马赛克修复：开 = 圆角走画布裁剪、封面不再叠动态封面；关 = 与旧版本渲染路径完全一致。
+     * 与 TV 端实验室开关写同一份 prefs，电视端界面靠 RenderCompat.revision 即时跟随。
+     */
+    private fun applyRenderCompat(raw: String) {
+        val on = raw.trim() == "1" || raw.trim().equals("true", ignoreCase = true)
+        com.veacon.veilmusic.util.RenderCompat.setEnabled(context, on)
+        addLog(
+            "RENDER",
+            "compat=${com.veacon.veilmusic.util.RenderCompat.describe(context)} " +
+                "active=${com.veacon.veilmusic.util.RenderCompat.isActive(context)} (from phone settings)",
+        )
+    }
+
     private fun applyToken(mut: String): com.veacon.veilmusic.data.auth.TokenVerification {
         val checked = if (mut.length !in 20..8192 || mut.any { it.isWhitespace() || it.code < 33 || it.code > 126 })
             com.veacon.veilmusic.data.auth.TokenVerification.Invalid
@@ -623,6 +654,12 @@ class InAppWebServer @Inject constructor(
             appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})")
             appendLine("Standalone: ${standalonePrefs.isEnabled()} · Token set: ${prefs.hasMUT()}")
             appendLine()
+            // 设备/渲染快照：花屏、残影、卡顿这类问题只看上行「Device MODEL」是查不出来的。
+            appendLine("===== DEVICE / RENDERING =====")
+            appendLine("Build: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · device=${android.os.Build.DEVICE} · product=${android.os.Build.PRODUCT}")
+            appendLine("Android: ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT}) · incremental=${android.os.Build.VERSION.INCREMENTAL}")
+            com.veacon.veilmusic.util.RenderDiagnostics.reportLines(context).forEach { appendLine(it) }
+            appendLine()
             appendLine("===== LAST CRASH =====")
             appendLine(crash ?: "(none recorded)")
             appendLine()
@@ -666,6 +703,7 @@ class InAppWebServer @Inject constructor(
         }.ifEmpty { "<div class=d>暂无请求。</div>" }
         val lxCard = buildLxCard(language)
         val appleCard = buildAppleCard(language)
+        val labCard = buildLabCard(language)
         val page = """<!DOCTYPE html><html lang="${if (language == "zh") "zh-CN" else "en"}"><head><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>AMusic 配置</title><style>
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#1d1d1f;padding:32px 20px;max-width:620px;margin:auto;line-height:1.6}
@@ -882,6 +920,8 @@ function legacyCopy(text,done,b){
 
 @AMTV_LX_CARD@
 
+@AMTV_LAB_CARD@
+
 <div class=card>
 <h2>交叉渐变</h2>
 <div class=row><div class=label>当前时长</div><div class=sub2 style=color:#6e6e73>${crossfadeSec}s</div></div>
@@ -921,6 +961,7 @@ function legacyCopy(text,done,b){
             .replace("@AMTV_APP_LOGS@", logRows)
             .replace("@AMTV_LX_CARD@", lxCard)
             .replace("@AMTV_APPLE_CARD@", appleCard)
+            .replace("@AMTV_LAB_CARD@", labCard)
         return com.veacon.veilmusic.i18n.PhonePage.render(context, full, language)
     }
 
@@ -931,6 +972,45 @@ function legacyCopy(text,done,b){
      * 令牌不是「点一下就有的」——必须先登录 music.apple.com 再跑一段书签指令，
      * 所以这里内嵌一份分步教程（可折叠），否则用户只会看到空白输入框无从下手。
      */
+    /**
+     * 实验室功能卡片：把 TV 端「设置 → 实验室功能」里的两个开关也放到手机配置页。
+     * 两处写的是同一份 prefs，手机改完电视端即时跟随（歌词字形走 StateFlow，修复开关走 revision）。
+     */
+    private fun buildLabCard(language: String): String {
+        fun t(zh: String, en: String) = if (language == "zh") zh else en
+        val script = runCatching { lyricsScriptPrefs.current() }.getOrDefault(LyricsScript.SIMPLIFIED)
+        val traditional = script == LyricsScript.TRADITIONAL
+        val compatOn = runCatching { com.veacon.veilmusic.util.RenderCompat.isActive(context) }.getOrDefault(false)
+        val compatState = when (runCatching { com.veacon.veilmusic.util.RenderCompat.describe(context) }
+            .getOrDefault("auto-miss")) {
+            "always" -> t("已开启（手动）", "On (manual)")
+            "off" -> t("已关闭（手动）", "Off (manual)")
+            "auto-hit" -> t("已按机型自动开启", "Auto-enabled on this device")
+            else -> t("自动判定：当前机型无需开启", "Auto: not needed on this device")
+        }
+        return buildString {
+            append("<div class=card><h2>${t("实验室功能", "Labs")}</h2>")
+
+            // 歌词字形：与 TV 端同一份 LyricsScriptPreferences。
+            append("<div class=row><div class=label>${t("歌词字形", "Lyrics script")}</div>")
+            append("<div class=sub2 style=color:#6e6e73>${if (traditional) t("繁体", "Traditional") else t("简体", "Simplified")}</div></div>")
+            append("<form method=POST action=/set-lyrics-script>")
+            append("<input type=hidden name=script value=\"${if (traditional) "SIMPLIFIED" else "TRADITIONAL"}\">")
+            append("<button class=\"btn btn-p\" type=submit>${if (traditional) t("切换为简体", "Switch to Simplified") else t("切换为繁体", "Switch to Traditional")}</button></form>")
+            append("<div style=\"font-size:10px;color:#555;margin-top:8px\">${t("Apple 曲库返回的歌词常是繁体，默认显示简体。日文、韩文、英文歌词不做转换；切换后当前歌曲会重新取词。", "Apple lyrics often come in Traditional Chinese; Simplified is the default. Japanese, Korean and English lyrics are left untouched, and the current song reloads its lyrics after a switch.")}</div>")
+
+            // 封面马赛克修复：与 TV 端同一份 RenderCompat。
+            append("<div class=row style=margin-top:16px><div class=label>${t("封面马赛克修复", "Artwork mosaic fix")}</div>")
+            append("<div class=sub2 style=color:#6e6e73>$compatState</div></div>")
+            append("<form method=POST action=/set-render-compat>")
+            append("<input type=hidden name=compat value=\"${if (compatOn) "0" else "1"}\">")
+            append("<button class=\"btn ${if (compatOn) "btn-s" else "btn-p"}\" type=submit>${if (compatOn) t("关闭修复", "Turn the fix off") else t("开启修复", "Turn the fix on")}</button></form>")
+            append("<div style=\"font-size:10px;color:#555;margin-top:8px\">${t("个别电视上专辑封面会出现马赛克。开启后圆角改用画布裁剪代替离屏图层，动态封面照常保留；关闭时与旧版本渲染路径完全一致，正常机型不受影响。", "Some TVs show mosaic blocks over the artwork. When on, the corner uses canvas clipping instead of an offscreen layer and the animated cover keeps playing; when off, rendering matches the previous release exactly, so normal devices are unaffected.")}</div>")
+
+            append("</div>")
+        }
+    }
+
     private fun buildAppleCard(language: String): String {
         val auth = com.veacon.veilmusic.data.AppleDisplayAuth.get(context)
         fun t(zh: String, en: String) = if (language == "zh") zh else en

@@ -35,7 +35,7 @@ class PhoneLoginTest {
                     token.startsWith("replacement-") || token.startsWith("phone-") -> com.veacon.veilmusic.data.auth.TokenVerification.Valid
                     else -> com.veacon.veilmusic.data.auth.TokenVerification.Invalid
                 }
-            }, lx, importer)
+            }, lx, importer, LyricsScriptPreferences(context))
     }
 
     @Test fun pageRendersPlaylistImportAndCollapsedSourceSettings() {
@@ -47,9 +47,12 @@ class PhoneLoginTest {
         assertTrue(html.contains("<details class=more>"))
         assertFalse(html.contains("<details class=more open"))
         val advanced = html.substringAfter("<details class=more>")
-        listOf("歌词偏移", "节拍延迟", "本机模式", "音量均衡", "后台播放").forEach {
+        listOf("歌词偏移", "节拍延迟", "本机模式", "音量均衡", "后台播放", "实验室功能").forEach {
             assertTrue("$it should be inside the disclosure", advanced.contains(it))
         }
+        // 实验室功能：两个开关与 TV 端写同一份 prefs，表单动作要落在页面上。
+        assertTrue(html.contains("action=/set-lyrics-script"))
+        assertTrue(html.contains("action=/set-render-compat"))
         // 免登录：页面上不再有令牌输入框
         assertFalse(html.contains("for=mut"))
     }

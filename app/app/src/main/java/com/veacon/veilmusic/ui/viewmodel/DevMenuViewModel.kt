@@ -39,6 +39,8 @@ object LogStage {
         "DEC" to "解码", "CODEC" to "解码器", "PLR" to "播放", "LX" to "音源", "PRE" to "预取",
         "WDOG" to "自愈", "SAVE" to "存档", "LAYOUT" to "布局", "SPD" to "倍速", "OUT" to "输出",
         "ERROR" to "错误", "ERR" to "错误", "WARN" to "警告", "OK" to "就绪", "LIB" to "资料库",
+        // 设备/渲染快照：设备型号、SoC、GPU、渲染兼容模式判定。
+        "DEV" to "设备", "RENDER" to "渲染",
     )
 
     /** 把一行里的 `[LEVEL]` 标签换成中文，例如 `[DEC]` → `[解码]`。 */

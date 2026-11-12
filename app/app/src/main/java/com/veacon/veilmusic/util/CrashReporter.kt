@@ -42,6 +42,13 @@ object CrashReporter {
             appendLine("=== CRASH $ts ===")
             appendLine("App v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Device ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+            // 崩溃报告也要能回答「这是哪台机器」：SoC/ABI 位数是很多驱动崩溃的线索，
+            // 这里只读 Build 字段（崩溃处理线程上不能再申请系统服务或建 EGL 上下文）。
+            appendLine(
+                "Hardware board=${Build.BOARD} hw=${Build.HARDWARE} " +
+                    "abis=${Build.SUPPORTED_ABIS.joinToString(",")} " +
+                    "soc=${if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else "?"}",
+            )
             appendLine("Thread ${thread.name}")
             appendLine()
             append(sw.toString())

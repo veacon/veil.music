@@ -34,7 +34,8 @@ class LyricsCancellationTest {
         // 第三方歌词用自己内部 new 的 OkHttpClient，注入 http 到 DirectLyricsSource 只会被 lrclib 用。
         // 这里把 ThirdPartyLyrics 的 http 换成拦截器版本，验证取消传播。
         thirdParty.javaClass.getDeclaredField("http").apply {isAccessible=true}.set(thirdParty,http)
-        val source=DirectLyricsSource(apple,prefs,thirdParty,http)
+        val source=DirectLyricsSource(apple,prefs,thirdParty,
+            com.veacon.veilmusic.data.LyricsScriptPreferences(RuntimeEnvironment.getApplication()),http)
         try {
             withTimeout(5_000L) {
                 val request=launch {source.getLyrics("123","cn","song","artist",60L)}

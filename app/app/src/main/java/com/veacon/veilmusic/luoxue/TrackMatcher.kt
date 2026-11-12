@@ -19,19 +19,12 @@ object TrackMatcher {
         "remaster", "remastered", "deluxe", "edition", "version", "explicit", "mono", "stereo",
     )
 
-    /** 常见繁体 → 简体（API 23 无 ICU 时使用；24+ 走 Transliterator）。 */
-    private val T2S = mapOf(
-        '們' to '们', '後' to '后', '來' to '来', '傳' to '传', '這' to '这', '個' to '个', '時' to '时',
-        '說' to '说', '愛' to '爱', '願' to '愿', '夢' to '梦', '聲' to '声', '與' to '与', '為' to '为',
-        '無' to '无', '誰' to '谁', '過' to '过', '還' to '还', '開' to '开', '關' to '关', '讓' to '让',
-        '對' to '对', '從' to '从', '會' to '会', '學' to '学', '國' to '国', '樂' to '乐', '團' to '团',
-        '隊' to '队', '聽' to '听', '寫' to '写', '絕' to '绝', '續' to '续', '變' to '变', '張' to '张',
-        '陳' to '陈', '鄧' to '邓', '黃' to '黄', '劉' to '刘', '蕭' to '萧', '楊' to '杨', '葉' to '叶',
-        '蘇' to '苏', '龍' to '龙', '鳳' to '凤', '齊' to '齐', '瑪' to '玛', '貝' to '贝', '爾' to '尔',
-        '維' to '维', '亞' to '亚', '歐' to '欧', '陽' to '阳', '華' to '华', '萬' to '万', '億' to '亿',
-        '點' to '点', '線' to '线', '麵' to '面', '髮' to '发', '鬥' to '斗', '氣' to '气', '風' to '风',
-        '雲' to '云', '電' to '电', '車' to '车', '馬' to '马', '鳥' to '鸟', '魚' to '鱼', '歲' to '岁',
-    )
+    /**
+     * 常见繁体 → 简体（API 23 无 ICU 时使用；24+ 走 Transliterator）。
+     * 与歌词简繁开关共用同一份字表（[com.veacon.veilmusic.util.LyricsScriptConverter.T2S_FALLBACK]），
+     * 避免「匹配用一份、显示用另一份」两套字表越走越偏。
+     */
+    private val T2S = com.veacon.veilmusic.util.LyricsScriptConverter.T2S_FALLBACK
 
     /** Apple 常用英文艺人名 → 平台中文名（按需扩充，先覆盖高频）。 */
     private val ARTIST_ALIAS = mapOf(

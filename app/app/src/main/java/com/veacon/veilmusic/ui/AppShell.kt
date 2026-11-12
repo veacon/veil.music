@@ -58,6 +58,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.veacon.veilmusic.ui.components.TopNavBar
+import com.veacon.veilmusic.ui.components.MiniPlayerCapsule
 import androidx.compose.ui.draw.clipToBounds
 import com.veacon.veilmusic.ui.navigation.BrowsingPageMotion
 import com.veacon.veilmusic.ui.navigation.Screen
@@ -837,6 +838,8 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 // Restore the original V12 beat-reactive marker for music and video.
                 isPlaying = playerState.isPlaying || (videoActive && videoPlaying),
                 beatAnalyzer = playerVm.beatAnalyzer,
+                // 实验室开关：开启后用当前歌名替换顶栏的「正在播放」。
+                nowPlayingTitle = if (playerState.navTitleAsSong) playerState.currentSong?.title else null,
                 onSelect = { tab ->
                     // Focus can move again before the next composition. Read the live
                     // destination so rapid arrows never select against a stale route.
@@ -849,6 +852,21 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 },
             )
         }
+        }
+
+        // 实验室：底部迷你播放胶囊（移植自 v1.1.2）。播放页不显示（页内已有完整控件）。
+        if (playerState.miniCapsuleEnabled && playerState.currentSong != null && !isOnNowPlaying) {
+            MiniPlayerCapsule(
+                playerVm = playerVm,
+                onOpen = { navVm.navigateToNowPlaying() },
+                onOpenQueue = {
+                    navVm.toggleQueuePanel()
+                    navVm.navigateToNowPlaying()
+                },
+                heightPct = playerState.miniCapsuleHeightPct,
+                widthPct = playerState.miniCapsuleWidthPct,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp),
+            )
         }
 
     }

@@ -46,7 +46,7 @@ class PhoneEnglishCoverageTest {
         return InAppWebServer(context, MutPreferences(context), repo,
             LyricsOffsetPreferences(context), CrossfadePreferences(context),
             StandalonePreferences(context), ServerPreferences(context), BeatAnalyzer(),
-            TokenVerifier { TokenVerification.Valid }, lx, importer)
+            TokenVerifier { TokenVerification.Valid }, lx, importer, LyricsScriptPreferences(context))
     }
 
     private fun request(port: Int, method: String, path: String, body: String = ""): String =
@@ -75,6 +75,25 @@ class PhoneEnglishCoverageTest {
             runBlocking { withTimeout(5000) { while (!s.running) delay(10) } }
             block(s)
         } finally { s.stop(); scope.cancel() }
+    }
+
+    @Test fun labTogglesFromPhoneUpdateTheSharedPreferences() = withServer { s ->
+        // 手机页改的是与 TV 端同一份 prefs；响应走重定向，页面本身不应带任何中文。
+        val lyricsReply = request(s.port, "POST", "/set-lyrics-script?lang=en", "script=TRADITIONAL")
+            .substringAfter("\r\n\r\n")
+        assertEquals(emptySet<String>(), chineseFragments(lyricsReply))
+        assertEquals(LyricsScript.TRADITIONAL, LyricsScriptPreferences(context).current())
+
+        val compatReply = request(s.port, "POST", "/set-render-compat?lang=en", "compat=1")
+            .substringAfter("\r\n\r\n")
+        assertEquals(emptySet<String>(), chineseFragments(compatReply))
+        assertTrue(com.veacon.veilmusic.util.RenderCompat.isActive(context))
+        assertEquals("always", com.veacon.veilmusic.util.RenderCompat.describe(context))
+
+        // 关掉后回到「手动关闭」，渲染路径与旧版本一致。
+        request(s.port, "POST", "/set-render-compat?lang=en", "compat=0")
+        assertFalse(com.veacon.veilmusic.util.RenderCompat.isActive(context))
+        assertEquals("off", com.veacon.veilmusic.util.RenderCompat.describe(context))
     }
 
     @Test fun englishPageHasNoChineseExceptTheLanguageName() = withServer { s ->

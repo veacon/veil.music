@@ -209,6 +209,17 @@ data class PlayerState(
     val volumeLeveling: Boolean = false,
     /** 硬解 / 软解 — which decoder path the player is built with. Factory default: hardware. */
     val decoderMode: com.veacon.veilmusic.data.DecoderMode = com.veacon.veilmusic.data.DecoderMode.DEFAULT,
+    /** 歌词字形（简/繁）；Apple 源歌词默认是繁体，这里统一到用户选择的字形。 */
+    val lyricsScript: com.veacon.veilmusic.data.LyricsScript = com.veacon.veilmusic.data.LyricsScript.SIMPLIFIED,
+    /**
+     * 封面渲染兼容模式是否生效：开启时播放页封面不再挂载动态封面的 TextureView，
+     * 避免个别电视 GPU（Realtek RTD2886 等）在封面区域合成出马赛克。
+     */
+    val renderCompat: Boolean = false,
+    /** 渲染兼容开关是否被手动改过（false = 仍在按机型自动判定）。仅用于设置页文案。 */
+    val renderCompatManual: Boolean = false,
+    /** 顶部交互栏用当前歌名替换「正在播放」四个字（实验室开关）。 */
+    val navTitleAsSong: Boolean = false,
     /** 当前曲目实际命中的音频流（音源/格式/码率），播放页「菜单键」信息框用；未解析完成时为 null。 */
     val resolvedStream: ResolvedStream? = null,
     /** 统一输出采样率（P2），改档要重建播放器。 */
@@ -223,6 +234,12 @@ data class PlayerState(
     val backgroundPlayEnabled: Boolean    = false,
     /** True while the activity is in Picture-in-Picture (renders the minimal PiP view). */
     val isInPip:          Boolean         = false,
+    /** 实验室：底部迷你播放胶囊（移植自 v1.1.2）。默认关。 */
+    val miniCapsuleEnabled: Boolean = false,
+    /** 迷你胶囊高度百分比（60–140），同时缩放图标/封面/文字。 */
+    val miniCapsuleHeightPct: Int = 100,
+    /** 迷你胶囊宽度百分比（60–100），只改占屏宽比例。 */
+    val miniCapsuleWidthPct: Int = 100,
 )
 
 /** Hidden LYRICS baseline: the Fire TV shows the lyric line ~200 ms before you hear the word even over
@@ -249,6 +266,7 @@ class PlayerViewModel @Inject constructor(
     private val appleClient: AppleDirectClient,
     private val lyricsOffsetPrefs: LyricsOffsetPreferences,
     private val lyricsMotionPrefs: com.veacon.veilmusic.data.LyricsMotionPreferences,
+    private val lyricsScriptPrefs: com.veacon.veilmusic.data.LyricsScriptPreferences,
     private val crossfadePrefs: com.veacon.veilmusic.data.CrossfadePreferences,
     private val onboardingPrefs: com.veacon.veilmusic.data.OnboardingPreferences,
     private val standalonePrefs: com.veacon.veilmusic.data.StandalonePreferences,
@@ -905,6 +923,48 @@ class PlayerViewModel @Inject constructor(
                 "${com.veacon.veilmusic.media.OutputTuning.summary(unifySampleRate, offloadEnabled, outputSampleRate)} | " +
                 "cache=256MB blacklist=${decoderPolicy.snapshot()}",
         )
+        // 设备/渲染快照：花屏这类问题只看错误日志是查不出来的（老版本只有一行 Device MODEL），
+        // 这里把 SoC / 进程位数 / 内存 / GPU / 屏幕一次性打进日志，并异步探测一次 GPU 型号。
+        webServer.addLog("DEV", com.veacon.veilmusic.util.RenderDiagnostics.summaryLine(context))
+        com.veacon.veilmusic.util.RenderDiagnostics.probeGpuAsync { gpu ->
+            webServer.addLog(
+                "DEV",
+                "gpu probed=${gpu.probed} vendor=${gpu.vendor.ifBlank { "?" }} " +
+                    "renderer=${gpu.renderer.ifBlank { "?" }} gl=${gpu.version.ifBlank { "?" }} es=${gpu.glEsVersion.ifBlank { "?" }}",
+            )
+        }
+        val renderCompatNow = com.veacon.veilmusic.util.RenderCompat.isActive(context)
+        val motionPref = prefs.getBoolean("motion_art", false)
+        webServer.addLog(
+            "RENDER",
+            "compat=${com.veacon.veilmusic.util.RenderCompat.describe(context)} " +
+                "reasons=${com.veacon.veilmusic.util.RenderCompat.riskReasons(
+                    com.veacon.veilmusic.util.RenderDiagnostics.facts(context)).joinToString(",").ifEmpty { "none" }} " +
+                // 下面两个字段是**实际生效**的渲染路径，不是偏好值：排查花屏时对齐的是它们。
+                "rounded=${if (renderCompatNow) "canvas-clip" else "clip-layer"} " +
+                "coverMotion=${if (motionPref && !renderCompatNow) "on" else "off"} " +
+                "motionPref=${if (motionPref) "on" else "off"}",
+        )
+        // 歌词字形也可以在手机配置页改（写同一个 prefs）：跟着走，并让当前这首重取歌词。
+        // 用 drop(1) 跳过 StateFlow 的当前值：构造期间不该触发任何重载（否则会碰到
+        // 尚未初始化、声明在后面的歌词缓存字段）。
+        viewModelScope.launch {
+            lyricsScriptPrefs.script.drop(1).collect { script ->
+                if (_state.value.lyricsScript != script) applyLyricsScript(script, reload = true)
+            }
+        }
+        // 封面马赛克修复同样可以从手机配置页改（写同一个 prefs）：跟着走，让运行中的界面
+        // 即时切换渲染路径。drop(1) 的用意同上：构造期间不触发任何状态写入。
+        viewModelScope.launch {
+            com.veacon.veilmusic.util.RenderCompat.revision.drop(1).collect {
+                _state.update { s ->
+                    s.copy(
+                        renderCompat = com.veacon.veilmusic.util.RenderCompat.isActive(context),
+                        renderCompatManual = com.veacon.veilmusic.util.RenderCompat.hasOverride(context),
+                    )
+                }
+            }
+        }
         // Offset can also be changed from the phone web server — follow it live.
         viewModelScope.launch {
             lyricsOffsetPrefs.offsetMs.collect { ms ->
@@ -1338,6 +1398,13 @@ class PlayerViewModel @Inject constructor(
             screensaverKeepBackground = prefs.getBoolean("screensaver_keep_bg", false),
             showNowPlayingInfo = prefs.getBoolean("np_info", true),
             motionArtworkEnabled = prefs.getBoolean("motion_art", false),
+            lyricsScript = lyricsScriptPrefs.current(),
+            renderCompat = com.veacon.veilmusic.util.RenderCompat.isActive(context),
+            renderCompatManual = com.veacon.veilmusic.util.RenderCompat.hasOverride(context),
+            navTitleAsSong = prefs.getBoolean("nav_title_song", false),
+            miniCapsuleEnabled = prefs.getBoolean("mini_capsule", false),
+            miniCapsuleHeightPct = prefs.getInt("mini_height_pct", 100).coerceIn(60, 140),
+            miniCapsuleWidthPct = prefs.getInt("mini_width_pct", 100).coerceIn(60, 100),
             beatIntensity = prefs.getFloat(intensityKey(initBg), 1.0f),
             orbSpeed = prefs.getFloat("orb_speed", 1.0f),
             lyricsScale = prefs.getFloat("lyrics_scale", 1.0f),
@@ -1830,6 +1897,70 @@ class PlayerViewModel @Inject constructor(
         _state.update { it.copy(artworkRounded = next) }
         prefs.edit { putBoolean("artwork_rounded", next) }
     }
+
+    /**
+     * 歌词字形（简/繁）切换。缓存里存的是转换前的原文，字形变了必须连同
+     * [com.veacon.veilmusic.data.datasource.DirectLyricsSource] 的缓存一起作废，
+     * 然后把当前这首重取一遍，否则界面还是旧字形。
+     */
+    fun setLyricsScript(script: com.veacon.veilmusic.data.LyricsScript) {
+        lyricsScriptPrefs.setScript(script)
+    }
+
+    private fun applyLyricsScript(script: com.veacon.veilmusic.data.LyricsScript, reload: Boolean) {
+        _state.update { it.copy(lyricsScript = script) }
+        lyricsCache.clear()
+        lyricsSourceCache.clear()
+        lyricsExcludedSources.clear()
+        repo.invalidateLyricsCacheAll()
+        webServer.addLog("LYRICS", "script=${script.name.lowercase()} — lyrics cache invalidated, refetching")
+        if (reload) _state.value.currentSong?.let { if (!it.isMusicVideo) loadLyrics(it.id) }
+    }
+
+    /**
+     * 封面马赛克修复开关（实验室功能，默认按机型自动判定）。
+     *
+     * 开启后：封面圆角走画布裁剪，不再为封面开离屏图层（动态封面照常叠加）。
+     * 关闭后代码路径与 2.2.1 完全一致，正常机型不受任何影响。
+     */
+    fun setRenderCompat(enabled: Boolean) {
+        com.veacon.veilmusic.util.RenderCompat.setEnabled(context, enabled)
+        _state.update { it.copy(renderCompat = enabled, renderCompatManual = true) }
+        webServer.addLog("RENDER", "compat=${com.veacon.veilmusic.util.RenderCompat.describe(context)} active=$enabled")
+    }
+
+    /** 顶部交互栏用当前歌名替换「正在播放」四个字（实验室功能）。 */
+    fun setNavTitleAsSong(enabled: Boolean) {
+        prefs.edit().putBoolean("nav_title_song", enabled).apply()
+        _state.update { it.copy(navTitleAsSong = enabled) }
+    }
+
+    /** 实验室：底部迷你播放胶囊开关。 */
+    fun setMiniCapsuleEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("mini_capsule", enabled).apply()
+        _state.update { it.copy(miniCapsuleEnabled = enabled) }
+    }
+
+    /**
+     * 迷你胶囊高度（百分比）。整条胶囊连同图标、封面、文字一起等比缩放 ——
+     * 只把外框改高不改内容，60% 时会露出一圈空白边。
+     */
+    fun setMiniCapsuleHeightPct(pct: Int) {
+        val clamped = pct.coerceIn(60, 140)
+        prefs.edit().putInt("mini_height_pct", clamped).apply()
+        _state.update { it.copy(miniCapsuleHeightPct = clamped) }
+    }
+    fun nudgeMiniCapsuleHeightPct(delta: Int) =
+        setMiniCapsuleHeightPct(_state.value.miniCapsuleHeightPct + delta)
+
+    /** 迷你胶囊宽度（百分比，相对屏宽 94% 基准）。只改长度，不改内容大小。 */
+    fun setMiniCapsuleWidthPct(pct: Int) {
+        val clamped = pct.coerceIn(60, 100)
+        prefs.edit().putInt("mini_width_pct", clamped).apply()
+        _state.update { it.copy(miniCapsuleWidthPct = clamped) }
+    }
+    fun nudgeMiniCapsuleWidthPct(delta: Int) =
+        setMiniCapsuleWidthPct(_state.value.miniCapsuleWidthPct + delta)
 
     fun toggleVolumeLeveling() {
         val next = !_state.value.volumeLeveling

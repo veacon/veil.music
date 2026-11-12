@@ -238,6 +238,9 @@ class MusicRepository @Inject constructor(
     /** 「歌词换源」：清掉直连歌词源的内存缓存，强制重走歌词级联。 */
     fun invalidateLyricsCache(songId: String) = directLyrics.invalidate(songId)
 
+    /** 歌词字形（简/繁）切换：全都按原文字形缓存过，整体作废才能重新按新字形输出。 */
+    fun invalidateLyricsCacheAll() = directLyrics.invalidateAll()
+
     /** Warm the lyrics cache for an upcoming song so it shows instantly on switch. */
     suspend fun prefetchLyrics(songId: String, title: String, artist: String, durationSec: Long) {
         if (useProxy) return

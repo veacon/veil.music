@@ -203,7 +203,7 @@
     <string name="msg_200" formatted="false">"Lyrics Size"</string>
     <string name="msg_201" formatted="false">"Adjust the size of lyric text."</string>
     <string name="msg_202" formatted="false">"Animated Artwork"</string>
-    <string name="msg_203" formatted="false">"Play album artwork animations when available."</string>
+    <string name="msg_203" formatted="false">"If artwork shows mosaic, turn this off or enable Lab → Mosaic fix"</string>
     <string name="msg_204" formatted="false">"Rounded Artwork"</string>
     <string name="msg_205" formatted="false">"Use softly rounded corners for album artwork."</string>
     <string name="msg_206" formatted="false">"Controls hide after about 8 seconds. Touch the screen or press a direction key to show them."</string>
@@ -244,7 +244,7 @@
     <string name="msg_241" formatted="false">"Phone Setup Page"</string>
     <string name="msg_242" formatted="false">"Import playlists and adjust playback from your phone on the same network."</string>
     <string name="msg_243" formatted="false">"Connect using Wi-Fi or Ethernet to access the setup page."</string>
-    <string name="msg_244" formatted="false">"Open this address in your phone browser."</string>
+    <string name="msg_244" formatted="false">"Select to show a QR code; scan it with your phone to open the web setup page"</string>
     <string name="msg_245" formatted="false">"Download Problem Report"</string>
     <string name="msg_246" formatted="false">"Open the address below on your phone to download device details, recent crashes, and logs."</string>
     <string name="msg_247" formatted="false">"Connect using Wi-Fi or Ethernet to access the report page."</string>
@@ -342,5 +342,28 @@
     <string name="msg_333" formatted="false">"Switch lyrics source"</string>
     <string name="msg_334" formatted="false">"Switching source…"</string>
     <string name="msg_335" formatted="false">"Word-by-word lyrics"</string>
-    <string name="msg_336" formatted="false">"True per-character timing only when signed in to Apple Music; otherwise timing is spread evenly across the line. Off = whole line lights up at once."</string>
+    <string name="msg_336" formatted="false">"True per-character timing only when signed in; otherwise spread evenly across the line"</string>
+    <string name="msg_337" formatted="false">"Experimental features"</string>
+    <string name="msg_338" formatted="false">"Turn on to configure the experiments below. Off behaves exactly like the previous version."</string>
+    <string name="msg_339" formatted="false">"Nothing playing"</string>
+    <string name="msg_340" formatted="false">"Lyrics script"</string>
+    <string name="msg_341" formatted="false">"Simplified Chinese"</string>
+    <string name="msg_342" formatted="false">"Traditional Chinese"</string>
+    <string name="msg_343" formatted="false">"Apple lyrics are often traditional; English and Japanese are untouched"</string>
+    <string name="msg_344" formatted="false">"Cover mosaic fix"</string>
+    <string name="msg_348" formatted="false">"Fixes mosaic on some TVs' artwork; affected models turn it on automatically"</string>
+    <string name="msg_349" formatted="false">"On: the player cover corner uses a canvas clip instead of an offscreen layer, and the cover no longer overlays animated artwork (playlist cards and the featured page are unaffected). Thanks to Xiaohongshu user @再睡五分钟咯"</string>
+    <string name="msg_350" formatted="false">"Manually off: the renderer keeps the previous behaviour and will not turn itself on again."</string>
+    <string name="msg_351" formatted="false">"Show song title in the top bar"</string>
+    <string name="msg_352" formatted="false">"Replace the top bar label with the current song title; off keeps the original"</string>
+    <string name="msg_ui_section" formatted="false">"Interface"</string>
+    <string name="msg_app_section" formatted="false">"App"</string>
+    <string name="msg_playback_settings" formatted="false">"Playback settings"</string>
+    <string name="msg_playback_settings_sub" formatted="false">"Audio quality, decoder, volume leveling, background playback"</string>
+    <string name="msg_353" formatted="false">"Show interface settings"</string>
+    <string name="msg_354" formatted="false">"Language, appearance and player"</string>
+    <string name="msg_355" formatted="false">"Show app settings"</string>
+    <string name="msg_356" formatted="false">"Remote sync, cache and reset"</string>
+    <string name="msg_357" formatted="false">"Traditional / simplified"</string>
+    <string name="msg_358" formatted="false">"On shows traditional lyrics, off shows simplified"</string>
 </resources>

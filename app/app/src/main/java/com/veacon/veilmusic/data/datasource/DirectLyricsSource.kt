@@ -27,6 +27,7 @@ class DirectLyricsSource @Inject constructor(
     private val appleClient: AppleDirectClient,
     private val mutPrefs: MutPreferences,
     private val thirdParty: ThirdPartyLyrics,
+    private val scriptPrefs: com.veacon.veilmusic.data.LyricsScriptPreferences,
     @Named("direct") private val httpClient: OkHttpClient,
 ) {
 
@@ -54,6 +55,21 @@ class DirectLyricsSource @Inject constructor(
     /** 「歌词换源」用：清掉这首歌的缓存，强制走一遍完整歌词级联（Apple → 网易云/QQ → lrclib）。 */
     fun invalidate(songId: String) { cache.remove(songId); sourceCache.remove(songId) }
 
+    /** 「歌词字形（简/繁）」切换后用：缓存里存的是原文字形，转换在返回时做，这里整体作废重取。 */
+    fun invalidateAll() { cache.clear(); sourceCache.clear() }
+
+    /**
+     * 统一出口：把命中的歌词按当前字形偏好转换。
+     *
+     * Apple 曲库（尤其 cn 区）大量返回繁体歌词，这里集中处理一次，五大平台与 lrclib
+     * 已经返回简体的行经过转换是空操作，不会来回改字。
+     */
+    private fun scripted(bundle: LyricsBundle): LyricsBundle =
+        LyricsBundle(
+            com.veacon.veilmusic.util.LyricsScriptConverter.convert(bundle.lines, scriptPrefs.current()),
+            bundle.source,
+        )
+
     suspend fun getLyrics(
         songId: String,
         storefront: String,
@@ -71,7 +87,7 @@ class DirectLyricsSource @Inject constructor(
         durationSec: Long = 0,
         excludeSources: Set<String> = emptySet(),
     ): LyricsBundle = withContext(Dispatchers.IO) {
-        cached(songId)?.let { return@withContext LyricsBundle(it, sourceOf(songId)) }
+        cached(songId)?.let { return@withContext scripted(LyricsBundle(it, sourceOf(songId))) }
         Log.i("DirectLyrics", "getLyrics song=$songId title='$title' artist='$artist' exclude=$excludeSources")
 
         // 级联顺序（登录 Apple 时）：
@@ -87,30 +103,39 @@ class DirectLyricsSource @Inject constructor(
 
         if (appleAllowed) {
             val wordTimed = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), listOf("syllable-lyrics"))
-            if (wordTimed.isNotEmpty()) return@withContext LyricsBundle(wordTimed, "Apple Music").also {
-                store(songId, it.lines); rememberSource(songId, "Apple Music")
+            if (wordTimed.isNotEmpty()) {
+                // 缓存里存**原文**（字形转换在返回时做），换开关时整体作废即可，不会二次转换。
+                val bundle = LyricsBundle(wordTimed, "Apple Music")
+                store(songId, bundle.lines); rememberSource(songId, "Apple Music")
+                return@withContext scripted(bundle)
             }
         }
 
         if (title.isNotEmpty() && artist.isNotEmpty()) {
             val third = thirdParty.fetch(title, artist, durationSec, excludeSources)
-            if (third.lines.isNotEmpty()) return@withContext LyricsBundle(third.lines, third.source).also {
-                store(songId, it.lines); rememberSource(songId, it.source)
+            if (third.lines.isNotEmpty()) {
+                val bundle = LyricsBundle(third.lines, third.source)
+                store(songId, bundle.lines); rememberSource(songId, bundle.source)
+                return@withContext scripted(bundle)
             }
         }
 
         if (appleAllowed) {
             val lineOnly = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), listOf("lyrics"))
-            if (lineOnly.isNotEmpty()) return@withContext LyricsBundle(lineOnly, "Apple Music").also {
-                store(songId, it.lines); rememberSource(songId, "Apple Music")
+            if (lineOnly.isNotEmpty()) {
+                val bundle = LyricsBundle(lineOnly, "Apple Music")
+                store(songId, bundle.lines); rememberSource(songId, "Apple Music")
+                return@withContext scripted(bundle)
             }
         }
 
         // lrclib fallback
         if (title.isNotEmpty() && artist.isNotEmpty()) {
             val lrc = tryLrclib(title, artist, durationSec)
-            if (lrc.isNotEmpty()) return@withContext LyricsBundle(lrc, "lrclib").also {
-                store(songId, it.lines); rememberSource(songId, "lrclib")
+            if (lrc.isNotEmpty()) {
+                val bundle = LyricsBundle(lrc, "lrclib")
+                store(songId, bundle.lines); rememberSource(songId, "lrclib")
+                return@withContext scripted(bundle)
             }
         }
 
