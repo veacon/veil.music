@@ -54,7 +54,8 @@ class AppLanguageTest {
             assertEquals("Chinese resource $id",pair.first,zh)
             assertEquals("English resource $id",pair.second,en)
             assertEquals(Regex("%[0-9]+\\\$s").findAll(zh).map {it.value}.toList(),Regex("%[0-9]+\\\$s").findAll(en).map {it.value}.toList())
-            if(id!=R.string.msg_312) assertFalse("English contains untranslated copy: $en",Regex("[\\u4e00-\\u9fff]").containsMatchIn(en))
+            // msg_312 是语言自身的名字（简体中文）；msg_349 的致谢里含小红书用户名 @再睡五分钟啦 —— 都按原样保留。
+            if(id!=R.string.msg_312 && id!=R.string.msg_349) assertFalse("English contains untranslated copy: $en",Regex("[\\u4e00-\\u9fff]").containsMatchIn(en))
         }
     }
     @Test fun enumLabelsResolveAtReadTimeInsteadOfStayingInTheStartupLanguage() {

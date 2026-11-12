@@ -91,8 +91,9 @@ class MainActivity : ComponentActivity() {
         // Compose can already own these ViewModels while the Activity's lazy references are
         // untouched. Resolve the same Activity-scoped instances instead of treating an
         // uninitialized delegate as proof that no playback exists.
-        if (appWindowAllowed && !playerVm.backgroundPlayEnabled) {
-            playerVm.pause()
+        if (appWindowAllowed) {
+            // 离开应用：暂停播放，但书签保留「本来在播」，下次打开自动接着播。
+            playerVm.pause(byUser = false)
             mvVm.pause()
         }
     }

@@ -195,8 +195,7 @@
     <string name="msg_192" formatted="false">"Play through the computer server."</string>
     <string name="msg_193" formatted="false">"Volume Leveling"</string>
     <string name="msg_194" formatted="false">"Balance loudness between songs."</string>
-    <string name="msg_195" formatted="false">"Background Playback"</string>
-    <string name="msg_196" formatted="false">"Continue playing when you leave the app."</string>
+
     <string name="msg_197" formatted="false">"Player Appearance"</string>
     <string name="msg_198" formatted="false">"Fluid Background"</string>
     <string name="msg_199" formatted="false">"Off, Static, Smooth, Standard, High quality"</string>
@@ -359,7 +358,7 @@
     <string name="msg_ui_section" formatted="false">"Interface"</string>
     <string name="msg_app_section" formatted="false">"App"</string>
     <string name="msg_playback_settings" formatted="false">"Playback settings"</string>
-    <string name="msg_playback_settings_sub" formatted="false">"Audio quality, decoder, volume leveling, background playback"</string>
+    <string name="msg_playback_settings_sub" formatted="false">"Audio quality, decoder, volume leveling"</string>
     <string name="msg_353" formatted="false">"Show interface settings"</string>
     <string name="msg_354" formatted="false">"Language, appearance and player"</string>
     <string name="msg_355" formatted="false">"Show app settings"</string>

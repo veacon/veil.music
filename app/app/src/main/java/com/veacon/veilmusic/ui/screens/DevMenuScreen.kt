@@ -181,8 +181,7 @@ fun DevMenuScreen(
                 )
                 SettingDivider()
                 Toggle(tr(R.string.msg_193), pstate.volumeLeveling, tr(R.string.msg_194)) { playerVm.toggleVolumeLeveling() }
-                SettingDivider()
-                Toggle(tr(R.string.msg_195), pstate.backgroundPlayEnabled, tr(R.string.msg_196)) { playerVm.toggleBackgroundPlay() }
+
                 SettingDivider()
                     Stepper(tr(R.string.msg_187), tr(R.string.msg_188).format(com.veacon.veilmusic.i18n.AppLanguage.locale, state.crossfadeMs / 1000f),
                         tr(R.string.msg_189), { vm.setCrossfade(com.veacon.veilmusic.data.CrossfadePreferences.step(state.crossfadeMs, -1)) },
@@ -437,15 +436,18 @@ fun DevMenuScreen(
             english = english,
             sources = vm.downloadSources,
             selected = selectedSource,
+            downloading = update.phase == "downloading",
+            progress = update.progress,
             onSelect = vm::selectDownloadSource,
-            onDismiss = vm::dismissDownloadSource,
+            onCancelDownload = vm::cancelDownload,
+            onDismiss = { if (update.phase == "downloading") vm.cancelDownload() else vm.dismissDownloadSource() },
         )
     }
 }
 
 /**
- * 更新下载线路选择：3 个加速前缀 + 直连，共 4 项。选中即记住并立刻开始下载。
- * 与「配置音源」弹窗同一套 MotionDialog / TV 焦点风格，方向键上下移动、OK 确认。
+ * 更新下载弹窗：先选线路（3 个加速前缀 + 直连），选定后**不关闭**，
+ * 同一界面切换为下载进度视图，可随时取消。与「配置音源」弹窗同一套 MotionDialog / TV 焦点风格。
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -453,10 +455,14 @@ private fun DownloadSourceDialog(
     english: Boolean,
     sources: List<DownloadSource>,
     selected: DownloadSource,
+    downloading: Boolean,
+    progress: Int,
     onSelect: (DownloadSource) -> Unit,
+    onCancelDownload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val initialFocus = remember { FocusRequester() }
+    val palette = com.veacon.veilmusic.ui.theme.AppPalette
     com.veacon.veilmusic.ui.components.MotionDialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
@@ -466,55 +472,93 @@ private fun DownloadSourceDialog(
                 Modifier.menuInitialFocus(initialFocus)
                     .fillMaxWidth(0.62f)
                     .background(
-                        com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)),
+                        palette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)),
                         RoundedCornerShape(22.dp),
                     ).padding(horizontal = 30.dp, vertical = 26.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(tx_dialog("选择下载线路", "Choose download source"), fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
-                Text(tx_dialog("8 线程并发下载；加速线路失败会自动回退直连。",
-                        "8 parallel connections. If a mirror fails, downloading falls back to the official direct link."),
-                    fontSize = 13.sp, lineHeight = 19.sp,
-                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
-                Spacer(Modifier.height(6.dp))
-                sources.forEachIndexed { index, source ->
-                    val isSelected = source == selected
+                if (downloading) {
+                    Text(tx_dialog("正在下载更新", "Downloading update"), fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                    Text(tx_dialog("下载完成后会自动打开系统安装界面，安装前会校验签名。",
+                            "The system installer opens automatically when done; the signature is verified first."),
+                        fontSize = 13.sp, lineHeight = 19.sp,
+                        color = palette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+                    Spacer(Modifier.height(6.dp))
+                    // 进度条用 Box 手绘，避免依赖不同 TV material3 版本的进度组件 API。
+                    Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(50))
+                        .background(palette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)))) {
+                        Box(Modifier.fillMaxWidth(progress.coerceIn(0, 100) / 100f).fillMaxHeight()
+                            .background(palette.primary))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(tx_dialog("请保持应用开启", "Keep the app open"), fontSize = 13.sp,
+                            color = palette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+                        Text("${progress.coerceIn(0, 100)}%", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace,
+                            color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                    }
+                    Spacer(Modifier.height(8.dp))
                     Surface(
-                        onClick = { onSelect(source) },
-                        modifier = Modifier.fillMaxWidth()
-                            .then(if (index == 0) Modifier.focusRequester(initialFocus) else Modifier),
-                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                        onClick = onCancelDownload,
+                        modifier = Modifier.align(Alignment.End).focusRequester(initialFocus),
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
                         colors = ClickableSurfaceDefaults.colors(
-                            containerColor = if (isSelected) Color(0x33FA233B) else Color.Transparent,
-                            focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(
-                                Color(0xFFE8E8ED), Color(0xFF38383D)),
+                            containerColor = palette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                            focusedContainerColor = palette.adaptive(Color(0xFFD9D9DE), Color(0xFF4A4A50)),
                         ),
                     ) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (english) source.en else source.zh, fontSize = 16.sp,
-                                color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
-                            if (isSelected) Text(tx_dialog("当前", "Current"), fontSize = 13.sp,
-                                color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
+                        Box(Modifier.width(120.dp).height(42.dp), contentAlignment = Alignment.Center) {
+                            Text(tx_dialog("取消下载", "Cancel download"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                                color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
                         }
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End),
-                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
-                        focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFD9D9DE), Color(0xFF4A4A50)),
-                    ),
-                ) {
-                    Box(Modifier.width(96.dp).height(42.dp), contentAlignment = Alignment.Center) {
-                        Text(tx_dialog("取消", "Cancel"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                            color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                } else {
+                    Text(tx_dialog("选择下载线路", "Choose download source"), fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                    Text(tx_dialog("4 线程并发下载；加速线路失败会自动回退直连。",
+                            "4 parallel connections. If a mirror fails, downloading falls back to the official direct link."),
+                        fontSize = 13.sp, lineHeight = 19.sp,
+                        color = palette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+                    Spacer(Modifier.height(6.dp))
+                    sources.forEachIndexed { index, source ->
+                        val isSelected = source == selected
+                        Surface(
+                            onClick = { onSelect(source) },
+                            modifier = Modifier.fillMaxWidth()
+                                .then(if (index == 0) Modifier.focusRequester(initialFocus) else Modifier),
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                            colors = ClickableSurfaceDefaults.colors(
+                                containerColor = if (isSelected) Color(0x33FA233B) else Color.Transparent,
+                                focusedContainerColor = palette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                            ),
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (english) source.en else source.zh, fontSize = 16.sp,
+                                    color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                                if (isSelected) Text(tx_dialog("当前", "Current"), fontSize = 13.sp,
+                                    color = palette.primary)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        onClick = onDismiss,
+                        modifier = Modifier.align(Alignment.End),
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = palette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                            focusedContainerColor = palette.adaptive(Color(0xFFD9D9DE), Color(0xFF4A4A50)),
+                        ),
+                    ) {
+                        Box(Modifier.width(96.dp).height(42.dp), contentAlignment = Alignment.Center) {
+                            Text(tx_dialog("取消", "Cancel"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                                color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                        }
                     }
                 }
             }

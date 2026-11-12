@@ -21,7 +21,7 @@ internal fun PlayerState.shellUiState(): ShellPlaybackUiState =
 
 /** Settings observes preferences/output changes, never the playback clock or queue. */
 internal data class SettingsPlaybackUiState(
-    val volumeLeveling: Boolean, val backgroundPlayEnabled: Boolean, val fluidQuality: FluidQuality,
+    val volumeLeveling: Boolean, val fluidQuality: FluidQuality,
     val lyricsScale: Float, val motionArtworkEnabled: Boolean, val artworkRounded: Boolean,
     val avSyncAuto: Boolean, val avOutputLabel: String, val avOnBluetooth: Boolean,
     val decoderMode: com.veacon.veilmusic.data.DecoderMode,
@@ -35,7 +35,7 @@ internal data class SettingsPlaybackUiState(
     val miniCapsuleWidthPct: Int,
 )
 internal fun PlayerState.settingsUiState() = SettingsPlaybackUiState(volumeLeveling,
-    backgroundPlayEnabled,fluidQuality,lyricsScale,motionArtworkEnabled,artworkRounded,
+    fluidQuality,lyricsScale,motionArtworkEnabled,artworkRounded,
     avSyncAuto,avOutputLabel,avOnBluetooth,decoderMode,unifySampleRate,audioOffload,
     lyricsScript,renderCompat,renderCompatManual,navTitleAsSong,
     miniCapsuleEnabled,miniCapsuleHeightPct,miniCapsuleWidthPct)

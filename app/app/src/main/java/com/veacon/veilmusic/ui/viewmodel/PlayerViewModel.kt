@@ -230,8 +230,6 @@ data class PlayerState(
     val isLoading:        Boolean         = false,
     /** True while the current track is playing via on-device Widevine. */
     val standaloneActive: Boolean         = false,
-    /** Keep audio playing when the app goes to the background / home is pressed. */
-    val backgroundPlayEnabled: Boolean    = false,
     /** True while the activity is in Picture-in-Picture (renders the minimal PiP view). */
     val isInPip:          Boolean         = false,
     /** 实验室：底部迷你播放胶囊（移植自 v1.1.2）。默认关。 */
@@ -1352,7 +1350,6 @@ class PlayerViewModel @Inject constructor(
         // Later user changes are preserved. Account, library and playback history are untouched.
         if (!prefs.getBoolean("lab3_defaults_applied", false)) {
             prefs.edit {
-                putBoolean("background_play", false)
                 putFloat("lyrics_scale", 1.0f)
                 if (!prefs.contains("motion_art")) putBoolean("motion_art", false)
                 putBoolean("lab3_defaults_applied", true)
@@ -1392,7 +1389,6 @@ class PlayerViewModel @Inject constructor(
         _state.update { it.copy(
             lyricsOffsetMs = lyricsOffsetPrefs.getOffset(),
             avSyncAuto = prefs.getBoolean("av_auto", false),
-            backgroundPlayEnabled = prefs.getBoolean("background_play", false),
             nowPlayingBackground = initBg,
             fluidQuality = FluidQuality.fromName(prefs.getString("fluid_quality", null)),
             screensaverKeepBackground = prefs.getBoolean("screensaver_keep_bg", false),
@@ -1552,7 +1548,11 @@ class PlayerViewModel @Inject constructor(
     /** Never route playback to the placeholder URL when a proxy hasn't been configured. */
     private fun useStandalone() = !serverPrefs.hasPcServer() || standalonePrefs.isEnabled() || !serverPrefs.serverReachable
 
-    private fun saveState() {
+    /**
+     * [playingOverride] 记录的是「续播意图」：用户主动暂停传 false（下次只恢复、不自动播）；
+     * 离开应用被动暂停时传暂停前的真实状态，这样下次启动仍能自动接着播。
+     */
+    private fun saveState(playingOverride: Boolean? = null) {
         val s = _state.value
         val song = s.currentSong ?: return
         // Preserve V12's crossfade and interrupted-source bookmark rules.
@@ -1560,25 +1560,15 @@ class PlayerViewModel @Inject constructor(
         val savedPosition = pendingRestore?.posMs ?: player.currentPosition
         // Preferences remain synchronous and cannot be overwritten by an older IO bookmark.
         if (prefs.getFloat("beat_intensity", 1f) != s.beatIntensity ||
-            prefs.getBoolean("crossfade_enabled", true) != s.crossfadeEnabled ||
-            prefs.getBoolean("background_play", false) != s.backgroundPlayEnabled) {
+            prefs.getBoolean("crossfade_enabled", true) != s.crossfadeEnabled) {
             prefs.edit {
                 putFloat("beat_intensity", s.beatIntensity)
                 putBoolean("crossfade_enabled", s.crossfadeEnabled)
-                putBoolean("background_play", s.backgroundPlayEnabled)
             }
         }
-        bookmarkWriter.submit(PlaybackBookmark(song, s.queue, s.queueIndex, savedPosition, s.isFullStream, s.isPlaying))
+        bookmarkWriter.submit(PlaybackBookmark(song, s.queue, s.queueIndex, savedPosition, s.isFullStream, playingOverride ?: s.isPlaying))
     }
 
-    /** True when the app should keep playing after it leaves the foreground. */
-    val backgroundPlayEnabled: Boolean get() = _state.value.backgroundPlayEnabled
-
-    fun toggleBackgroundPlay() {
-        val next = !_state.value.backgroundPlayEnabled
-        _state.update { it.copy(backgroundPlayEnabled = next) }
-        prefs.edit { putBoolean("background_play", next) }
-    }
 
     /** Called by the activity when it enters/leaves Picture-in-Picture. */
     fun setPipMode(on: Boolean) { _state.update { it.copy(isInPip = on) } }
@@ -1600,14 +1590,13 @@ class PlayerViewModel @Inject constructor(
             val full  = true   // 落雪音源不需要登录态；试听已移除
             val crossfade = prefs.getBoolean("crossfade_enabled", true)
             val screensaverMin = prefs.getInt("screensaver_min", 10)
-            val bgPlay = prefs.getBoolean("background_play", false)
             val npBg = NowPlayingBackground.fromName(prefs.getString("np_background", null))
             val beat      = prefs.getFloat(intensityKey(npBg), 1.0f)
             val keepBg = prefs.getBoolean("screensaver_keep_bg", false)
             val npInfo = prefs.getBoolean("np_info", true)
             val motionArt = prefs.getBoolean("motion_art", false)
             com.veacon.veilmusic.media.GainProcessor.enabled = prefs.getBoolean("volume_leveling", false)
-            _state.update { it.copy(currentSong = song, song = song, queue = queue, queueIndex = idx, isFullStream = full, beatIntensity = beat, crossfadeEnabled = crossfade, screensaverTimeoutMin = screensaverMin, backgroundPlayEnabled = bgPlay, nowPlayingBackground = npBg, screensaverKeepBackground = keepBg, showNowPlayingInfo = npInfo, motionArtworkEnabled = motionArt,
+            _state.update { it.copy(currentSong = song, song = song, queue = queue, queueIndex = idx, isFullStream = full, beatIntensity = beat, crossfadeEnabled = crossfade, screensaverTimeoutMin = screensaverMin, nowPlayingBackground = npBg, screensaverKeepBackground = keepBg, showNowPlayingInfo = npInfo, motionArtworkEnabled = motionArt,
                 orbSpeed = prefs.getFloat("orb_speed", 1.0f), lyricsScale = prefs.getFloat("lyrics_scale", 1.0f), artworkRounded = prefs.getBoolean("artwork_rounded", true), reduceMotion = false, lowPowerMode = false, volumeLeveling = prefs.getBoolean("volume_leveling", false), progressMs = posMs) }
             if (song == null) return@launch
             // A restored music video must go to the video player, NOT the audio stream — otherwise
@@ -2559,12 +2548,17 @@ class PlayerViewModel @Inject constructor(
         return job.await()
     }
 
-    fun pause() {
+    /**
+     * [byUser] = true：用户主动按了暂停（下次启动只恢复、不自动播）。
+     * [byUser] = false：离开应用的被动暂停 —— 书签保留暂停前的播放状态，否则自动续播永远不生效。
+     */
+    fun pause(byUser: Boolean = true) {
+        val wasPlaying = _state.value.isPlaying
         sourcePreparation.pause()
         player.pause()
         crossfadeExo?.pause()
         _state.update { it.copy(isPlaying = false, isLoading = false) }
-        saveState()
+        saveState(playingOverride = if (byUser) false else wasPlaying)
     }
 
     /** Explicit play is idempotent, including stopped/ended players and interrupted loads. */

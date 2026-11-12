@@ -29,6 +29,24 @@ private const val APK_PATH_SEGMENT = "/releases/download/"
 
 class AppUpdates(private val context: Context, private val manifestUrl: String = BuildConfig.UPDATE_BASE_URL + LATEST_MANIFEST_PATH) {
     private val client = updateHttpClient(manifestUrl)
+
+    /** 在途下载请求。OkHttp 的阻塞读不响应协程取消，所以取消时要直接 cancel() 掉这些 Call。 */
+    private val liveCalls = java.util.Collections.synchronizedList(mutableListOf<okhttp3.Call>())
+    @Volatile private var cancelRequested = false
+
+    /**
+     * 用户取消下载：设为已取消并中断全部在途请求。
+     * [download] 会把结果转成协程取消异常，避免被当成"线路失败"而回退到别的线路重下。
+     */
+    fun cancelDownload() {
+        cancelRequested = true
+        val snapshot = synchronized(liveCalls) { liveCalls.toList() }
+        liveCalls.clear()
+        snapshot.forEach { runCatching { it.cancel() } }
+    }
+
+    private fun checkCancelled() { if (cancelRequested) throw DownloadCancelled() }
+
     /**
      * 拉更新清单。GitHub 的 `latest/download` 在国内常直连超时，所以按
      * 「用户选的线路 → 其余加速线路 → 官方直连」依次尝试，第一个成功即用。
@@ -105,13 +123,19 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
      * - 直连仍走 [client] 的严格重定向白名单；加速线路用独立客户端（镜像可能跳到自己的 CDN）。
      *   最终以 SHA-256 + APK 签名/版本校验兜底，换主机不降低安全性。
      * - 任一分片拿不到 206（服务端或镜像不支持 Range）就整体回退单线程。
-     * - 加速线路整体失败再自动回退官方直连重试一次。
+     * - 加速线路整体失败再自动回退官方直连重试一次；用户主动取消则不回退。
      */
     suspend fun download(info: UpdateInfo, onProgress: (Int) -> Unit,
         source: DownloadSource = DownloadSource.DIRECT): File = withContext(Dispatchers.IO) {
+        cancelRequested = false
         try {
             downloadOnce(info, source.url(info.url), onProgress, clientFor(source))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: DownloadCancelled) {
+            throw kotlinx.coroutines.CancellationException("Update download cancelled")
         } catch (e: Exception) {
+            if (cancelRequested) throw kotlinx.coroutines.CancellationException("Update download cancelled")
             if (source == DownloadSource.DIRECT) throw e
             android.util.Log.w("AppUpdates", "mirror ${source.key} failed (${e.message}); falling back to direct")
             onProgress(0)
@@ -120,7 +144,7 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
     }
 
     private fun clientFor(source: DownloadSource): OkHttpClient {
-        // OkHttp 默认每主机 5 个并发，8 个分片会被排队，等于没并发。
+        // OkHttp 默认每主机 5 个并发，不显式抬高的话分片会被排队，等于没并发。
         val dispatcher = okhttp3.Dispatcher().apply {
             maxRequests = THREADS * 2
             maxRequestsPerHost = THREADS
@@ -165,28 +189,34 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
         val ranges = chunkRanges(info.size, THREADS)
         val done = java.util.concurrent.atomic.AtomicLong(0)
         val jobs = ranges.map { range -> this.async(Dispatchers.IO) {
+            checkCancelled()
             val req = Request.Builder().url(url)
                 .header("Range", "bytes=${range.first}-${range.last}").build()
-            http.newCall(req).execute().use { resp ->
-                if (resp.code != 206) throw RangeUnsupported()
-                val body = resp.body ?: throw IOException("Empty chunk")
-                java.io.RandomAccessFile(part, "rw").use { raf ->
-                    raf.seek(range.first)
-                    val buf = ByteArray(32768)
-                    var written = 0L
-                    val expected = range.last - range.first + 1
-                    body.byteStream().use { input ->
-                        while (true) {
-                            val n = input.read(buf); if (n < 0) break
-                            if (written + n > expected) throw IOException("Chunk overflow")
-                            raf.write(buf, 0, n); written += n
-                            val total = done.addAndGet(n.toLong())
-                            onProgress((100 * total / info.size).toInt().coerceIn(0, 100))
+            val call = http.newCall(req)
+            liveCalls.add(call)
+            try {
+                call.execute().use { resp ->
+                    if (resp.code != 206) throw RangeUnsupported()
+                    val body = resp.body ?: throw IOException("Empty chunk")
+                    java.io.RandomAccessFile(part, "rw").use { raf ->
+                        raf.seek(range.first)
+                        val buf = ByteArray(32768)
+                        var written = 0L
+                        val expected = range.last - range.first + 1
+                        body.byteStream().use { input ->
+                            while (true) {
+                                if (cancelRequested) throw DownloadCancelled()
+                                val n = input.read(buf); if (n < 0) break
+                                if (written + n > expected) throw IOException("Chunk overflow")
+                                raf.write(buf, 0, n); written += n
+                                val total = done.addAndGet(n.toLong())
+                                onProgress((100 * total / info.size).toInt().coerceIn(0, 100))
+                            }
                         }
+                        if (written != expected) throw IOException("Incomplete chunk ${range.first}")
                     }
-                    if (written != expected) throw IOException("Incomplete chunk ${range.first}")
                 }
-            }
+            } finally { liveCalls.remove(call) }
         } }
         try {
             jobs.forEach { it.await() }
@@ -196,20 +226,26 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
 
     private fun downloadSingle(info: UpdateInfo, url: String, onProgress: (Int) -> Unit,
         http: OkHttpClient, part: File) {
-        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Download HTTP ${response.code}")
-            val body = response.body ?: throw IOException("Empty download")
-            var total = 0L
-            body.byteStream().use { input -> part.outputStream().use { output ->
-                val buf = ByteArray(32768)
-                while (true) {
-                    val n = input.read(buf); if (n < 0) break
-                    total += n; if (total > info.size) throw IOException("Download size mismatch")
-                    output.write(buf, 0, n); onProgress((100 * total / info.size).toInt().coerceIn(0, 100))
-                }
-                output.fd.sync()
-            } }
-        }
+        checkCancelled()
+        val call = http.newCall(Request.Builder().url(url).build())
+        liveCalls.add(call)
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Download HTTP ${response.code}")
+                val body = response.body ?: throw IOException("Empty download")
+                var total = 0L
+                body.byteStream().use { input -> part.outputStream().use { output ->
+                    val buf = ByteArray(32768)
+                    while (true) {
+                        if (cancelRequested) throw DownloadCancelled()
+                        val n = input.read(buf); if (n < 0) break
+                        total += n; if (total > info.size) throw IOException("Download size mismatch")
+                        output.write(buf, 0, n); onProgress((100 * total / info.size).toInt().coerceIn(0, 100))
+                    }
+                    output.fd.sync()
+                } }
+            }
+        } finally { liveCalls.remove(call) }
     }
 
     private fun verifyChecksum(part: File, info: UpdateInfo) {
@@ -249,9 +285,12 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
 }
 
 /** 并发分片数。GitHub release CDN 支持 Range；镜像不支持时会自动回退单线程。 */
-private const val THREADS = 8
+private const val THREADS = 4
 
 private class RangeUnsupported : IOException("Server does not support byte ranges")
+
+/** 用户主动取消下载；在 [AppUpdates.download] 里转成协程取消异常，避免误触发线路回退重下。 */
+private class DownloadCancelled : IOException("Download cancelled")
 
 /** 把 [size] 个字节切成最多 [parts] 段，尽量均匀；不足 parts 段时自动缩减。 */
 internal fun chunkRanges(size: Long, parts: Int): List<LongRange> {

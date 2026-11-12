@@ -48,7 +48,7 @@ class CacheSettingsUiTest {
             SideEffect { mode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard) }
             Box(Modifier.fillMaxSize().background(Color.White).padding(40.dp)) {
                 Column(Modifier.width(800.dp)) {
-                    CacheSettingsSection(gb,used,false,message,{gb=it},{used=0;message="清理完成"})
+                    CacheSettingsContent(gb,used,false,message,{gb=it},{used=0;message="清理完成"})
                 }
             }
         }
@@ -82,7 +82,7 @@ class CacheSettingsUiTest {
         var busy by mutableStateOf(false);var gb by mutableStateOf(1);var clears=0
         compose.setContent {
             Column(Modifier.width(800.dp)) {
-                CacheSettingsSection(gb,0,busy,"",{gb=it},{clears++})
+                CacheSettingsContent(gb,0,busy,"",{gb=it},{clears++})
             }
         }
         // The first enabled focusable element is + at the 1G minimum.
@@ -102,7 +102,7 @@ class CacheSettingsUiTest {
             val mode = androidx.compose.ui.platform.LocalInputModeManager.current
             SideEffect { mode.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard) }
             Column(Modifier.width(800.dp)) {
-                CacheSettingsSection(1,750_000_000L,false,"",{},{clears++})
+                CacheSettingsContent(1,750_000_000L,false,"",{},{clears++})
             }
         }
         compose.onNodeWithText("一键清理").performClick()

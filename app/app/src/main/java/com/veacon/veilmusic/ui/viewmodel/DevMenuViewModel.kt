@@ -130,25 +130,38 @@ class DevMenuViewModel @Inject constructor(
         _update.update { it.copy(manualResult = false, sourcePicker = true) }
     }
     fun dismissDownloadSource() { _update.update { it.copy(sourcePicker = false) } }
+    /** 选定线路后**不关闭弹窗**：同一界面切换为下载进度视图，用户可随时取消。 */
     fun selectDownloadSource(source: DownloadSource) {
         downloadPrefs.select(source)
-        _update.update { it.copy(sourcePicker = false) }
+        _update.update { it.copy(sourcePicker = true) }
         downloadUpdate(source)
     }
+    /** 进行中的下载任务，供 [cancelDownload] 取消。 */
+    private var downloadJob: kotlinx.coroutines.Job? = null
     fun downloadUpdate(source: DownloadSource = downloadPrefs.current()) {
         val info = _update.value.info ?: return
         if (_update.value.phase != "available") return
-        _update.update { it.copy(phase = "downloading", manualResult = false, sourcePicker = false, progress = 0) }
-        viewModelScope.launch {
+        _update.update { it.copy(phase = "downloading", manualResult = false, sourcePicker = true, progress = 0) }
+        downloadJob = viewModelScope.launch {
             try {
                 val file = updater.download(info, { progress -> _update.update { it.copy(progress = progress) } }, source)
-                _update.update { it.copy(phase = "ready", ready = file) }
+                _update.update { it.copy(phase = "ready", ready = file, sourcePicker = false) }
                 installUpdate()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 用户主动取消：回到「发现新版本」，弹窗关闭，可重新选择线路再试。
+                _update.update { it.copy(phase = "available", progress = 0, sourcePicker = false, manualResult = false) }
             } catch (e: Exception) {
                 android.util.Log.w("AppUpdates", "download failed via ${source.key}: ${e.message}", e)
-                _update.update { it.copy(phase = "downloadError", manualResult = true) }
+                _update.update { it.copy(phase = "downloadError", manualResult = true, sourcePicker = false) }
             }
         }
+    }
+    /** 取消进行中的下载：中断在途请求并复位到「发现新版本」。 */
+    fun cancelDownload() {
+        updater.cancelDownload()
+        downloadJob?.cancel()
+        downloadJob = null
+        _update.update { it.copy(phase = "available", progress = 0, sourcePicker = false, manualResult = false) }
     }
     fun installUpdate() {
         val file = _update.value.ready ?: return

@@ -45,10 +45,10 @@ class PlaybackStateWriterTest {
     @Test fun shutdownDrainsLatestBookmarkAndCannotOverwriteNewerPreferences()=runBlocking {
         val prefs=prefs();val writer=PlaybackStateWriter(prefs,moshi)
         repeat(100) {writer.submit(bookmark(it.toLong()))}
-        prefs.edit().putBoolean("background_play",true).putBoolean("crossfade_enabled",false).putFloat("beat_intensity",2f).commit()
+        prefs.edit().putBoolean("crossfade_enabled",false).putFloat("beat_intensity",2f).commit()
         writer.close();writer.worker.join()
         assertEquals(99L,prefs.getLong("position_ms",-1))
-        assertTrue(prefs.getBoolean("background_play",false));assertFalse(prefs.getBoolean("crossfade_enabled",true))
+        assertFalse(prefs.getBoolean("crossfade_enabled",true))
         assertEquals(2f,prefs.getFloat("beat_intensity",0f))
     }
     @Test fun encodingFailurePreservesOldQueueAndNextBookmarkCanRetry()=runBlocking {

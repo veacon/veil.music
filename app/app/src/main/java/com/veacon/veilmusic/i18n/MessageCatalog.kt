@@ -204,8 +204,7 @@ internal object MessageCatalog {
         R.string.msg_192 to ("通过电脑服务器播放" to "Play through the computer server."),
         R.string.msg_193 to ("音量均衡" to "Volume Leveling"),
         R.string.msg_194 to ("均衡不同歌曲的响度" to "Balance loudness between songs."),
-        R.string.msg_195 to ("后台播放" to "Background Playback"),
-        R.string.msg_196 to ("离开应用后继续播放" to "Continue playing when you leave the app."),
+
         R.string.msg_197 to ("播放界面" to "Player Appearance"),
         R.string.msg_198 to ("流体背景" to "Fluid Background"),
         R.string.msg_199 to ("关闭、静态、流畅、标准、高画质" to "Off, Static, Smooth, Standard, High quality"),
@@ -364,7 +363,7 @@ internal object MessageCatalog {
         R.string.msg_ui_section to ("界面设置" to "Interface"),
         R.string.msg_app_section to ("应用设置" to "App"),
         R.string.msg_playback_settings to ("播放设置" to "Playback settings"),
-        R.string.msg_playback_settings_sub to ("音质、解码方式、音量均衡、后台播放等" to "Audio quality, decoder, volume leveling, background playback"),
+        R.string.msg_playback_settings_sub to ("音质、解码方式、音量均衡等" to "Audio quality, decoder, volume leveling"),
         R.string.msg_353 to ("显示界面设置" to "Show interface settings"),
         R.string.msg_354 to ("语言、外观、播放界面" to "Language, appearance and player"),
         R.string.msg_355 to ("显示应用设置" to "Show app settings"),

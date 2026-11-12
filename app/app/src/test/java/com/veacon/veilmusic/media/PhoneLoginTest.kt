@@ -47,7 +47,7 @@ class PhoneLoginTest {
         assertTrue(html.contains("<details class=more>"))
         assertFalse(html.contains("<details class=more open"))
         val advanced = html.substringAfter("<details class=more>")
-        listOf("歌词偏移", "节拍延迟", "本机模式", "音量均衡", "后台播放", "实验室功能").forEach {
+        listOf("歌词偏移", "节拍延迟", "本机模式", "音量均衡", "实验室功能").forEach {
             assertTrue("$it should be inside the disclosure", advanced.contains(it))
         }
         // 实验室功能：两个开关与 TV 端写同一份 prefs，表单动作要落在页面上。

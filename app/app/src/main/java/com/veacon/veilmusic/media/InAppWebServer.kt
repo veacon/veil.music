@@ -442,7 +442,7 @@ class InAppWebServer @Inject constructor(
             method == "POST" && path == "/set-standalone"      -> { applyStandalone(parseField(body, "standalone")); redirect(out, "/") }
             method == "POST" && path == "/set-server-ip"       -> { applyServerIp(parseField(body, "serverip")); redirect(out, "/") }
                 method == "POST" && path == "/set-volume-leveling" -> { applyVolumeLeveling(parseField(body, "vol")); redirect(out, "/") }
-                method == "POST" && path == "/set-background-play" -> { applyBackgroundPlay(parseField(body, "bg")); redirect(out, "/") }
+
                 else -> send(out, 404, "text/plain", "Not found")
             }
             out.flush()
@@ -506,11 +506,6 @@ class InAppWebServer @Inject constructor(
         return msg
     }
 
-    private fun applyBackgroundPlay(raw: String) {
-        val on = raw.trim() == "1"
-        playerPrefs().edit().putBoolean("background_play", on).apply()
-        addLog("OK", "Background play ${if (on) "ON" else "OFF"} — applies on next launch")
-    }
 
     private fun applyServerIp(raw: String) {
         val ip = raw.trim()
@@ -686,7 +681,6 @@ class InAppWebServer @Inject constructor(
         val serverIp = serverPrefs.getPcServerIp()
         val pp = context.getSharedPreferences("player_state", Context.MODE_PRIVATE)
         val volLevelOn = pp.getBoolean("volume_leveling", false)
-        val bgPlayOn = pp.getBoolean("background_play", false)
         val currentCrossfade = crossfadePrefs.getDuration()
         val crossfadeSec = "%.1f".format(currentCrossfade / 1000f)
         // 首屏日志行也是「可见状态信息」：注入前就按页面语言本地化。
@@ -908,15 +902,6 @@ function legacyCopy(text,done,b){
 <div style="font-size:10px;color:#555;margin-top:8px">自动缓慢调整增益，使不同歌曲的响度更均衡。立即生效，可在应用日志的 VOL 条目中查看。</div>
 </div>
 
-<div class=card>
-<h2>后台播放</h2>
-<div class=row><div class=label>当前状态</div><div class=sub2 style="color:${if (bgPlayOn) "#6bcb77" else "#aaa"}">${if (bgPlayOn) "已开启，后台继续播放" else "已关闭，离开时暂停"}</div></div>
-<form method=POST action=/set-background-play>
-<input type=hidden name=bg value="${if (bgPlayOn) "0" else "1"}">
-<button class="btn ${if (bgPlayOn) "" else "btn-p"}" type=submit style=margin-top:8px>${if (bgPlayOn) "关闭后台播放" else "开启后台播放"}</button>
-</form>
-<div style="font-size:10px;color:#555;margin-top:8px">下次启动应用时生效。</div>
-</div>
 
 @AMTV_LX_CARD@
 

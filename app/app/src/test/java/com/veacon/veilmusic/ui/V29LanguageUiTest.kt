@@ -15,7 +15,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.dp
 import com.veacon.veilmusic.i18n.AppLanguage
 import com.veacon.veilmusic.i18n.LanguageChoice
-import com.veacon.veilmusic.ui.screens.LanguageSettingsSection
+import com.veacon.veilmusic.ui.screens.LanguageStepper
 import com.veacon.veilmusic.ui.screens.OnboardingContent
 import com.veacon.veilmusic.ui.viewmodel.OnboardingState
 import java.io.File
@@ -46,7 +46,7 @@ class V29LanguageUiTest {
     @Test fun realSettingsControlsSwitchBothWaysWithoutRecreatingActivity() {
         val activity=compose.activity
         compose.setContent {
-            Column(Modifier.fillMaxSize().background(Color.White).padding(40.dp)) {LanguageSettingsSection()}
+            Column(Modifier.fillMaxSize().background(Color.White).padding(40.dp)) {LanguageStepper()}
         }
         compose.onNodeWithText("App Language").assertIsDisplayed()
         compose.onNodeWithText("English").assertIsDisplayed();save("language-settings-en")

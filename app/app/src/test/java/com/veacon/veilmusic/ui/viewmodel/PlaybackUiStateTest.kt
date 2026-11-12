@@ -26,7 +26,7 @@ class PlaybackUiStateTest {
     @Test fun settingsSwitchAndBluetoothOutputUpdatesAreNeverFilteredOut() {
         val first=PlayerState()
         assertNotEquals(first.settingsUiState(),first.copy(lyricsScale=1.2f).settingsUiState())
-        assertNotEquals(first.settingsUiState(),first.copy(backgroundPlayEnabled=!first.backgroundPlayEnabled).settingsUiState())
+        assertNotEquals(first.settingsUiState(),first.copy(unifySampleRate=!first.unifySampleRate).settingsUiState())
         assertNotEquals(first.settingsUiState(),first.copy(avOnBluetooth=true,avOutputLabel="Bluetooth").settingsUiState())
     }
 }

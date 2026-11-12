@@ -195,8 +195,7 @@
     <string name="msg_192" formatted="false">"通过电脑服务器播放"</string>
     <string name="msg_193" formatted="false">"音量均衡"</string>
     <string name="msg_194" formatted="false">"均衡不同歌曲的响度"</string>
-    <string name="msg_195" formatted="false">"后台播放"</string>
-    <string name="msg_196" formatted="false">"离开应用后继续播放"</string>
+
     <string name="msg_197" formatted="false">"播放界面"</string>
     <string name="msg_198" formatted="false">"流体背景"</string>
     <string name="msg_199" formatted="false">"关闭、静态、流畅、标准、高画质"</string>
@@ -359,7 +358,7 @@
     <string name="msg_ui_section" formatted="false">"界面设置"</string>
     <string name="msg_app_section" formatted="false">"应用设置"</string>
     <string name="msg_playback_settings" formatted="false">"播放设置"</string>
-    <string name="msg_playback_settings_sub" formatted="false">"音质、解码方式、音量均衡、后台播放等"</string>
+    <string name="msg_playback_settings_sub" formatted="false">"音质、解码方式、音量均衡等"</string>
     <string name="msg_353" formatted="false">"显示界面设置"</string>
     <string name="msg_354" formatted="false">"语言、外观、播放界面"</string>
     <string name="msg_355" formatted="false">"显示应用设置"</string>
