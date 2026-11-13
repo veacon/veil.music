@@ -52,12 +52,25 @@ class HomeViewModel @Inject constructor(
     private fun List<HomeSection>.isPersonalized() =
         any { it.style == "picks" || it.style == "gradient" }
 
+    /**
+     * 「最近播放」shelf 的标题随系统语言本地化（Recently Played / 最近播放），
+     * 这里两种写法都认；「最近添加（Recently Added）」不受影响。
+     */
+    private fun isRecentlyPlayed(title: String): Boolean {
+        val t = title.trim()
+        return t.equals("Recently Played", ignoreCase = true) ||
+            t.contains("最近播放") ||
+            t.contains("recently played", ignoreCase = true)
+    }
+
     init {
         // Read + parse the cached feed OFF the main thread — the JSON is large (all shelves × albums)
         // and doing it in init on the UI thread froze startup (hundreds of ms / multi-second stalls).
         viewModelScope.launch {
             val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { prefs.getString("sections_audio_v75")?.let { adapter.fromJson(it) } }.getOrNull()
+                    // 旧缓存里可能还留着「最近播放」，读出来时一并滤掉。
+                    ?.filterNot { isRecentlyPlayed(it.title) }
             }
             if (loadJob == null && !cached.isNullOrEmpty() && _state.value.sections.isEmpty()) {
                 _state.value = HomeUiState(isLoading = true, sections = cached)
@@ -76,7 +89,10 @@ class HomeViewModel @Inject constructor(
                 val result = repo.getHome()
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 result.onSuccess { home ->
-                    val sections = home.sections.map { s ->
+                    val sections = home.sections
+                        // 「立即聆听」不要「最近播放」：直连已在数据入口过滤，这里兜住代理/旧接口。
+                        .filterNot { isRecentlyPlayed(it.title) }
+                        .map { s ->
                         HomeSection(title = s.title, albums = s.albums.filter { com.veacon.veilmusic.data.VideoPlaybackPolicy.allows(it.id,it.type) }.map(repo::albumFromDto), style = s.style)
                     }
                     if (sections.isNotEmpty()) {

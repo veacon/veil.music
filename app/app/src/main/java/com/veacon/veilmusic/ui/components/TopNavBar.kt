@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.components
+﻿package com.veacon.veilmusic.ui.components
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -192,6 +192,8 @@ fun TopNavBar(
                             }
                             .focusProperties {
                                 canFocus = focusEnabled
+                                // 顶栏上方没有东西：Up 直接取消，别让焦点弹到底部胶囊。
+                                up = FocusRequester.Cancel
                                 left = if (index == 0) FocusRequester.Cancel else tabFocus.getValue(visibleTabs[index - 1])
                                 right = if (index == visibleTabs.lastIndex) avatarFocus else tabFocus.getValue(visibleTabs[index + 1])
                                 contentFocusRequester?.let { down = it }
@@ -224,6 +226,7 @@ fun TopNavBar(
                 }
                 .focusProperties {
                     canFocus = focusEnabled
+                    up = FocusRequester.Cancel
                     left = tabFocus.getValue(TopNavTab.Search); right = FocusRequester.Cancel
                     contentFocusRequester?.let { down = it }
                 }
@@ -241,3 +244,4 @@ fun TopNavBar(
         }
     }
 }
+

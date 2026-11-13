@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.components
+﻿package com.veacon.veilmusic.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
@@ -83,10 +84,21 @@ fun MiniPlayerCapsule(
     onOpenQueue: () -> Unit,
     heightPct: Int = 100,
     widthPct: Int = 100,
+    /** 背景是否跟随当前封面取色；关闭时退化为只随深浅主题的磨砂玻璃底。 */
+    albumTint: Boolean = true,
+    /** 内底边的细进度线是否显示；关闭后胶囊更干净，只有封面、文字与控制键。 */
+    progressLine: Boolean = true,
+    /** 预览模式（新手引导）：传入假歌曲后整条胶囊只作展示，控制键点击为空操作。 */
+    previewSong: Song? = null,
+    /** 预览模式的模拟进度（ms），配合 [previewSong] 使用。 */
+    previewProgressMs: Long = 0L,
+    /** 在胶囊里按 Up 时回调：把焦点交回内容区。 */
+    onExitUp: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val state by playerVm.state.collectAsState()
-    val song = state.currentSong ?: return
+    val song = previewSong ?: state.currentSong ?: return
+    val preview = previewSong != null
 
     // 高度比例同时是「内容缩放比例」：只改外框会在缩小时露出空白边。
     val hs = (heightPct / 100f).coerceIn(0.5f, 1.5f)
@@ -94,10 +106,14 @@ fun MiniPlayerCapsule(
     val barHeight = 76.dp * hs
 
     val duration = song.durationMs.takeIf { it > 0 } ?: 1L
-    val progress = (state.progressMs.toFloat() / duration).coerceIn(0f, 1f)
-    val muted = playerVm.player.volume <= 0.001f
+    val progress = if (preview) (previewProgressMs.toFloat() / duration).coerceIn(0f, 1f)
+                   else (state.progressMs.toFloat() / duration).coerceIn(0f, 1f)
+    val muted = !preview && playerVm.player.volume <= 0.001f
     var lastVolume by remember { mutableFloatStateOf(1f) }
     val scope = rememberCoroutineScope()
+
+    /** 预览模式下所有控制键都是摆设：点击空操作，真实模式原样透传。 */
+    fun tap(action: () -> Unit): () -> Unit = if (preview) ({}) else action
 
     // 当前歌词行：取最后一条 startMs 已到的行；没有歌词时回退歌手 - 专辑。
     val lyricLine = run {
@@ -125,12 +141,17 @@ fun MiniPlayerCapsule(
 
     fun nav(index: Int): Modifier = Modifier
         .focusRequester(reqs[index])
+        // 预览模式整条胶囊只是展示：不可聚焦，遥控器光标不会停上来。
+        .focusProperties { canFocus = !preview }
         .onFocusChanged { focusedStates[index].value = it.isFocused }
         .onKeyEvent { e ->
             if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
             when (e.key) {
                 Key.DirectionLeft -> { step(index, -1); true }
                 Key.DirectionRight -> { step(index, 1); true }
+                Key.DirectionUp -> { onExitUp?.invoke(); true }
+                // 胶囊在最底部：Down 没有去处，直接吞掉，别让焦点乱跳。
+                Key.DirectionDown -> true
                 else -> false
             }
         }
@@ -138,6 +159,8 @@ fun MiniPlayerCapsule(
     // 玻璃底：不透明兜底色 + 封面模糊层 + 半透明着色层，做出毛玻璃质感（Android 8 也可用）。
     val glassBase = AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF1B1B1E))
     val glassTint = AppPalette.adaptive(Color(0x99FFFFFF), Color(0x991B1B1E))
+    // 不跟随封面时的磨砂底：比页面底色略亮/略暗一档，再叠高光，像一层贴上去的磨砂玻璃。
+    val frostBase = AppPalette.adaptive(Color(0xFFEDEDF0), Color(0xFF242428))
     val borderCol = if (anyFocused) AppPalette.adaptive(Color(0x33000000), Color(0x4DFFFFFF))
                     else AppPalette.adaptive(Color(0x14000000), Color(0x14FFFFFF))
 
@@ -147,25 +170,30 @@ fun MiniPlayerCapsule(
             .widthIn(max = 1280.dp * ws)
             .height(barHeight)
             .clip(RoundedCornerShape(barHeight / 2))
-            .background(glassBase)
+            .background(if (albumTint) glassBase else frostBase)
             .border(width = 1.dp, color = borderCol, shape = RoundedCornerShape(barHeight / 2)),
     ) {
-        // 毛玻璃底：封面先做高斯模糊（Coil 预模糊，Android 8 也生效；替代只有 API 31+ 才有的 Modifier.blur）。
-        val cover = song.artworkUrl(320)
-        if (cover != null) {
-            val context = LocalContext.current
-            AsyncImage(
-                model = coil.request.ImageRequest.Builder(context)
-                    .data(cover)
-                    .transformations(ArtworkBlurTransformation())
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().alpha(0.92f),
-            )
+        if (albumTint) {
+            // 跟随专辑取色：封面先做高斯模糊（Coil 预模糊，Android 8 也生效；替代只有 API 31+ 才有的 Modifier.blur）。
+            val cover = song.artworkUrl(320)
+            if (cover != null) {
+                val context = LocalContext.current
+                AsyncImage(
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(cover)
+                        .transformations(ArtworkBlurTransformation())
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().alpha(0.92f),
+                )
+            }
         }
         // 玻璃着色层：统一色温、保证文字可读，并让深浅主题各自呼应。
-        Box(Modifier.fillMaxSize().background(glassTint))
+        // 不跟封面时用更淡的一层，让底色透出来，视觉上就是「磨砂玻璃」而不是纯色条。
+        Box(Modifier.fillMaxSize().background(
+            if (albumTint) glassTint
+            else AppPalette.adaptive(Color(0x66FFFFFF), Color(0x661B1B1E))))
         // 顶部高光 + 底部内阴影：苹果玻璃招牌的立体感，让胶囊是「浮」在内容上的实体。
         Box(
             Modifier
@@ -188,39 +216,39 @@ fun MiniPlayerCapsule(
                 glyph = Glyph.SHUFFLE,
                 iconSize = 20.dp * hs,
                 scale = hs,
-                active = state.isShuffled,
+                active = !preview && state.isShuffled,
                 modifier = nav(0),
-                onClick = { playerVm.toggleShuffle() },
+                onClick = tap { playerVm.toggleShuffle() },
             )
             MiniButton(
                 glyph = Glyph.PREV,
                 iconSize = 24.dp * hs,
                 scale = hs,
                 modifier = nav(1),
-                onClick = { playerVm.prev() },
+                onClick = tap { playerVm.prev() },
             )
             MiniButton(
-                glyph = if (state.isPlaying) Glyph.PAUSE else Glyph.PLAY,
+                glyph = if (!preview && state.isPlaying) Glyph.PAUSE else Glyph.PLAY,
                 iconSize = 30.dp * hs,
                 scale = hs,
                 big = true,
                 modifier = nav(2),
-                onClick = { playerVm.togglePlayPause() },
+                onClick = tap { playerVm.togglePlayPause() },
             )
             MiniButton(
                 glyph = Glyph.NEXT,
                 iconSize = 24.dp * hs,
                 scale = hs,
                 modifier = nav(3),
-                onClick = { playerVm.next() },
+                onClick = tap { playerVm.next() },
             )
             MiniButton(
-                glyph = if (state.repeatMode == RepeatMode.One) Glyph.REPEAT_ONE else Glyph.REPEAT,
+                glyph = if (!preview && state.repeatMode == RepeatMode.One) Glyph.REPEAT_ONE else Glyph.REPEAT,
                 iconSize = 20.dp * hs,
                 scale = hs,
-                active = state.repeatMode != RepeatMode.Off,
+                active = !preview && state.repeatMode != RepeatMode.Off,
                 modifier = nav(4),
-                onClick = { playerVm.toggleRepeat() },
+                onClick = tap { playerVm.toggleRepeat() },
             )
 
             Spacer(Modifier.width(10.dp * hs))
@@ -232,7 +260,7 @@ fun MiniPlayerCapsule(
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(30.dp * hs))
                     .then(nav(5))
-                    .clickable { onOpen() }
+                    .clickable(enabled = !preview) { onOpen() }
                     .padding(horizontal = 8.dp * hs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -265,21 +293,21 @@ fun MiniPlayerCapsule(
                 iconSize = 21.dp * hs,
                 scale = hs,
                 modifier = nav(6),
-                onClick = onOpen,
+                onClick = tap { onOpen() },
             )
             MiniButton(
                 glyph = Glyph.QUEUE,
                 iconSize = 21.dp * hs,
                 scale = hs,
                 modifier = nav(7),
-                onClick = onOpenQueue,
+                onClick = tap { onOpenQueue() },
             )
             MiniButton(
                 iconSize = 21.dp * hs,
                 scale = hs,
                 active = muted,
                 modifier = nav(8),
-                onClick = {
+                onClick = tap {
                     val p = playerVm.player
                     if (p.volume <= 0.001f) {
                         p.volume = lastVolume.coerceAtLeast(0.05f)
@@ -292,22 +320,24 @@ fun MiniPlayerCapsule(
             )
         }
 
-        // 细进度线：贴内底边，不与内容抢视觉。
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = 24.dp * hs, end = 24.dp * hs, bottom = 9.dp * hs)
-                .fillMaxWidth()
-                .height(2.dp * hs)
-                .clip(RoundedCornerShape(1.dp * hs))
-                .background(AppPalette.adaptive(Color(0x22000000), Color(0x33FFFFFF))),
-        ) {
+        // 细进度线：贴内底边，不与内容抢视觉。可在设置里整体隐藏（实验室 · 迷你胶囊）。
+        if (progressLine) {
             Box(
                 Modifier
-                    .fillMaxWidth(progress)
-                    .fillMaxHeight()
-                    .background(AppPalette.adaptive(Color(0xCC000000), Color(0xE6FFFFFF))),
-            )
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 24.dp * hs, end = 24.dp * hs, bottom = 9.dp * hs)
+                    .fillMaxWidth()
+                    .height(2.dp * hs)
+                    .clip(RoundedCornerShape(1.dp * hs))
+                    .background(AppPalette.adaptive(Color(0x22000000), Color(0x33FFFFFF))),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .background(AppPalette.adaptive(Color(0xCC000000), Color(0xE6FFFFFF))),
+                )
+            }
         }
     }
 }
@@ -420,3 +450,4 @@ private fun SpeakerIcon(tint: Color, muted: Boolean, iconSize: Dp = 21.dp) {
         }
     }
 }
+

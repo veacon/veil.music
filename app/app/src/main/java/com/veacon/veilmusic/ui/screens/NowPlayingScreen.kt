@@ -2035,6 +2035,8 @@ internal fun LyricLineRow(
     wordByWord: Boolean = true,
     fontScale: Float = 1f,
     focusRequester: FocusRequester? = null,
+    /** 预览等只读场景设为 false：整行不可聚焦，遥控器光标不会停上来。 */
+    focusable: Boolean = true,
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusScale by animateFloatAsState(if (focused) 1.06f else 1f, tween(180), label = "lyricFocusScale")
@@ -2066,7 +2068,9 @@ internal fun LyricLineRow(
     ) {
         Surface(
             onClick = onSeek,
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+            modifier = Modifier.fillMaxWidth()
+                .focusProperties { canFocus = focusable }
+                .onFocusChanged { focused = it.isFocused }
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
             colors = ClickableSurfaceDefaults.colors(

@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -34,6 +34,7 @@ import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.contentActionColors
 import com.veacon.veilmusic.ui.components.contentActionBorder
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.rememberTabAwareListState
 import com.veacon.veilmusic.ui.viewmodel.LibraryViewModel
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
@@ -151,7 +152,7 @@ fun LocalPlaylistScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 40.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = capsuleAwareBottom(40.dp)),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 itemsIndexed(songs, key = { _, s -> s.id }) { idx, song ->
@@ -321,3 +322,4 @@ private fun RenamePlaylistDialog(
         }
     }
 }
+

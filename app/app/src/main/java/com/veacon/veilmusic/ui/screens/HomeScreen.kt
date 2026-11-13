@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -89,6 +89,7 @@ fun HomeScreen(
             // 被导航条压住（见 NavViewport.kt）。
             modifier = Modifier.fillMaxSize().navAwareViewport(),
             verticalArrangement = Arrangement.spacedBy(28.dp),
+            versionFooter = true,
         ) {
             itemsIndexed(state.sections, key = { _, item -> item.title }) { index, section ->
                 val firstRow = index == firstContentRow
@@ -226,3 +227,4 @@ private fun ContentRow(
 /** Localize known editorial headings while retaining source titles and shelf identity. */
 private fun homeSectionTitle(title: String): String =
     if (title.trim().equals("Top Picks for You", ignoreCase = true)) tr(R.string.msg_151) else com.veacon.veilmusic.i18n.AppLanguage.heading(title)
+

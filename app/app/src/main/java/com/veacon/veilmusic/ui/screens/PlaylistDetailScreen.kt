@@ -1,10 +1,11 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
 import com.veacon.veilmusic.R
 
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
@@ -57,7 +58,6 @@ fun PlaylistDetailScreen(
     onBack: () -> Unit,
     onArtistClick: (String) -> Unit = {},
     onAlbumClick: (String) -> Unit = {},
-    onMusicVideoClick: (Song) -> Unit = {},
     modifier: Modifier = Modifier,
     onReturnToTab: (() -> Unit)? = null,
     tabBarFocused: Boolean = false,
@@ -184,7 +184,8 @@ fun PlaylistDetailScreen(
                         LazyColumn(
                         state = tabAwareListState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 72.dp, bottom = 48.dp),
+                        contentPadding = PaddingValues(top = 72.dp, bottom = capsuleAwareBottom(48.dp)),
+                        versionFooter = true,
                     ) {
                         // Sticky Play/Shuffle header — sort is a round button pushed to the right.
                         item {
@@ -365,7 +366,7 @@ private fun PlaylistSortRow(label: String, selected: Boolean, modifier: Modifier
     }
 }
 
-private fun LazyListScope.trackItems(tracks: List<Song>, playerVm: PlayerViewModel, onMusicVideoClick: (Song) -> Unit = {}, onLongPress: (Song) -> Unit = {}, onContextMenu: (Song) -> Unit = onLongPress) {
+private fun LazyListScope.trackItems(tracks: List<Song>, playerVm: PlayerViewModel, onLongPress: (Song) -> Unit = {}, onContextMenu: (Song) -> Unit = onLongPress) {
     val returnKeys=com.veacon.veilmusic.ui.navigation.occurrenceKeys(tracks.map { it.id })
     items(tracks.size, key = { returnKeys[it] }) { idx ->
         val song = tracks[idx]
@@ -394,8 +395,7 @@ private fun LazyListScope.trackItems(tracks: List<Song>, playerVm: PlayerViewMod
                 Text("${idx + 1}", fontSize = 12.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)), modifier = Modifier.width(24.dp))
                 // Music-video frames are 16:9 — show the whole frame in a wide thumbnail
                 // instead of a square crop that lops off the sides. Songs stay square.
-                val thumbMod = if (song.isMusicVideo) Modifier.height(40.dp).aspectRatio(16f / 9f)
-                               else Modifier.size(40.dp)
+                val thumbMod = Modifier.size(40.dp)
                 Box(thumbMod.clip(RoundedCornerShape(5.dp)).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)))) {
                     if (song.artworkUrl != null)
                         AsyncImage(model = song.artworkUrl(120), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -404,13 +404,7 @@ private fun LazyListScope.trackItems(tracks: List<Song>, playerVm: PlayerViewMod
                     Text(song.title, fontSize = 13.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary, maxLines = 1, fontWeight = FontWeight.Medium)
                     Text(song.artistName, fontSize = 11.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), maxLines = 1)
                 }
-                if (song.isMusicVideo) {
-                    Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFFFA233B)).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        Text("MV", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Text(song.durationFormatted, fontSize = 11.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
-                }
+                Text(song.durationFormatted, fontSize = 11.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
             }
         }
     }
@@ -461,3 +455,5 @@ internal fun PillButton(glyph: Glyph, label: String, base: Color, modifier: Modi
         }
     }
 }
+
+

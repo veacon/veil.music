@@ -1,10 +1,11 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
 
 import com.veacon.veilmusic.ui.components.focusedArtworkBorder
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
@@ -75,7 +76,8 @@ fun ArtistDetailScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFFFFFFF), Color(0xFF101012))),
             state = listState,
-            contentPadding = PaddingValues(bottom = 60.dp),
+            contentPadding = PaddingValues(bottom = capsuleAwareBottom(60.dp)),
+            versionFooter = true,
         ) {
             val firstInteractive = FirstTabReturnItem(onReturnToTab)
             // Hero header
@@ -259,3 +261,4 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedTopSongs(
         }
     }
 }
+

@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -28,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.tv.material3.Text
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -99,8 +100,9 @@ internal fun CategoryContent(
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = listState,
-                    contentPadding = PaddingValues(bottom = 40.dp),
+                    contentPadding = PaddingValues(bottom = capsuleAwareBottom(40.dp)),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
+                    versionFooter = true,
                 ) {
                     item {
                         CategoryHeader(state.title, state.description, state.artworkUrl)
@@ -206,3 +208,4 @@ internal fun CategoryHeader(title: String, description: String?, artwork: String
         }
     }
 }
+

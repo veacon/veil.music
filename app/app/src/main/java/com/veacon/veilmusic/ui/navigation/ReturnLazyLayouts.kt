@@ -36,12 +36,16 @@ internal fun ReturnLazyColumn(
     contentPadding: PaddingValues=PaddingValues(0.dp), reverseLayout: Boolean=false,
     verticalArrangement: Arrangement.Vertical=if(!reverseLayout) Arrangement.Top else Arrangement.Bottom,
     horizontalAlignment: Alignment.Horizontal=Alignment.Start, userScrollEnabled: Boolean=true,
+    /** 页面级开关：在列表最末尾追加一行版本号（不滚到底看不见）。播放页等特殊列表不要打开。 */
+    versionFooter: Boolean=false,
     content: LazyListScope.() -> Unit,
 ) {
     val page=LocalReturnPage.current;val path=LocalReturnPath.current;val id=currentCompositeKeyHash
     DisposableEffect(page,id) { onDispose {page?.lists?.remove(id)} }
     LazyColumn(modifier,state,contentPadding,reverseLayout,verticalArrangement,horizontalAlignment,userScrollEnabled=userScrollEnabled) {
-        ReturnListScope(this,page,id,path,state).content()
+        val scope=ReturnListScope(this,page,id,path,state)
+        scope.content()
+        if (versionFooter) scope.item(key = "veil-version-footer") { com.veacon.veilmusic.ui.components.AppVersionFooter() }
     }
 }
 @Composable
@@ -79,12 +83,16 @@ internal fun ReturnLazyVerticalGrid(
     contentPadding: PaddingValues=PaddingValues(0.dp), reverseLayout: Boolean=false,
     verticalArrangement: Arrangement.Vertical=if(!reverseLayout) Arrangement.Top else Arrangement.Bottom,
     horizontalArrangement: Arrangement.Horizontal=Arrangement.Start, userScrollEnabled: Boolean=true,
+    /** 页面级开关：在网格最末尾追加一行版本号（不滚到底看不见）。 */
+    versionFooter: Boolean=false,
     content: ReturnGridScope.() -> Unit,
 ) {
     val page=LocalReturnPage.current;val path=LocalReturnPath.current;val id=currentCompositeKeyHash
     DisposableEffect(page,id) { onDispose {page?.lists?.remove(id)} }
     LazyVerticalGrid(columns,modifier,state,contentPadding,reverseLayout,verticalArrangement,horizontalArrangement,userScrollEnabled=userScrollEnabled) {
-        ReturnGridScope(this,page,id,path,state).content()
+        val scope=ReturnGridScope(this,page,id,path,state)
+        scope.content()
+        if (versionFooter) scope.item(key = "veil-version-footer") { com.veacon.veilmusic.ui.components.AppVersionFooter() }
     }
 }
 

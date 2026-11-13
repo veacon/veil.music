@@ -139,7 +139,9 @@ class DirectBrowseSource @Inject constructor(
                     val items = (contents as? List<*>).orEmpty()
                         .mapNotNull { it as? Map<*, *> }
                         .mapNotNull(::itemFromRaw)
-                    if (items.isNotEmpty()) {
+                    // 「立即聆听」不再展示「最近播放」：这是 Apple 推荐流里的一个 shelf
+                    // （kind = recently-played），放在首页第一屏只会挤掉真正的推荐内容。
+                    if (items.isNotEmpty() && kind != "recently-played") {
                         // ONLY the "Playlists Made for You" shelf animates (Get Up!/Chill/Your
                         // Essentials…). Apple ships motion art for lots of things, but animating every
                         // row would be noise — and each card costs an extra request + a video decoder.

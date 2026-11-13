@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui
+﻿package com.veacon.veilmusic.ui
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -58,6 +58,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.veacon.veilmusic.ui.components.TopNavBar
+import com.veacon.veilmusic.ui.components.LocalMiniCapsuleInset
+import com.veacon.veilmusic.ui.components.LocalMiniCapsuleFocus
 import com.veacon.veilmusic.ui.components.MiniPlayerCapsule
 import androidx.compose.ui.draw.clipToBounds
 import com.veacon.veilmusic.ui.navigation.BrowsingPageMotion
@@ -342,6 +344,20 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
     // last → it sits on a higher layer. Non-fullscreen screens get top padding
     // equal to the bar so their content isn't hidden underneath it.
 
+    // 迷你胶囊的占位高度：胶囊本身是浮层，内容视口必须让出这么高，
+    // 否则每一页的最后一行（还有部分页面的底栏）会被胶囊盖住、显示不全。
+    val miniCapsuleVisible = playerState.miniCapsuleEnabled &&
+        playerState.currentSong != null && !isOnNowPlaying
+    val miniCapsuleInset = if (miniCapsuleVisible) {
+        val hs = (playerState.miniCapsuleHeightPct / 100f).coerceIn(0.5f, 1.5f)
+        76.dp * hs + 34.dp
+    } else 0.dp
+    // 焦点兜底：内容区走到头时把焦点交给胶囊，方便遥控。
+    // 胶囊关闭时，列表第一行按 Down 还能落到下一首/下一条，左右键不动，避免焦点乱跳。
+    // 新手引导：首次安装 / 本次升级后的第一次启动自动弹出，设置页也能手动重开。
+        val capsuleFocus = remember { FocusRequester() }
+        var contentHasFocus by remember { mutableStateOf(false) }
+
     var showExitDialog by remember { mutableStateOf(false) }
     BackHandler(enabled = showExitDialog) { showExitDialog = false }
     val returnToListenNow: () -> Unit = {
@@ -386,6 +402,14 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 navVm.notePlayerInteraction()
             }
         }) {
+        // 胶囊是纯悬浮层：内容区保持整屏（背景一路铺到屏幕底部），
+        // 只把「胶囊高度」通过 CompositionLocal 下发，让各页把可滚动内容的
+        // 底部内边距加出来 —— 既不会露出割裂的一条空白带，最后一行也能滚到胶囊上方。
+        // 同时下发胶囊的焦点入口：资料库侧栏走到「艺人」按 Down 时直接落到胶囊。
+        CompositionLocalProvider(
+            LocalMiniCapsuleInset provides miniCapsuleInset,
+            LocalMiniCapsuleFocus provides (if (miniCapsuleVisible) capsuleFocus else null),
+        ) {
         NavHost(
             navController    = navController,
             startDestination = Screen.Home.route,
@@ -397,7 +421,10 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 .fillMaxSize()
                 .clipToBounds()
                 .focusRequester(contentFocus)
-                .contentFocusExitPolicy(isOnNowPlaying, browsingRoot, tabFocus.getValue(destinationTab))
+.contentFocusExitPolicy(isOnNowPlaying, browsingRoot, tabFocus.getValue(destinationTab),
+    capsule = if (miniCapsuleVisible && contentHasFocus) capsuleFocus else null,
+)
+                .onFocusChanged { contentHasFocus = it.hasFocus }
                 .focusGroup(),
         ) {
             returningComposable(Screen.Home.route) {
@@ -628,11 +655,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                     onBack        = returnState::back,
                     onArtistClick = { returnState.openDetail(Screen.ArtistDetail.route(it)) },
                     onAlbumClick  = { returnState.openDetail(Screen.AlbumDetail.route(it)) },
-                    onMusicVideoClick = { s ->
-                        mvVm.show(s.id, s.title, s.artistName)
-                        selectedTab = TopNavTab.NowPlaying
-                        navController.navigate(Screen.NowPlaying.route) { launchSingleTop = true }
-                    },
                 )
             }
         }
@@ -798,6 +820,7 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 }
             }
         }
+        }
 
         // Keep pixels for the short exit, but disable focus/touch as soon as the player opens.
         AnimatedVisibility(visible = !isOnNowPlaying,
@@ -819,6 +842,8 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                     navBarHasFocus = hasFocus
                 }
                 .focusProperties {
+                    // 顶栏已经是最上面：Up 不再向外找目标，避免焦点被弹到底部胶囊上。
+                    up = FocusRequester.Cancel
                     onEnter = { if (!contentFocusHandoff && inputModeManager.inputMode == androidx.compose.ui.input.InputMode.Keyboard) tabFocus.getValue(destinationTab).requestFocus() }
                 }.focusGroup(),
         ) {
@@ -854,18 +879,48 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         }
         }
 
+        // 版本行已改为各页滚动内容的最末尾（ReturnLazyColumn/ReturnLazyVerticalGrid 的
+        // versionFooter 开关），不再是固定底部的浮层——不滑到最底部看不见。
+
         // 实验室：底部迷你播放胶囊（移植自 v1.1.2）。播放页不显示（页内已有完整控件）。
-        if (playerState.miniCapsuleEnabled && playerState.currentSong != null && !isOnNowPlaying) {
-            MiniPlayerCapsule(
+        if (miniCapsuleVisible) {
+            Box(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .padding(bottom = 26.dp)
+                    .focusRequester(capsuleFocus)
+                    .focusGroup(),
+            ) {
+                MiniPlayerCapsule(
+                    playerVm = playerVm,
+                    onOpen = { navVm.navigateToNowPlaying() },
+                    onOpenQueue = {
+                        navVm.toggleQueuePanel()
+                        navVm.navigateToNowPlaying()
+                    },
+                    heightPct = playerState.miniCapsuleHeightPct,
+                    widthPct = playerState.miniCapsuleWidthPct,
+                    albumTint = playerState.miniCapsuleAlbumTint,
+                    progressLine = playerState.miniCapsuleProgressLine,
+                    // 从胶囊按 Up 回到内容区（导航壳会自动接回原来的页面/侧栏）。
+                    onExitUp = { runCatching { contentFocus.requestFocus() } },
+                )
+            }
+        }
+
+        // 新手引导：首次安装 / 版本升级后的第一次启动自动弹出，盖在最上层。
+        // 若用户正在「重播设置」流程（语言等），等它结束再进引导 —— 先语言后引导。
+        // 完成后写入 guide_prefs 的版本号，之后不再自动弹出。
+        val guideVm: com.veacon.veilmusic.ui.viewmodel.DevMenuViewModel = hiltViewModel()
+        var showGuide by remember { mutableStateOf(false) }
+        LaunchedEffect(showOnboarding) {
+            if (!showOnboarding && !com.veacon.veilmusic.ui.guide.GuideState.completed(appContext)) showGuide = true
+        }
+        if (showGuide) {
+            com.veacon.veilmusic.ui.guide.GuideScreen(
                 playerVm = playerVm,
-                onOpen = { navVm.navigateToNowPlaying() },
-                onOpenQueue = {
-                    navVm.toggleQueuePanel()
-                    navVm.navigateToNowPlaying()
-                },
-                heightPct = playerState.miniCapsuleHeightPct,
-                widthPct = playerState.miniCapsuleWidthPct,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp),
+                settingsVm = guideVm,
+                onDone = { showGuide = false },
+                modifier = Modifier.fillMaxSize(),
             )
         }
 
@@ -875,3 +930,10 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
     }
     }
 }
+
+
+
+
+
+
+

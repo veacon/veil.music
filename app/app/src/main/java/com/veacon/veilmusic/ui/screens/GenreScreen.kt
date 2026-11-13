@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -6,6 +6,7 @@ import com.veacon.veilmusic.R
 import com.veacon.veilmusic.ui.components.focusedArtworkBorder
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
 import com.veacon.veilmusic.ui.components.BottomNavInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
@@ -114,8 +115,9 @@ fun GenreScreen(
                 }
                 else -> LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(top = 8.dp, bottom = BottomNavInset),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = capsuleAwareBottom(BottomNavInset)),
                     verticalArrangement = Arrangement.spacedBy(28.dp),
+                    versionFooter = true,
                 ) {
                     itemsIndexed(state.sections, key = { index, section -> "$index:${section.title}" }) { index, section ->
                         Box(Modifier.returnToTabOnUp(if (index == 0) onReturnToTab else null)) {
@@ -184,3 +186,5 @@ private fun VideoRow(section: GenreSection, playerVm: PlayerViewModel) {
         }
     }
 }
+
+

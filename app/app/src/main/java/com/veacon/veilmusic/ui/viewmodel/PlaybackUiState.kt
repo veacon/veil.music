@@ -10,14 +10,18 @@ internal data class ShellPlaybackUiState(
     val lowPowerMode: Boolean, val mutExpired: Boolean, val isFullStream: Boolean,
     /** 顶栏用歌名替换「正在播放」（实验室开关）——只有导航壳读它。 */
     val navTitleAsSong: Boolean,
-    /** 实验室：底部迷你播放胶囊是否显示。壳只读这个布尔决定挂不挂。 */
+    /** 实验室：底部迷你播放胶囊是否显示。壳只读这个布尔决定挂不挂它。 */
     val miniCapsuleEnabled: Boolean,
     val miniCapsuleHeightPct: Int,
     val miniCapsuleWidthPct: Int,
+    /** 迷你胶囊背景是否跟随封面取色（关＝磨砂玻璃，只随深浅主题）。 */
+    val miniCapsuleAlbumTint: Boolean,
+    /** 迷你胶囊内底边的细进度线是否显示。 */
+    val miniCapsuleProgressLine: Boolean,
 )
 internal fun PlayerState.shellUiState(): ShellPlaybackUiState =
     ShellPlaybackUiState(isPlaying,isInPip,currentSong,
-        queue,queueIndex,motionArtworkEnabled,lowPowerMode,mutExpired,isFullStream,navTitleAsSong,miniCapsuleEnabled,miniCapsuleHeightPct,miniCapsuleWidthPct)
+        queue,queueIndex,motionArtworkEnabled,lowPowerMode,mutExpired,isFullStream,navTitleAsSong,miniCapsuleEnabled,miniCapsuleHeightPct,miniCapsuleWidthPct,miniCapsuleAlbumTint,miniCapsuleProgressLine)
 
 /** Settings observes preferences/output changes, never the playback clock or queue. */
 internal data class SettingsPlaybackUiState(
@@ -33,9 +37,11 @@ internal data class SettingsPlaybackUiState(
     val miniCapsuleEnabled: Boolean,
     val miniCapsuleHeightPct: Int,
     val miniCapsuleWidthPct: Int,
+    val miniCapsuleAlbumTint: Boolean,
+    val miniCapsuleProgressLine: Boolean,
 )
 internal fun PlayerState.settingsUiState() = SettingsPlaybackUiState(volumeLeveling,
     fluidQuality,lyricsScale,motionArtworkEnabled,artworkRounded,
     avSyncAuto,avOutputLabel,avOnBluetooth,decoderMode,unifySampleRate,audioOffload,
     lyricsScript,renderCompat,renderCompatManual,navTitleAsSong,
-    miniCapsuleEnabled,miniCapsuleHeightPct,miniCapsuleWidthPct)
+    miniCapsuleEnabled,miniCapsuleHeightPct,miniCapsuleWidthPct,miniCapsuleAlbumTint,miniCapsuleProgressLine)

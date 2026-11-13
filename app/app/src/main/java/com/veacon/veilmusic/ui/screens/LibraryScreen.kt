@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
@@ -11,11 +11,17 @@ import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import com.veacon.veilmusic.ui.navigation.ReturnLazyColumn as LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import com.veacon.veilmusic.ui.navigation.ReturnLazyVerticalGrid as LazyVerticalGrid
 import com.veacon.veilmusic.ui.navigation.items
 import com.veacon.veilmusic.ui.navigation.itemsIndexed as gridItemsIndexed
@@ -40,6 +46,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -62,6 +73,8 @@ import com.veacon.veilmusic.data.model.Song
 import com.veacon.veilmusic.data.local.LocalLibraryStore
 import com.veacon.veilmusic.data.network.PlaylistDto
 import com.veacon.veilmusic.ui.components.AlbumCard
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
+import com.veacon.veilmusic.ui.components.LocalMiniCapsuleFocus
 import com.veacon.veilmusic.ui.viewmodel.LibraryViewModel
 import com.veacon.veilmusic.ui.viewmodel.LibrarySection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,8 +106,14 @@ fun LibraryScreen(
     // Survive navigation away/back (saved in the nav backstack), so returning to Library
     // lands on the same section instead of resetting to Playlists.
     var section by rememberSaveable { mutableStateOf(LibrarySection.Songs) }
+    // 「编辑」模式：打开后歌曲行 / 歌单卡片右侧出现删除按钮；切节或离开页面自动退出。
+    var editing by remember { mutableStateOf(false) }
     val sectionStates=androidx.compose.runtime.saveable.rememberSaveableStateHolder()
-    LaunchedEffect(section) { vm.selectSection(section) }
+    LaunchedEffect(section) { vm.selectSection(section); editing = false }
+    // 焦点所在层级：1=侧栏, 2=列表, 3=编辑按钮。用来实现 Back 的逐级返回。
+    var focusZone by remember { mutableStateOf(0) }
+    // 编辑模式下按返回键退出编辑，而不是退出资料库。
+    androidx.activity.compose.BackHandler(enabled = editing) { editing = false }
     DisposableEffect(vm) { onDispose { vm.onHidden() } }
     val state by vm.state.collectAsStateWithLifecycle()
     val localEntryFocus = remember { FocusRequester() }
@@ -104,6 +123,9 @@ fun LibraryScreen(
     val rowFocus = remember { LibrarySection.entries.associateWith { FocusRequester() } }
     val entryScope = rememberCoroutineScope()
     val sortRoute = remember { LibrarySortFocusRoute() }
+    androidx.activity.compose.BackHandler(enabled = !editing && focusZone == 3) { listFocus.requestFocus() }
+    androidx.activity.compose.BackHandler(enabled = !editing && focusZone == 2) { rowFocus[section]?.requestFocus() }
+    androidx.activity.compose.BackHandler(enabled = !editing && focusZone == 1) { onReturnToTab?.invoke() }
     val sortFocus = sortRoute.control
     // Right from the sidebar enters the list itself (not the sort control).
     val contentRoute = remember { LibraryContentEntryRoute() }
@@ -152,12 +174,14 @@ fun LibraryScreen(
     Row(Modifier.fillMaxSize().padding(horizontal = inset)) {
         // Modern left sidebar (Songs / Playlists / Albums / Artists). Focus selects the section —
         // the tab bar behaves the same way — so no OK press is needed to switch.
-        SectionSidebar(section, onReturnToTab, sidebarWidth, contentRoute::request, rowFocus) { section = it }
+        SectionSidebar(section, onReturnToTab, sidebarWidth, contentRoute::request, rowFocus, { section = it },
+        onZoneEnter = { focusZone = 1 }, focusEnabled = !editing)
 
         // Always mount this entry group so Down is safe even during first loading.
         // Down from the tab bar goes to the sidebar row; the list is reached with Right.
         Box(modifier = Modifier.weight(1f).fillMaxHeight()
             .focusRequester(contentFocusRequester ?: localEntryFocus)
+            .onFocusChanged { if (it.hasFocus) focusZone = 2 }
             .libraryEntryFocus(
                 onEnterRequest = { entryScope.launch { runCatching { rowFocus.getValue(currentSection).requestFocus() } } },
                 restoring = returnNavigation?.restoring == true,
@@ -174,13 +198,48 @@ fun LibraryScreen(
                         Text(tr(R.string.msg_096, com.veacon.veilmusic.i18n.AppLanguage.message(state.error)), color = Color(0xFFFF3B30), fontSize = 14.sp)
                     }
                     else -> Column(Modifier.fillMaxSize().padding(top = 80.dp)) {
-                        SortBar(section, state.sort.field, state.sort.dir, onReturnToTab, sortFocus, listFocus) { f, d -> vm.setSort(f, d) }
+                        // 排序固定「添加日期 · 降序」；右上角只保留云同步与编辑两个图标。
+                        LibraryActionsBar(
+                            onReturnToTab = onReturnToTab,
+                            editFocus = sortFocus,
+                            listFocus = listFocus,
+                            editing = editing,
+                            // 只有「歌曲」「播放列表」支持编辑删除。
+                            onToggleEdit = if (section == LibrarySection.Songs || section == LibrarySection.Playlists) {
+                                {
+                                    val next = !editing
+                                    // 防呆：播放列表里如果一张可编辑的歌单都没有（全是云端在线歌单），
+                                    // 进了编辑也无处可删、焦点无处可落——提示后留在铅笔上，不进入编辑。
+                                    val blocked = next && section == LibrarySection.Playlists &&
+                                        (applePlaylists + orderedItems.playlists).none { pl ->
+                                            !(pl.source == LocalLibraryStore.SOURCE_APPLE && !pl.id.startsWith("apple-"))
+                                        }
+                                    if (blocked) {
+                                        toast("云端歌单无法删除")
+                                    } else {
+                                        editing = next
+                                        // 进入编辑立刻把焦点送进列表（侧栏此时已不可聚焦）。
+                                        if (next) runCatching { listFocus.requestFocus() }
+                                    }
+                                }
+                            } else null,
+                            // 播放列表右上角的云图标：强制重新拉取 Apple Music 云端歌单。
+                            onRefreshApple = if (section == LibrarySection.Playlists)
+                                { { appleAuth.refresh(); toast(if (appleState.signedIn) "正在刷新云端歌单…" else "请先在「设置 · Apple Music」里登录") } } else null,
+                            refreshingApple = appleState.checking,
+                            onBarFocus = { focusZone = 3 },
+                        )
                         Box(Modifier.weight(1f).focusRequester(listFocus).focusGroup()) {
+                            // 只有这一节真有右上角按钮时，才把「右边缘 → 按钮」的焦点路由打开；
+                            // 专辑 / 艺人 / 最近播放没有按钮，右边缘就老老实实停在卡片上。
+                            val hasActions = section == LibrarySection.Songs || section == LibrarySection.Playlists
                             CompositionLocalProvider(
-                                LocalLibrarySortFocus provides sortRoute,
+                                LocalLibrarySortFocus provides (if (hasActions) sortRoute else null),
                                 LocalLibraryContentEntryFocus provides contentRoute.control,
                             ) {
-                            Box(Modifier.fillMaxSize().librarySortOnRight(section==LibrarySection.Songs || section==LibrarySection.Artists || section==LibrarySection.Recents)) {
+                            // 只有线性列表（歌曲）整块接管 Right；网格（歌单/专辑）必须保留
+                            // 卡片间的左右移动，否则每按一次 Right 都会被拽到右上角按钮上（光标乱跑）。
+                            Box(Modifier.fillMaxSize()) {
                             sectionStates.SaveableStateProvider(section.name) {
                             when (section) {
                                 LibrarySection.Playlists -> {
@@ -190,18 +249,26 @@ fun LibraryScreen(
                                         playlists  = applePlaylists + orderedItems.playlists,
                                         pinnedIds  = pinnedIds,
                                         importing  = importing,
+                                        editing    = editing,
+                                        editButtonFocus = sortFocus,
                                         onOpen     = { playlist ->
                                             onPlaylistClick(playlist.id, playlist.name, playlist.coverUrl)
                                         },
                                         onPlay     = { vm.playPlaylist(it.id, playerVm) },
                                         onMenu     = { playlistMenu = it },
                                         onImport   = { showImport = true },
+                                        onDelete   = { confirmDelete = it },
                                     )
                                 }
                                 LibrarySection.Albums  -> AlbumGrid(orderedItems.albums, onAlbumClick, onReturnToTab, tabBarFocused)
                                 LibrarySection.Artists -> ArtistList(orderedItems.artists, onArtistClick, onReturnToTab, tabBarFocused)
                                 LibrarySection.Songs -> SongList(orderedItems.songs, playerVm, vm, onArtistClick, onAlbumClick, onReturnToTab, tabBarFocused,
-                                    onImportPlaylist = openImport)
+                                    onImportPlaylist = openImport, editing = editing,
+                                    editButtonFocus = if (section == LibrarySection.Songs) sortFocus else null,
+                                    onDeleteSong = { song ->
+                                        vm.removeFavorite(song.id)
+                                        toast("已从资料库移除「${song.title}」")
+                                    })
                                 LibrarySection.Recents -> RecentsList(orderedItems.recents, playerVm, vm, onArtistClick, onAlbumClick, onReturnToTab, tabBarFocused)
                             }
                             }
@@ -263,10 +330,6 @@ fun LibraryScreen(
                     }
                 },
                 onTogglePin = { playlistMenu = null; vm.togglePin(pl.id) },
-                onDelete = {
-                    playlistMenu = null
-                    confirmDelete = pl
-                },
             )
         }
     }
@@ -278,7 +341,12 @@ fun LibraryScreen(
  *  bright accent bar; unselected are quiet. Bigger, cleaner than the old sidebar. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)?, sidebarWidth: androidx.compose.ui.unit.Dp, onRequestContent: () -> Boolean, rowFocus: Map<LibrarySection, FocusRequester>, onSelect: (LibrarySection) -> Unit) {
+private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)?, sidebarWidth: androidx.compose.ui.unit.Dp, onRequestContent: () -> Boolean, rowFocus: Map<LibrarySection, FocusRequester>, onSelect: (LibrarySection) -> Unit,
+    /** 侧栏获得焦点时通知页面（Back 逐级返回用）。 */
+    onZoneEnter: () -> Unit = {},
+    /** 编辑模式下侧栏不可聚焦：遥控器只能停在可删除的条目上。 */
+    focusEnabled: Boolean = true,
+) {
     val inputModeManager = androidx.compose.ui.platform.LocalInputModeManager.current
     Column(
         modifier = Modifier
@@ -295,8 +363,13 @@ private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)
             color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
             modifier = Modifier.padding(bottom = 14.dp),
         )
-        LibrarySection.entries.forEach { s ->
+        LibrarySection.entries.forEachIndexed { idx, s ->
             val isSel = s == selected
+            val isFirst = idx == 0
+            val isLast = idx == LibrarySection.entries.lastIndex
+            // 层级一的下边界出口：侧栏最后一项（艺人）按 Down 直接落到迷你播放胶囊；
+            // 胶囊没开（null）时也把 Down 吞掉，停在艺人上，不让焦点乱跳。
+            val capsuleFocus = LocalMiniCapsuleFocus.current
             Surface(
                 onClick = { onSelect(s) },
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
@@ -307,15 +380,26 @@ private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
                 modifier = Modifier.fillMaxWidth()
                     .then(rowFocus[s]?.let { Modifier.focusRequester(it) } ?: Modifier)
+                    .focusProperties { canFocus = focusEnabled }
                     // 和顶栏一致：焦点落到哪一节就直接切过去，不用再按 OK。
                     .onFocusChanged {
-                        if (it.isFocused && inputModeManager.inputMode == androidx.compose.ui.input.InputMode.Keyboard) onSelect(s)
+                        if (it.isFocused) { onZoneEnter(); if (inputModeManager.inputMode == androidx.compose.ui.input.InputMode.Keyboard) onSelect(s) }
                     }
-                    // 右键进右侧内容列表（以前是跳右上角的排序按钮，等于把用户送错了地方）。
-                    .onPreviewKeyEvent {event ->
-                        if(event.type==KeyEventType.KeyDown && event.key==Key.DirectionRight) onRequestContent() else false
-                    }
-                    .returnToTabOnUp(if (s == LibrarySection.Songs) onReturnToTab else null),
+                    // 侧栏方向键全显式管理：
+                    // Right → 进内容区（层级二）；Up 只在第一项（歌曲）回全局顶栏，
+                    // 其余行让空间导航自然上移；Down 只在最后一项（艺人）落到胶囊。
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (event.key) {
+                            Key.DirectionRight -> onRequestContent()
+                            Key.DirectionUp -> if (isFirst) { onReturnToTab?.invoke(); true } else false
+                            Key.DirectionDown -> if (isLast) {
+                                runCatching { capsuleFocus?.requestFocus() }
+                                true
+                            } else false
+                            else -> false
+                        }
+                    },
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
@@ -338,131 +422,137 @@ private fun SectionSidebar(selected: LibrarySection, onReturnToTab: (() -> Unit)
     }
 }
 
+/**
+ * 资料库右上角的操作区（层级三）：只有「刷新云端歌单」（云）和「编辑」（铅笔）两个圆形图标按钮。
+ *
+ * 排序已固定为「添加日期 · 降序」（见 [com.veacon.veilmusic.ui.viewmodel.LibraryViewModel]），
+ * 这里不再提供排序入口。方向键层级：
+ * - Left / Right 只在云 ↔ 铅笔之间互移，到红框边缘停住（不跳回侧栏、不越界）；
+ * - Down 回内容列表（层级二）；
+ * - Up 回全局顶栏（红框的上边界出口）。
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun SortBar(
-    section: LibrarySection,
-    currentField: SortField,
-    currentDir: com.veacon.veilmusic.ui.viewmodel.SortDir,
+internal fun LibraryActionsBar(
     onReturnToTab: (() -> Unit)?,
-    sortFocus: FocusRequester,
+    editFocus: FocusRequester,
     listFocus: FocusRequester? = null,
-    onSort: (SortField, com.veacon.veilmusic.ui.viewmodel.SortDir) -> Unit,
+    editing: Boolean = false,
+    /** 传 null 表示这一节不支持编辑（专辑 / 艺人 / 最近播放）。 */
+    onToggleEdit: (() -> Unit)? = null,
+    /** 传 null 表示不显示「刷新云端歌单」的云图标。 */
+    onRefreshApple: (() -> Unit)? = null,
+    refreshingApple: Boolean = false,
+    /** 焦点落到红框任意按钮（云 / 铅笔）时通知页面 —— Back 逐级返回用。 */
+    onBarFocus: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
-    val fields = when (section) {
-        LibrarySection.Playlists -> listOf(SortField.DATE to tr(R.string.msg_117), SortField.NAME to tr(R.string.msg_116))
-        LibrarySection.Albums    -> listOf(SortField.DATE to tr(R.string.msg_117), SortField.NAME to tr(R.string.msg_116), SortField.ARTIST to tr(R.string.msg_071))
-        LibrarySection.Artists   -> listOf(SortField.DATE to tr(R.string.msg_117), SortField.NAME to tr(R.string.msg_116))
-        LibrarySection.Songs     -> listOf(SortField.DATE to tr(R.string.msg_117), SortField.NAME to tr(R.string.msg_118), SortField.ARTIST to tr(R.string.msg_071))
-        LibrarySection.Recents   -> listOf(SortField.DATE to tr(R.string.msg_117), SortField.NAME to tr(R.string.msg_118), SortField.ARTIST to tr(R.string.msg_071))
-    }
-    val curLabel = fields.firstOrNull { it.first == currentField }?.second ?: tr(R.string.msg_119)
-    val dirArrow = if (currentDir == com.veacon.veilmusic.ui.viewmodel.SortDir.ASC) "↑" else "↓"
-    var showDialog by remember { mutableStateOf(false) }
-
-    // Round ⇅ sort button, right-aligned — matches the playlist detail's sort control.
+    val cloudFocus = remember { FocusRequester() }
     Row(
-        modifier = Modifier.fillMaxWidth().returnToTabOnUp(onReturnToTab).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFFFFFFF), Color(0xFF101012))).padding(start = 32.dp, top = 10.dp, bottom = 10.dp),
+        modifier = modifier.fillMaxWidth()
+            .padding(start = 32.dp, end = 32.dp, top = 10.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("$curLabel · ${if (currentDir == com.veacon.veilmusic.ui.viewmodel.SortDir.DESC) tr(R.string.msg_120) else tr(R.string.msg_121)}",
-            color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), fontSize = 13.sp,
-            modifier = Modifier.padding(end = 12.dp))
-        Surface(
-            onClick = { showDialog = true },
-            modifier = Modifier.focusRequester(sortFocus).semantics {contentDescription=tr(R.string.msg_122)}
-                .focusProperties {if(listFocus!=null) {left=listFocus;down=listFocus}},
-            shape  = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-            colors = com.veacon.veilmusic.ui.components.contentActionColors(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
-            border = com.veacon.veilmusic.ui.components.contentActionBorder(RoundedCornerShape(50)),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-        ) {
-            Box(Modifier.requiredSize(44.dp), contentAlignment = Alignment.Center) {
-                com.veacon.veilmusic.ui.components.Icon(com.veacon.veilmusic.ui.components.Glyph.SORT, size = 22.dp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
-            }
-        }
-    }
-
-    FadeThrough(showDialog, contentKey = { if (it) true else null }) { visible ->
-            if (visible) {
-            SortDialog(
-                fields = fields,
-                currentField = currentField,
-                currentDir = currentDir,
-                onPick = { f, d -> onSort(f, d) },
-                onDismiss = { showDialog = false },
-            )
-        }
-    }
-}
-
-/** Sort chooser popup: pick a field, then a direction. Real Dialog so D-pad focus
- *  stays inside it (a plain overlay Box lets focus walk out to the grid behind). */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun SortDialog(
-    fields: List<Pair<SortField, String>>,
-    currentField: SortField,
-    currentDir: com.veacon.veilmusic.ui.viewmodel.SortDir,
-    onPick: (SortField, com.veacon.veilmusic.ui.viewmodel.SortDir) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val Asc = com.veacon.veilmusic.ui.viewmodel.SortDir.ASC
-    val Desc = com.veacon.veilmusic.ui.viewmodel.SortDir.DESC
-    com.veacon.veilmusic.ui.components.MotionDialog(onDismissRequest = onDismiss) {
-        val firstFocus = remember { FocusRequester() }
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225))),
-            modifier = Modifier.width(340.dp),
-        ) {
-            Column(Modifier.menuInitialFocus(firstFocus).padding(vertical = 18.dp)) {
-                Text(tr(R.string.msg_123), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
-                    modifier = Modifier.padding(start = 22.dp, bottom = 10.dp))
-                fields.forEachIndexed { i, (field, label) ->
-                    SortRow(
-                        label = label,
-                        selected = field == currentField,
-                        modifier = if (i == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                    ) { onPick(field, currentDir) }
+        // 刷新云端歌单：强制重新拉取 Apple Music 资料库里的歌单列表。
+        if (onRefreshApple != null) {
+            val spin = if (refreshingApple) rememberCloudSpin() else 0f
+            Surface(
+                onClick = { if (!refreshingApple) onRefreshApple() },
+                modifier = Modifier.focusRequester(cloudFocus)
+                    .onFocusChanged { if (it.isFocused) onBarFocus() }
+                    .semantics { contentDescription = "刷新 Apple Music 云端歌单" }
+                    .focusProperties {
+                        // 红框左边缘：停住，不跳回侧栏。
+                        left = FocusRequester.Cancel
+                        right = editFocus
+                        if (listFocus != null) down = listFocus
+                    }
+                    // 红框内再按 Up 才回全局顶栏。
+                    .returnToTabOnUp(onReturnToTab),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                colors = com.veacon.veilmusic.ui.components.contentActionColors(
+                    com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                ),
+                border = com.veacon.veilmusic.ui.components.contentActionBorder(RoundedCornerShape(50)),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            ) {
+                Box(Modifier.requiredSize(44.dp), contentAlignment = Alignment.Center) {
+                    CloudRefreshIcon(
+                        color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
+                        rotation = spin,
+                    )
                 }
-                Box(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 22.dp)
-                    .height(1.dp).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFDCDCE1), Color(0xFF414146))))
-                SortRow(tr(R.string.msg_121), currentDir == Asc) { onPick(currentField, Asc) }
-                SortRow(tr(R.string.msg_120), currentDir == Desc) { onPick(currentField, Desc) }
+            }
+            Spacer(Modifier.width(10.dp))
+        }
+        // 编辑：铅笔图标（编辑中变成对勾 + 红底），点开后歌曲 / 歌单可以删除。
+        if (onToggleEdit != null) {
+            Surface(
+                onClick = onToggleEdit,
+                modifier = Modifier.focusRequester(editFocus)
+                    .onFocusChanged { if (it.isFocused) onBarFocus() }
+                    .semantics { contentDescription = if (editing) "完成编辑" else "编辑资料库" }
+                    .focusProperties {
+                        // 有云时 Left 在红框内互移；无云（歌曲区）时 Left 回列表这条便捷道保留。
+                        left = if (onRefreshApple != null) cloudFocus else listFocus ?: FocusRequester.Cancel
+                        if (listFocus != null) down = listFocus
+                    }
+                    // 焦点在「编辑」时再按 Up 才回顶栏。
+                    .returnToTabOnUp(onReturnToTab),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                    containerColor = if (editing) Color(0xFFFA233B)
+                        else com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                    focusedContainerColor = if (editing) Color(0xFFFF4757)
+                        else com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFDCDCE1), Color(0xFF4A4A50)),
+                ),
+                border = com.veacon.veilmusic.ui.components.contentActionBorder(RoundedCornerShape(50)),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            ) {
+                Box(Modifier.requiredSize(44.dp), contentAlignment = Alignment.Center) {
+                    com.veacon.veilmusic.ui.components.Icon(
+                        if (editing) com.veacon.veilmusic.ui.components.Glyph.CHECK
+                        else com.veacon.veilmusic.ui.components.Glyph.EDIT,
+                        size = 22.dp,
+                        color = if (editing) Color.White else com.veacon.veilmusic.ui.theme.AppPalette.primary,
+                    )
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+/**
+ * 资料库右上角的「云」图标：点一下强制重新拉取 Apple Music 云端歌单。
+ * [rotation] 在同步中由 [rememberCloudSpin] 驱动旋转，用作进度反馈。
+ */
 @Composable
-private fun SortRow(
-    label: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
-        ),
-        modifier = modifier.padding(horizontal = 12.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(label, fontSize = 14.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.weight(1f))
-            if (selected) Text("✓", fontSize = 15.sp, color = Color(0xFFFA233B))
-        }
+private fun CloudRefreshIcon(color: Color, rotation: Float, size: androidx.compose.ui.unit.Dp = 22.dp) {
+    Canvas(Modifier.size(size).rotate(rotation)) {
+        val u = this.size.minDimension / 24f
+        drawCircle(color, radius = 4.4f * u, center = Offset(8.2f * u, 12.4f * u))
+        drawCircle(color, radius = 6.1f * u, center = Offset(12.4f * u, 10.1f * u))
+        drawCircle(color, radius = 4.2f * u, center = Offset(17.2f * u, 12.5f * u))
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(6.4f * u, 11.2f * u),
+            size = Size(12.8f * u, 5.4f * u),
+            cornerRadius = CornerRadius(2.7f * u, 2.7f * u),
+        )
     }
+}
+
+@Composable
+private fun rememberCloudSpin(): Float {
+    val transition = rememberInfiniteTransition(label = "cloudSpin")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(animation = tween(900, easing = LinearEasing)),
+        label = "cloudAngle",
+    )
+    return angle
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -477,23 +567,51 @@ private fun PlaylistGrid(
     onImport: () -> Unit,
     onReturnToTab: (() -> Unit)? = null,
     tabBarFocused: Boolean = false,
+    /** 编辑模式：本地歌单卡片右上角出现删除按钮。 */
+    editing: Boolean = false,
+    onDelete: (LocalLibraryStore.LocalPlaylist) -> Unit = {},
+    /** 层级三「编辑」按钮的焦点：第一排按 Up 落到它。 */
+    editButtonFocus: FocusRequester? = null,
 ) {
     val gridState = rememberTabAwareGridState(tabBarFocused)
     val entryFocus = LocalLibraryContentEntryFocus.current
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(4),
-        contentPadding = PaddingValues(start = 32.dp, top = 20.dp, bottom = 48.dp),
+        contentPadding = PaddingValues(start = 32.dp, top = 20.dp, bottom = capsuleAwareBottom(48.dp)),
         horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize(),
+        versionFooter = true,
     ) {
         gridItemsIndexed(playlists, key = { _, item -> item.id }) { index, playlist ->
-            Box(Modifier.librarySortOnRight(index%4==3 || index==playlists.lastIndex).returnToTabOnUp(if (index < 4) onReturnToTab else null)) {
-                val isApple = playlist.source == LocalLibraryStore.SOURCE_APPLE
+            // 层级二方向键边界：
+            // Up —— 第一排交给红框铅笔（红框缺席时才回顶栏），其余排逐行上移；
+            // Down —— 逐行下移，走到底由列表末尾的版本行接住（版本行再 Down 落胶囊）；
+            // Right —— 行内自然右移到最右控件停住（右缘不再被拽到红框）。
+            val isFirstRow = index < 4
+            val isApple = playlist.source == LocalLibraryStore.SOURCE_APPLE
+            // 只在线的云端歌单（来自 Apple 账号、不在本地库里）不能删；
+            // 从 Apple 同步下来落到本地库的歌单（id 以 apple- 开头）可以删。
+            val deletable = editing && !(isApple && !playlist.id.startsWith("apple-"))
+            // 防呆：编辑模式下纯云端在线歌单——置灰降低透明度，且整卡不可聚焦，遥控器直接跳过。
+            val cloudLocked = editing && isApple && !playlist.id.startsWith("apple-")
+            Box(
+                Modifier
+                    .then(
+                        when {
+                            isFirstRow && editButtonFocus != null -> Modifier.focusProperties { up = editButtonFocus }
+                            isFirstRow -> Modifier.returnToTabOnUp(onReturnToTab)
+                            else -> Modifier
+                        }
+                    ),
+            ) {
                 PlaylistCard(
                     playlist    = playlist,
                     pinned      = playlist.id in pinnedIds,
+                    editing     = deletable,
+                    dimmed      = cloudLocked,
+                    onDelete    = { onDelete(playlist) },
                     onOpen      = { onOpen(playlist) },
                     // 云端歌单没有本地曲目，播放/长按都改为打开详情，避免误调本地播放与导入菜单。
                     onPlay      = { if (isApple) onOpen(playlist) else onPlay(playlist) },
@@ -504,7 +622,7 @@ private fun PlaylistGrid(
         }
         // 「导入歌单」放在列表末尾：歌单多了以后不该让这个动作用户每次都要跳过。
         item(key = "import-card") {
-            Box(Modifier.librarySortOnRight(playlists.isEmpty() || playlists.size % 4 == 3)) {
+            Box {
                 ImportCard(importing = importing, onClick = onImport,
                     modifier = if (playlists.isEmpty() && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier)
             }
@@ -557,11 +675,20 @@ private fun PlaylistCard(
     onPlay: () -> Unit,
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
+    editing: Boolean = false,
+    onDelete: () -> Unit = {},
+    /** 防呆置灰：整卡降透明度、内部播放钮也不可聚焦（云端在线歌单在编辑模式下）。 */
+    dimmed: Boolean = false,
 ) {
     Surface(
-        onClick      = onOpen,
-        onLongClick  = onMenu,
-        modifier     = modifier,
+        // 编辑模式下整张卡片就是「删除」，OK 直接删掉，不会进详情。
+        // 防呆置灰（云端在线歌单）：整卡不可聚焦——遥控器光标直接跳过，OK 也无从按起；
+        // OK 兜底为空操作，触摸误点也不会进详情。
+        onClick      = when { dimmed -> ({}); editing -> onDelete; else -> onOpen },
+        onLongClick  = if (editing) null else onMenu,
+        modifier     = modifier
+            .then(if (dimmed) Modifier.focusProperties { canFocus = false } else Modifier)
+            .then(if (dimmed) Modifier.alpha(0.45f) else Modifier),
         shape  = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)), focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFEDEDF0), Color(0xFF414146))),
         scale  = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
@@ -587,13 +714,35 @@ private fun PlaylistCard(
                 if (pinned) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
+                            .align(Alignment.TopStart)
                             .padding(6.dp)
                             .clip(RoundedCornerShape(50))
                             .background(Color(0xCC000000))
                             .padding(horizontal = 5.dp, vertical = 3.dp),
                     ) {
                         Text("📌", fontSize = 10.sp)
+                    }
+                }
+                // 编辑模式：删除本地歌单（云端歌单不显示，避免删了又同步回来）。
+                if (editing) {
+                    Surface(
+                        onClick = onDelete,
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = Color(0xCC000000),
+                            focusedContainerColor = Color(0xFFFA233B),
+                        ),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.12f),
+                        // 触摸也能点，但遥控器在编辑模式下只停在卡片上（OK 即删除）。
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(30.dp)
+                            .focusProperties { canFocus = false },
+                    ) {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            com.veacon.veilmusic.ui.components.Icon(
+                                com.veacon.veilmusic.ui.components.Glyph.CLOSE,
+                                size = 13.dp, color = Color.White,
+                            )
+                        }
                     }
                 }
             }
@@ -613,7 +762,9 @@ private fun PlaylistCard(
                     colors = com.veacon.veilmusic.ui.components.contentActionColors(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
                     border = com.veacon.veilmusic.ui.components.contentActionBorder(RoundedCornerShape(50)),
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(28.dp)
+                        // 置灰的云端卡：行内的播放钮同样不可聚焦，整张卡片对遥控器隐身。
+                        .then(if (dimmed) Modifier.focusProperties { canFocus = false } else Modifier),
                 ) {
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
                         com.veacon.veilmusic.ui.components.Icon(com.veacon.veilmusic.ui.components.Glyph.PLAY, size = 11.dp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
@@ -632,14 +783,17 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (String) -> Unit, onRet
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(4),
-        contentPadding = PaddingValues(start = 32.dp, top = 20.dp, bottom = 48.dp),
+        contentPadding = PaddingValues(start = 32.dp, top = 20.dp, bottom = capsuleAwareBottom(48.dp)),
         horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize(),
+        versionFooter = true,
     ) {
         gridItemsIndexed(albums, key = { _, item -> item.id }) { index, album ->
+            // 专辑区没有红框（无编辑 / 云按钮）：第一排按 Up 仍回顶栏。
             AlbumCard(album = album, size = 150, onClick = { onAlbumClick(album.id) },
-                modifier = Modifier.librarySortOnRight(index%4==3 || index==albums.lastIndex).returnToTabOnUp(if (index < 4) onReturnToTab else null)
+                modifier = Modifier
+                    .returnToTabOnUp(if (index < 4) onReturnToTab else null)
                     .then(if (index == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier))
         }
     }
@@ -651,11 +805,12 @@ private fun ArtistList(artists: List<Artist>, onArtistClick: (String) -> Unit, o
     val listState = rememberTabAwareListState(tabBarFocused)
     val entryFocus = LocalLibraryContentEntryFocus.current
     if (artists.isEmpty()) { Box(Modifier.fillMaxSize(), Alignment.Center) { Text(tr(R.string.msg_126), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA))) }; return }
-    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 32.dp, top = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 32.dp, top = 24.dp, bottom = capsuleAwareBottom(24.dp)), verticalArrangement = Arrangement.spacedBy(4.dp), versionFooter = true) {
         itemsIndexed(artists, key = { _, item -> item.id }) { index, artist ->
             Surface(onClick = { onArtistClick(artist.id) }, modifier = Modifier.fillMaxWidth()
                 .then(if (index == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier)
-                .returnToTabOnUp(if (index == 0) onReturnToTab else null), shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                .returnToTabOnUp(if (index == 0) onReturnToTab else null),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225))), scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(44.dp).clip(RoundedCornerShape(50)).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)))) {
@@ -705,6 +860,11 @@ private fun SongList(
     onImportPlaylist: (() -> Unit)? = null,
     emptyTitle: String = "还没有收藏的歌曲",
     emptyHint: String = "任意歌曲上长按 →「收藏到资料库」；歌单可在「播放列表」里导入 QQ 音乐 / 网易云 / 酷狗。",
+    /** 第一行按 Up 要去的「编辑」按钮焦点。 */
+    editButtonFocus: FocusRequester? = null,
+    /** 编辑模式：每行右侧出现删除按钮。 */
+    editing: Boolean = false,
+    onDeleteSong: (Song) -> Unit = {},
 ) {
     val listState = rememberTabAwareListState(tabBarFocused)
     if (songs.isEmpty()) {
@@ -737,17 +897,47 @@ private fun SongList(
     }
     var menuSong by remember { mutableStateOf<Song?>(null) }
     val entryFocus = LocalLibraryContentEntryFocus.current
-    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 32.dp, top = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // 编辑模式删除后的焦点接力：删除当前行 → 焦点落下一首；删的是末行 → 落上一首；
+    // 列表清空 → 回到顶部「铅笔」。用「删除后的期望行数」对齐时序 —— 数据还没更新时
+    // 不抢跑，避免焦点落在即将消失的行上。
+    var pendingFocus by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (目标 index, 删除后的期望行数)
+    val itemFocusers = remember { mutableMapOf<Int, FocusRequester>() }
+    LaunchedEffect(pendingFocus, songs.size) {
+        val (target, expected) = pendingFocus ?: return@LaunchedEffect
+        if (songs.size != expected) return@LaunchedEffect
+        if (songs.isEmpty()) {
+            runCatching { editButtonFocus?.requestFocus() }
+        } else {
+            val idx = target.coerceIn(0, songs.lastIndex)
+            runCatching { listState.scrollToItem(idx) }
+            withFrameNanos { }
+            runCatching { (if (idx == 0) entryFocus else itemFocusers[idx])?.requestFocus() }
+        }
+        pendingFocus = null
+    }
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 32.dp, top = 24.dp, bottom = capsuleAwareBottom(24.dp)), verticalArrangement = Arrangement.spacedBy(4.dp), versionFooter = true) {
         val returnKeys=com.veacon.veilmusic.ui.navigation.occurrenceKeys(songs.map { it.id })
     items(songs.size, key = { returnKeys[it] }) { idx ->
             val song = songs[idx]
             Surface(
-                onClick = { playerVm.playAlbum(songs, idx) },
-                onLongClick = { menuSong = song },
-                onContextMenu = { menuSong = song },
+                // 编辑模式：OK 直接删除当前项（不进入详情、不播放）；普通模式才播放。
+                onClick = {
+                    if (editing) {
+                        // 下一首会顶到当前位置；删的是末行则落上一首（-1 表示清空）。
+                        pendingFocus = if (idx < songs.lastIndex) idx to songs.size - 1
+                                       else idx - 1 to songs.size - 1
+                        onDeleteSong(song)
+                    } else playerVm.playAlbum(songs, idx)
+                },
+                onLongClick = { if (!editing) menuSong = song },
+                onContextMenu = { if (!editing) menuSong = song },
                 modifier = Modifier.fillMaxWidth()
-                    .then(if (idx == 0 && entryFocus != null) Modifier.focusRequester(entryFocus) else Modifier)
-                    .returnToTabOnUp(if (idx == 0) onReturnToTab else null),
+                    .then(
+                        if (idx == 0 && entryFocus != null) Modifier.focusRequester(entryFocus)
+                        else Modifier.focusRequester(itemFocusers.getOrPut(idx) { FocusRequester() })
+                    )
+                    // 第一行按 Up：进「编辑」按钮（不再直接跳顶栏）；其余行正常上移。
+                    .then(if (idx == 0 && editButtonFocus != null) Modifier.focusProperties { up = editButtonFocus } else Modifier),
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225))), scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -759,6 +949,28 @@ private fun SongList(
                         Text(song.artistName, fontSize = 11.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), maxLines = 1)
                     }
                     Text(song.durationFormatted, fontSize = 11.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
+                    // 编辑模式：右侧给一个「×」提示当前是删除态（不再单独聚焦，整个行就是删除键）。
+                    if (editing) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            onClick = { onDeleteSong(song) },
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                            colors = ClickableSurfaceDefaults.colors(
+                                containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                                focusedContainerColor = Color(0xFFFA233B),
+                            ),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                            modifier = Modifier.size(30.dp).focusProperties { canFocus = false },
+                        ) {
+                            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                com.veacon.veilmusic.ui.components.Icon(
+                                    com.veacon.veilmusic.ui.components.Glyph.CLOSE,
+                                    size = 12.dp,
+                                    color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1075,7 +1287,8 @@ private fun ImportStep(index: Int, title: String, detail: String) {
     }
 }
 
-/** 歌单长按菜单：置顶 / 重新导入 / 删除。 */
+/** 歌单长按菜单：置顶 / 重新导入。
+ *  删除**不放在这里** —— 长按很容易误触，删除改到右上角「编辑」模式里做。 */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun PlaylistMenuDialog(
@@ -1084,7 +1297,6 @@ private fun PlaylistMenuDialog(
     onDismiss: () -> Unit,
     onReimport: () -> Unit,
     onTogglePin: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     com.veacon.veilmusic.ui.components.MotionDialog(onDismissRequest = onDismiss) {
         val firstFocus = remember { FocusRequester() }
@@ -1105,7 +1317,18 @@ private fun PlaylistMenuDialog(
             Spacer(Modifier.height(2.dp))
             ContextMenuItem(if (pinned) "取消置顶" else "置顶", onTogglePin, Modifier.focusRequester(firstFocus))
             if (playlist.sourceUrl != null) ContextMenuItem("重新导入", onReimport)
-            ContextMenuItem("删除歌单", onDelete)
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+

@@ -37,13 +37,20 @@ internal fun Modifier.contentFocusExitPolicy(
     isOnNowPlaying: Boolean,
     browsingRoot: Boolean,
     tab: FocusRequester,
+    /** 底部版本行：内容区向下走到头时先落到它（再由它交给胶囊）。null＝没有版本行。 */
+    footer: FocusRequester? = null,
+    /** 底部迷你胶囊：版本行之后用它。null＝胶囊没开。 */
+    capsule: FocusRequester? = null,
 ): Modifier = focusProperties {
     onExit = {
-        if (requestedFocusDirection == FocusDirection.Up && !isOnNowPlaying ||
-            requestedFocusDirection == FocusDirection.Exit && browsingRoot) {
-            tab.requestFocus()
-        } else if (requestedFocusDirection == FocusDirection.Exit && !isOnNowPlaying) {
-            cancelFocusChange()
+        when {
+            // 内容区向下无路可走：先落到底部版本行（光标能停在最底部看信息），
+            // 没有版本行时才直接交给胶囊。左右方向保持页面内行为。
+            !isOnNowPlaying && requestedFocusDirection == FocusDirection.Down ->
+                (footer ?: capsule)?.requestFocus()
+            requestedFocusDirection == FocusDirection.Up && !isOnNowPlaying ||
+                requestedFocusDirection == FocusDirection.Exit && browsingRoot -> tab.requestFocus()
+            requestedFocusDirection == FocusDirection.Exit && !isOnNowPlaying -> cancelFocusChange()
         }
     }
 }

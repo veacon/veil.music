@@ -222,13 +222,13 @@ class LibraryViewModel @Inject constructor(
     // ── 排序 ────────────────────────────────────────────────────────────────
 
     private fun loadSavedSort(): SortState {
-        val fieldIdx = cachePrefs.getInt("sort_field", -1)
-        if (fieldIdx < 0) return SortState()
-        val field = SortField.entries.getOrNull(fieldIdx) ?: return SortState()
-        val dir = SortDir.entries.getOrNull(cachePrefs.getInt("sort_dir", 0)) ?: SortDir.ASC
-        return SortState(field, dir)
+        // 资料库排序已固定为「添加日期 · 降序」（最新添加的在最前），界面不再提供排序入口。
+        // 旧版本可能存过别的排序字段，这里直接忽略并清掉，避免用户升级后看到奇怪的顺序。
+        cachePrefs.edit().remove("sort_field").remove("sort_dir").apply()
+        return SortState(SortField.DATE, SortDir.DESC)
     }
 
+    /** 保留给「播放列表详情」等旧调用点；资料库本身已不再允许改排序。 */
     fun setSort(field: SortField) {
         val cur = _state.value.sort
         setSort(field, if (cur.field == field && cur.dir == SortDir.ASC) SortDir.DESC else SortDir.ASC)

@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
@@ -6,6 +6,7 @@ import com.veacon.veilmusic.R
 
 import com.veacon.veilmusic.ui.components.focusedArtworkBorder
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.BottomNavInset
 import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
@@ -217,7 +218,7 @@ fun SearchScreen(playerVm: PlayerViewModel, onAlbumClick: (String) -> Unit = {},
                 state.results != null && (state.results!!.songs.isNotEmpty() || state.results!!.albums.isNotEmpty() || state.results!!.artists.isNotEmpty() || state.results!!.playlists.isNotEmpty() || state.results!!.curators.isNotEmpty()) -> {
                     val results = state.results!!
                     val albumColumns = (((androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - pageHorizontalInset * 2 + 16.dp) / 126.dp).toInt()).coerceIn(1, 7)
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp), contentPadding = PaddingValues(top = 4.dp, bottom = BottomNavInset)) {
+                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp), contentPadding = PaddingValues(top = 4.dp, bottom = capsuleAwareBottom(BottomNavInset)), versionFooter = true) {
                         // Top Results — the strongest hit of each kind up front, the way Apple Music leads
                         // its search page. Editorial playlists first (what the user missed), then artist,
                         // album and the #1 song, so the best match is one focus move away.
@@ -412,7 +413,7 @@ fun SearchScreen(playerVm: PlayerViewModel, onAlbumClick: (String) -> Unit = {},
                 state.query.isBlank() -> {
                     // Category tiles + recents when not searching
                     if (state.categories.isNotEmpty() || recents.isNotEmpty()) {
-                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp), contentPadding = PaddingValues(top = 4.dp, bottom = BottomNavInset)) {
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp), contentPadding = PaddingValues(top = 4.dp, bottom = capsuleAwareBottom(BottomNavInset)), versionFooter = true) {
                             // Recent searches first — retyping on a remote is the slow part.
                             if (recents.isNotEmpty()) {
                                 item {
@@ -586,3 +587,5 @@ private fun CategoryTile(name: String, artworkUrl: String?, onClick: () -> Unit)
         }
     }
 }
+
+

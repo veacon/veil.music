@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui
+﻿package com.veacon.veilmusic.ui
 
 import android.app.Application
 import android.graphics.Bitmap
@@ -129,9 +129,9 @@ class V23LayoutTest {
                 TouchSurface({},Modifier.size(100.dp,30.dp).focusRequester(external).testTag("outside")) {}
                 Box(Modifier.fillMaxSize().focusRequester(entry).libraryEntryFocus({list.requestFocus()},false,sort).focusGroup()) {
                     Column(Modifier.fillMaxSize()) {
-                        SortBar(if(grid) LibrarySection.Albums else LibrarySection.Songs,SortField.NAME,SortDir.ASC,null,sort.control,list) {_,_->picks++}
+                        LibraryActionsBar(onReturnToTab=null,editFocus=sort.control,listFocus=list,editing=false,onToggleEdit=if(grid)null else { {picks++} },onRefreshApple=null)
                         Box(Modifier.weight(1f).focusRequester(list).focusGroup()) {
-                            CompositionLocalProvider(LocalLibrarySortFocus provides sort) {
+                            CompositionLocalProvider(LocalLibrarySortFocus provides (if(grid) null else sort)) {
                                 if(grid) Row(Modifier.padding(top=20.dp),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
                                     repeat(4) {index->
                                         AlbumCard(Album("$index","专辑 $index","艺人",artworkUrl=null),size=140,onClick={},
@@ -156,23 +156,26 @@ class V23LayoutTest {
             compose.onNodeWithTag("item$index").performKeyInput {pressKey(Key.DirectionRight)}
             compose.onNodeWithTag("item${index+1}").assertIsFocused()
         }
-        compose.onNodeWithTag(if(grid) "item3" else "item0").performKeyInput {pressKey(Key.DirectionRight)}
-        compose.onNodeWithContentDescription("资料库排序").assertIsFocused()
-        save(if(grid) "library-grid-sort-focus" else "library-list-sort-focus")
-        compose.onNodeWithContentDescription("资料库排序").performKeyInput {pressKey(Key.DirectionLeft)}
+        if(grid) {
+            compose.onNodeWithTag("item3").performKeyInput {pressKey(Key.DirectionRight)}
+            compose.onNodeWithTag("item3").assertIsFocused()
+            return
+        }
+        compose.onNodeWithTag("item0").performKeyInput {pressKey(Key.DirectionRight)}
+        compose.onNodeWithContentDescription("编辑资料库").assertIsFocused()
+        save("library-list-actions-focus")
+        compose.onNodeWithContentDescription("编辑资料库").performKeyInput {pressKey(Key.DirectionLeft)}
         assertTrue(compose.onAllNodes(isFocused()).fetchSemanticsNodes().any {
             it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag)?.startsWith("item")==true
         })
         compose.runOnIdle {external.requestFocus();sort.request()}
-        compose.onNodeWithContentDescription("资料库排序").assertIsFocused()
-        compose.onNodeWithContentDescription("资料库排序").performKeyInput {pressKey(Key.DirectionCenter)}
+        compose.onNodeWithContentDescription("编辑资料库").assertIsFocused()
+        compose.onNodeWithContentDescription("编辑资料库").performKeyInput {pressKey(Key.DirectionCenter)}
         compose.mainClock.advanceTimeBy(600)
-        compose.onNodeWithText("排序方式").assertIsDisplayed()
-        compose.onNodeWithText("降序",substring=false).performClick()
         assertEquals(1,picks)
     }
-    @Test fun listRightReachesWorkingSortAndBypassesDefaultListEntry()=libraryFixture(false)
-    @Test fun gridKeepsHorizontalBrowsingAndRightEdgeReachesSort()=libraryFixture(true)
+    @Test fun listRightEdgeReachesEditAction()=libraryFixture(false)
+    @Test fun gridRightEdgeKeepsFocusWhenNoActions()=libraryFixture(true)
 
     @Test fun fullScreenGlyphRendersAndRemainsDistinctFromLyrics() {
         compose.setContent {Row(Modifier.fillMaxSize().background(Color.White).padding(60.dp),horizontalArrangement=Arrangement.spacedBy(48.dp)) {

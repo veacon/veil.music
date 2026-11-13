@@ -1,10 +1,11 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
 import com.veacon.veilmusic.R
 
 import com.veacon.veilmusic.ui.components.pageHorizontalInset
+import com.veacon.veilmusic.ui.components.capsuleAwareBottom
 import com.veacon.veilmusic.ui.components.FadeThrough
 import com.veacon.veilmusic.ui.components.TouchSurface as Surface
 
@@ -129,9 +130,10 @@ fun AlbumDetailScreen(
             // Right: Play/Shuffle header + track list
             LazyColumn(
                 state = tabAwareListState,
-                contentPadding = PaddingValues(top = 120.dp),
+                contentPadding = PaddingValues(top = 120.dp, bottom = capsuleAwareBottom(24.dp)),
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
+                versionFooter = true,
             ) {
                 // Play & Shuffle & Add-to-queue pinned above tracks.
                 // Scrollable so the three pills still fit when the pane is narrow (portrait).
@@ -286,3 +288,5 @@ private fun TrackRow(track: Song, index: Int, onClick: () -> Unit, onLongClick: 
         }
     }
 }
+
+

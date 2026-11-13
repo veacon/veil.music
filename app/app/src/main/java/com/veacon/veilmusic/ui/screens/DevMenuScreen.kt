@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -341,6 +341,22 @@ fun DevMenuScreen(
                             decEnabled = pstate.miniCapsuleWidthPct > 60,
                             incEnabled = pstate.miniCapsuleWidthPct < 100,
                         )
+                        SettingDivider()
+                        // 背景取色：开着是「封面高斯模糊 + 主题着色」，关掉就只随深浅主题，做磨砂玻璃。
+                        Toggle(
+                            tx("背景跟随专辑取色", "Album colour background"),
+                            pstate.miniCapsuleAlbumTint,
+                            tx("关闭后胶囊只随深浅主题变化，呈一层磨砂玻璃",
+                               "Off: background follows light/dark only, like frosted glass"),
+                        ) { playerVm.setMiniCapsuleAlbumTint(!pstate.miniCapsuleAlbumTint) }
+                        SettingDivider()
+                        // 内底边的细播放进度线：不想要时整体隐藏，胶囊更干净。
+                        Toggle(
+                            tx("显示播放进度线", "Playback progress line"),
+                            pstate.miniCapsuleProgressLine,
+                            tx("胶囊内底边的一条细线，随播放推进；关闭后胶囊更干净",
+                               "The thin line along the capsule's bottom edge; hide it for a cleaner look"),
+                        ) { playerVm.setMiniCapsuleProgressLine(!pstate.miniCapsuleProgressLine) }
                     }
                 }
             }
@@ -392,6 +408,8 @@ fun DevMenuScreen(
                     }
                 }
             }
+            // 版本行：挂在设置内容的最末尾，随 verticalScroll 滚动——不滑到最底部看不见。
+            com.veacon.veilmusic.ui.components.AppVersionFooter()
         }
     }
 
@@ -683,7 +701,7 @@ internal fun nowPlayingLabel(title: String?, fallback: String): String {
 }
 
 @Composable
-private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionLabel(title)
         Column(Modifier.fillMaxWidth().background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)), RoundedCornerShape(14.dp)), content = content)
@@ -691,12 +709,12 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
 }
 
 @Composable
-private fun SettingDivider() {
+internal fun SettingDivider() {
     Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(0.75.dp).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE0E0E5), Color(0xFF414146))))
 }
 
 @Composable
-private fun RowScope.SettingText(label: String, sub: String) {
+internal fun RowScope.SettingText(label: String, sub: String) {
     Column(Modifier.weight(1f).padding(end = 20.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(label, fontSize = 16.sp, fontWeight = FontWeight.Bold,
             color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
@@ -745,7 +763,7 @@ internal fun StepBtn(symbol: String, onClick: () -> Unit, enabled: Boolean = tru
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun Toggle(label: String, on: Boolean, sub: String, enabled: Boolean = true, onToggle: () -> Unit) {
+internal fun Toggle(label: String, on: Boolean, sub: String, enabled: Boolean = true, onToggle: () -> Unit) {
     Surface(onClick = onToggle, enabled = enabled, modifier = Modifier.fillMaxWidth(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
@@ -764,7 +782,7 @@ private fun Toggle(label: String, on: Boolean, sub: String, enabled: Boolean = t
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+internal fun SectionLabel(text: String) {
     Text(text, fontSize = 18.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)), fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 4.dp))
 }
@@ -774,7 +792,7 @@ private fun SectionLabel(text: String) {
  * 与 [Toggle] / [Stepper] 同一套高度与内边距，列在一起不会高低不齐。
  */
 @Composable
-private fun InfoRow(label: String, value: String) {
+internal fun InfoRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().heightIn(min = 84.dp).padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically) {
         SettingText(label, "")
@@ -800,7 +818,7 @@ private fun StatusChip(label: String, ok: Boolean, sub: String? = null) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun ActionSettingRow(label: String, description: String, danger: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun ActionSettingRow(label: String, description: String, danger: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
@@ -1056,3 +1074,4 @@ private fun SourceActionButton(
         }
     }
 }
+

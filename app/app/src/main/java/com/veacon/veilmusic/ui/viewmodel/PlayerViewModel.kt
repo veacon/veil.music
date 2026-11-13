@@ -238,6 +238,10 @@ data class PlayerState(
     val miniCapsuleHeightPct: Int = 100,
     /** 迷你胶囊宽度百分比（60–100），只改占屏宽比例。 */
     val miniCapsuleWidthPct: Int = 100,
+    /** 迷你胶囊是否跟随当前封面取色；关闭后只随深浅主题，呈磨砂玻璃底。 */
+    val miniCapsuleAlbumTint: Boolean = true,
+    /** 迷你胶囊内底边的细进度线：可整体隐藏，让胶囊更干净。 */
+    val miniCapsuleProgressLine: Boolean = true,
 )
 
 /** Hidden LYRICS baseline: the Fire TV shows the lyric line ~200 ms before you hear the word even over
@@ -1401,6 +1405,8 @@ class PlayerViewModel @Inject constructor(
             miniCapsuleEnabled = prefs.getBoolean("mini_capsule", false),
             miniCapsuleHeightPct = prefs.getInt("mini_height_pct", 100).coerceIn(60, 140),
             miniCapsuleWidthPct = prefs.getInt("mini_width_pct", 100).coerceIn(60, 100),
+            miniCapsuleAlbumTint = prefs.getBoolean("mini_album_tint", true),
+            miniCapsuleProgressLine = prefs.getBoolean("mini_progress_line", true),
             beatIntensity = prefs.getFloat(intensityKey(initBg), 1.0f),
             orbSpeed = prefs.getFloat("orb_speed", 1.0f),
             lyricsScale = prefs.getFloat("lyrics_scale", 1.0f),
@@ -1888,9 +1894,16 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 歌词字形（简/繁）切换。缓存里存的是转换前的原文，字形变了必须连同
-     * [com.veacon.veilmusic.data.datasource.DirectLyricsSource] 的缓存一起作废，
-     * 然后把当前这首重取一遍，否则界面还是旧字形。
+     * 歌词字形（简/繁）切换。
+     *
+     * 注意：这里**不能**作废 [com.veacon.veilmusic.data.datasource.DirectLyricsSource] 的缓存。
+     * 那边的缓存存的是**原文**，转换发生在读取时（`scripted()`），所以只要丢掉本 VM 里
+     * 已转换好的副本、再走一次 `loadLyrics`，就能用新字形瞬间返回同一份歌词 ——
+     * 既不会重新发网络请求，也不会重新跑一遍级联，来源仍然保持 Apple Music。
+     *
+     * 之前的实现把整条歌词缓存（包括命中来源）一起清空再重新级联：每切一次简繁就要
+     * 重打一次 Apple 的 syllable-lyrics，连续切几次很容易被限流/超时，一旦失败就掉到
+     * 网易云等第三方源，并且按 24h 缓存，表现为「切了简繁之后就再也不命中 Apple 源」。
      */
     fun setLyricsScript(script: com.veacon.veilmusic.data.LyricsScript) {
         lyricsScriptPrefs.setScript(script)
@@ -1898,11 +1911,9 @@ class PlayerViewModel @Inject constructor(
 
     private fun applyLyricsScript(script: com.veacon.veilmusic.data.LyricsScript, reload: Boolean) {
         _state.update { it.copy(lyricsScript = script) }
+        // 只丢「已转换」的副本；原文缓存 + 命中来源保留，重新读取即可换字形。
         lyricsCache.clear()
-        lyricsSourceCache.clear()
-        lyricsExcludedSources.clear()
-        repo.invalidateLyricsCacheAll()
-        webServer.addLog("LYRICS", "script=${script.name.lowercase()} — lyrics cache invalidated, refetching")
+        webServer.addLog("LYRICS", "script=${script.name.lowercase()} — re-rendering cached lyrics (source kept)")
         if (reload) _state.value.currentSong?.let { if (!it.isMusicVideo) loadLyrics(it.id) }
     }
 
@@ -1950,6 +1961,18 @@ class PlayerViewModel @Inject constructor(
     }
     fun nudgeMiniCapsuleWidthPct(delta: Int) =
         setMiniCapsuleWidthPct(_state.value.miniCapsuleWidthPct + delta)
+
+    /** 迷你胶囊背景是否跟随封面取色：关掉后只随深浅主题，做一层磨砂玻璃。 */
+    fun setMiniCapsuleAlbumTint(enabled: Boolean) {
+        prefs.edit().putBoolean("mini_album_tint", enabled).apply()
+        _state.update { it.copy(miniCapsuleAlbumTint = enabled) }
+    }
+
+    /** 迷你胶囊内底边细进度线的显示开关。 */
+    fun setMiniCapsuleProgressLine(enabled: Boolean) {
+        prefs.edit().putBoolean("mini_progress_line", enabled).apply()
+        _state.update { it.copy(miniCapsuleProgressLine = enabled) }
+    }
 
     fun toggleVolumeLeveling() {
         val next = !_state.value.volumeLeveling
@@ -2810,7 +2833,10 @@ class PlayerViewModel @Inject constructor(
             exhaustedEmptyLyricsFor=null) }
         val generation = ++lyricsLoadGeneration
         lyricsCache[songId]?.let { cached ->
-            if (_state.value.currentSong?.id == songId) _state.update { it.copy(lyrics = cached) }
+            // 来源标签也要跟着恢复，否则从缓存命中时「歌词来源」会显示成「—」。
+            if (_state.value.currentSong?.id == songId) _state.update {
+                it.copy(lyrics = cached, lyricsSource = lyricsSourceCache[songId])
+            }
             return
         }
         val song = _state.value.currentSong?.takeIf { it.id == songId } ?: return

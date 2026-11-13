@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.screens
+﻿package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -217,20 +217,22 @@ fun BrowseScreen(
             return@FadeThrough
         }
 
-        val firstContentRow = state.shelves.indexOfFirst { it.albums.isNotEmpty() || it.videos.isNotEmpty() }
+        // 浏览页不再承载任何 MV / 音乐视频入口：只保留有专辑内容的 shelf。
+        val shelves = state.shelves.filter { it.albums.isNotEmpty() }
+        val firstContentRow = shelves.indexOfFirst { it.albums.isNotEmpty() }
         LazyColumn(
             state = listState,
             // 见 NavViewport.kt：顶部导航条高度必须算在视口外，否则焦点行被压住。
             modifier = Modifier.fillMaxSize().navAwareViewport(),
             verticalArrangement = Arrangement.spacedBy(28.dp),
+            versionFooter = true,
         ) {
-            itemsIndexed(state.shelves, key = { _, item -> item.title }) { index, shelf ->
+            itemsIndexed(shelves, key = { _, item -> item.title }) { index, shelf ->
                 val firstRow = index == firstContentRow
                 Box(Modifier.returnToTabOnUp(if (firstRow) onReturnToTab else null)) {
                     when {
                         shelf.style == "spotlight" && shelf.albums.isNotEmpty() ->
                             SpotlightRow(com.veacon.veilmusic.i18n.AppLanguage.heading(shelf.title), shelf.albums, onAlbumClick, onPlaylistClick, onCuratorClick, playerVm)
-                        shelf.videos.isNotEmpty() -> BrowseVideoRow(com.veacon.veilmusic.i18n.AppLanguage.heading(shelf.title), shelf.videos, playerVm)
                         else -> BrowseRow(com.veacon.veilmusic.i18n.AppLanguage.heading(shelf.title), shelf.albums, onAlbumClick, onPlaylistClick, playerVm,
                             shelf.roomId, onSeeAll, onCuratorClick)
                     }
@@ -381,3 +383,5 @@ private fun SeeAllCard(size: Int, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
     }
 }
+
+

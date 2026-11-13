@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -29,7 +30,7 @@ import com.veacon.veilmusic.data.model.Album
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun AlbumCard(album: Album, size: Int = 130, onClick: () -> Unit, onLongClick: () -> Unit = {}, motionEnabled: Boolean = true, modifier: Modifier = Modifier) {
+fun AlbumCard(album: Album, size: Int = 130, onClick: () -> Unit, onLongClick: () -> Unit = {}, motionEnabled: Boolean = true, modifier: Modifier = Modifier, focusable: Boolean = true) {
     // Motion artwork (Playlists Made for You) plays while the card is focused — see MotionArtwork
     // for why it isn't five decoders at once.
     var focused by remember { mutableStateOf(false) }
@@ -42,6 +43,7 @@ fun AlbumCard(album: Album, size: Int = 130, onClick: () -> Unit, onLongClick: (
         onClick  = onClick,
         onLongClick = onLongClick,
         modifier = modifier.width(size.dp)
+            .focusProperties { canFocus = focusable }
             .onFocusChanged { focused = it.isFocused || it.hasFocus },
         // Use the original 8% focus enlargement plus 10% of that enlargement; no outline or shadow.
         scale = CardDefaults.scale(focusedScale = 1.088f, pressedScale = 0.96f),

@@ -1,4 +1,4 @@
-package com.veacon.veilmusic.ui.components
+﻿package com.veacon.veilmusic.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
@@ -18,7 +18,7 @@ import com.veacon.veilmusic.R
  * [ColorFilter], so the same asset works in any color. The app avoids emoji/text symbols for chrome
  * (they render inconsistently across Fire TV fonts and can't be tinted or scaled cleanly).
  */
-enum class Glyph { PLAY, PAUSE, SHUFFLE, REPEAT, REPEAT_ONE, PLUS, PLAY_NEXT, ARTIST, ALBUM, QUEUE, CHECK, NEXT, PREV, CLOSE, RADIO, MOON, LYRICS, STAR, BACK, GEAR, GEAR_BADGE, QUEUE_ADD, ADD_TO, MUSIC_NOTE, SPARKLES_TV, ELLIPSIS, SORT, SEARCH, FULLSCREEN }
+enum class Glyph { PLAY, PAUSE, SHUFFLE, REPEAT, REPEAT_ONE, PLUS, PLAY_NEXT, ARTIST, ALBUM, QUEUE, CHECK, NEXT, PREV, CLOSE, RADIO, MOON, LYRICS, STAR, BACK, GEAR, GEAR_BADGE, QUEUE_ADD, ADD_TO, MUSIC_NOTE, SPARKLES_TV, ELLIPSIS, SORT, SEARCH, FULLSCREEN, EDIT }
 
 @DrawableRes
 private fun Glyph.res(): Int = when (this) {
@@ -49,6 +49,7 @@ private fun Glyph.res(): Int = when (this) {
     Glyph.SPARKLES_TV -> R.drawable.ic_sparkles_tv
     Glyph.SEARCH -> R.drawable.ic_search
     Glyph.FULLSCREEN -> R.drawable.ic_fullscreen
+    Glyph.EDIT -> R.drawable.ic_pencil
     Glyph.SORT -> R.drawable.ic_sort
     Glyph.ELLIPSIS -> R.drawable.ic_ellipsis
 }
@@ -62,3 +63,5 @@ fun Icon(glyph: Glyph, size: Dp = 16.dp, color: Color = Color.White, modifier: M
         colorFilter = ColorFilter.tint(color),
     )
 }
+
+
