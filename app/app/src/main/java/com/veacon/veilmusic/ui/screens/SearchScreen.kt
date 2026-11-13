@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -69,10 +70,21 @@ fun SearchScreen(playerVm: PlayerViewModel, onAlbumClick: (String) -> Unit = {},
     var menuFromRemote by remember {mutableStateOf(false)}
     /** Set once the text field has really taken focus — see onFocusChanged below. */
     var hasFocused by remember { mutableStateOf(false) }
+    /** 上次拿到焦点的时间：刚聚焦时的瞬时失焦不算「用户离开了输入框」。 */
+    var focusedAt by remember { mutableStateOf(0L) }
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(editing) {
         // Only grab focus when the user opened the field. Re-running this after every
         // query change is what kept popping the keyboard back up while typing.
-        if (editing) runCatching { focusRequester.requestFocus() } else hasFocused = false
+        if (editing) {
+            // 输入框是「点开才组合」出来的：等一帧再抢焦点，否则部分设备上根本拿不到焦点。
+            withFrameNanos { }
+            runCatching { focusRequester.requestFocus() }
+            // 显式唤起输入法：TV 和部分 ROM 上，仅靠 requestFocus 不会自动弹键盘。
+            runCatching { keyboard?.show() }
+        } else {
+            hasFocused = false
+        }
     }
 
     val ctx = LocalContext.current
@@ -122,8 +134,17 @@ fun SearchScreen(playerVm: PlayerViewModel, onAlbumClick: (String) -> Unit = {},
                         // fires with isFocused=false on mount, before the
                         // FocusRequester runs, which closed the editor instantly.
                         .onFocusChanged {
-                            if (it.isFocused) hasFocused = true
-                            else if (hasFocused && editing) editing = false
+                            if (it.isFocused) {
+                                hasFocused = true
+                                focusedAt = android.os.SystemClock.elapsedRealtime()
+                                // 拿到焦点就唤起输入法（部分设备 / ROM 不会自动弹）。
+                                runCatching { keyboard?.show() }
+                            } else if (hasFocused && editing &&
+                                android.os.SystemClock.elapsedRealtime() - focusedAt > 400L) {
+                                // 只有真正的失焦才收起编辑器：输入法窗口弹出瞬间的失焦不算，
+                                // 否则编辑器会被撤掉 —— 表现就是「键盘刚弹出来又没了」。
+                                editing = false
+                            }
                         },
                     decorationBox = { inner ->
                         if (state.query.isEmpty()) Text(tr(R.string.msg_152), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)), fontSize = 18.sp)
