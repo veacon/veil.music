@@ -59,6 +59,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.veacon.veilmusic.ui.components.TopNavBar
 import com.veacon.veilmusic.ui.components.LocalMiniCapsuleInset
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.veacon.veilmusic.ui.components.LocalMiniCapsuleFocus
 import com.veacon.veilmusic.ui.components.MiniPlayerCapsule
 import androidx.compose.ui.draw.clipToBounds
@@ -410,6 +411,7 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
             LocalMiniCapsuleInset provides miniCapsuleInset,
             LocalMiniCapsuleFocus provides (if (miniCapsuleVisible) capsuleFocus else null),
         ) {
+        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
         NavHost(
             navController    = navController,
             startDestination = Screen.Home.route,
@@ -424,6 +426,20 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
 .contentFocusExitPolicy(isOnNowPlaying, browsingRoot, tabFocus.getValue(destinationTab),
     capsule = if (miniCapsuleVisible && contentHasFocus) capsuleFocus else null,
 )
+                // 内容区按「下」走到头时兜底落到迷你胶囊：先按常规向下移动焦点，
+                // 移不动说明已经到最底部 —— 直接把焦点交给胶囊。
+                // （之前只靠版本行 / contentFocusExitPolicy 的出口，多数页面到底后按不动。）
+                .onPreviewKeyEvent { e ->
+                    val isDown = e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                        e.key == androidx.compose.ui.input.key.Key.DirectionDown
+                    if (!isDown || !miniCapsuleVisible || isOnNowPlaying || !contentHasFocus) {
+                        false
+                    } else {
+                        val moved = focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                        if (!moved) runCatching { capsuleFocus.requestFocus() }
+                        true
+                    }
+                }
                 .onFocusChanged { contentHasFocus = it.hasFocus }
                 .focusGroup(),
         ) {
