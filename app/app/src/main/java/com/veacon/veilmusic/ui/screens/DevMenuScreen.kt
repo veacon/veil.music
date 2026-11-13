@@ -70,7 +70,9 @@ fun DevMenuScreen(
     val ctx = LocalContext.current
     // 实验室/开发者选项的展开状态持久化：切换界面后回来仍保持上次的开关。
     val devPrefs = remember(ctx) { ctx.getSharedPreferences("dev_menu_settings", android.content.Context.MODE_PRIVATE) }
-    var showDev by remember { mutableStateOf(devPrefs.getBoolean("show_dev", false)) }
+        var showDev by remember { mutableStateOf(devPrefs.getBoolean("show_dev", false)) }
+        // 「发现页」（新手引导页）的入口开关状态。
+        var guideAutoShow by remember { mutableStateOf(com.veacon.veilmusic.ui.guide.GuideState.autoShow(ctx)) }
     // 实验室功能与「开发者选项」同一套展开方式：默认收起，展开后才是各项实验开关。
     var showLab by remember { mutableStateOf(devPrefs.getBoolean("show_lab", false)) }
     // 播放设置整区默认折叠，展开后才显示各播放项（需求：设置项规整）。
@@ -398,6 +400,21 @@ fun DevMenuScreen(
                     }
                 }
                 SettingsSection(tr(R.string.msg_226)) { BugReportRow(state.webServerUrl) }
+                // 发现页（新手引导）管理：方便测试 —— 入口开关 + 重新观看，不用清应用数据。
+                SettingsSection(tx("发现页（新手引导）", "Discover page (guide)")) {
+                    Toggle(tx("自动弹出新手引导", "Auto-show the guide"), guideAutoShow, "") {
+                        val next = !guideAutoShow
+                        com.veacon.veilmusic.ui.guide.GuideState.setAutoShow(ctx, next)
+                        guideAutoShow = next
+                    }
+                    SettingDivider()
+                    ActionSettingRow(
+                        tx("重新观看新手引导", "Replay the onboarding guide"),
+                        tx("清掉完成标记并立刻重新打开", "Clear the flag and reopen it right away"),
+                    ) {
+                        com.veacon.veilmusic.ui.guide.GuideState.requestReplay(ctx)
+                    }
+                }
                 SettingsSection(tr(R.string.msg_227)) {
                     ActionSettingRow(tx("配置音源", "Configure sources"), tx("停用、删除内置音源", "Disable or delete built-in sources")) {
                         showSourceManager = true
@@ -763,8 +780,8 @@ internal fun StepBtn(symbol: String, onClick: () -> Unit, enabled: Boolean = tru
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-internal fun Toggle(label: String, on: Boolean, sub: String, enabled: Boolean = true, onToggle: () -> Unit) {
-    Surface(onClick = onToggle, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+internal fun Toggle(label: String, on: Boolean, sub: String, modifier: Modifier = Modifier, enabled: Boolean = true, onToggle: () -> Unit) {
+    Surface(onClick = onToggle, enabled = enabled, modifier = modifier.fillMaxWidth(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),

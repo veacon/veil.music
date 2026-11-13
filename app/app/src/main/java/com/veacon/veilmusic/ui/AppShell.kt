@@ -910,18 +910,25 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         // 新手引导：首次安装 / 版本升级后的第一次启动自动弹出，盖在最上层。
         // 若用户正在「重播设置」流程（语言等），等它结束再进引导 —— 先语言后引导。
         // 完成后写入 guide_prefs 的版本号，之后不再自动弹出。
-        val guideVm: com.veacon.veilmusic.ui.viewmodel.DevMenuViewModel = hiltViewModel()
-        var showGuide by remember { mutableStateOf(false) }
-        LaunchedEffect(showOnboarding) {
-            if (!showOnboarding && !com.veacon.veilmusic.ui.guide.GuideState.completed(appContext)) showGuide = true
-        }
+          val guideVm: com.veacon.veilmusic.ui.viewmodel.DevMenuViewModel = hiltViewModel()
+          var showGuide by remember { mutableStateOf(false) }
+          LaunchedEffect(showOnboarding) {
+              if (!showOnboarding && !com.veacon.veilmusic.ui.guide.GuideState.completed(appContext)) showGuide = true
+          }
+          // 开发者选项点「重新观看新手引导」时立刻重新弹出（同进程内）。
+          val guideReplay by com.veacon.veilmusic.ui.guide.GuideState.replayRequests.collectAsState()
+          LaunchedEffect(guideReplay) {
+              if (guideReplay > 0L) showGuide = true
+          }
         if (showGuide) {
-            com.veacon.veilmusic.ui.guide.GuideScreen(
-                playerVm = playerVm,
-                settingsVm = guideVm,
-                onDone = { showGuide = false },
-                modifier = Modifier.fillMaxSize(),
-            )
+              com.veacon.veilmusic.ui.guide.GuideScreen(
+                  playerVm = playerVm,
+                  settingsVm = guideVm,
+                  homeVm = homeVm,
+                  navVm = navVm,
+                  onDone = { showGuide = false },
+                  modifier = Modifier.fillMaxSize(),
+              )
         }
 
     }
