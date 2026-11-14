@@ -1,4 +1,4 @@
-﻿package com.veacon.veilmusic.ui.components
+package com.veacon.veilmusic.ui.components
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -39,6 +39,12 @@ val LocalMiniCapsuleInset = compositionLocalOf { 0.dp }
  * 的下边界出口；胶囊没开时调用方应把 Down 吞掉停在原地，不要让焦点乱跳。
  */
 val LocalMiniCapsuleFocus = compositionLocalOf<androidx.compose.ui.focus.FocusRequester?> { null }
+
+/**
+ * 版本行自己的焦点入口：内容区走到最底时先落到它（[AppVersionFooter] 挂上这个 requester），
+ * 再由版本行的 down 交给迷你胶囊 —— 让「内容→版本行→胶囊」这条链路真正成立。
+ */
+val LocalVersionFooterFocus = compositionLocalOf<androidx.compose.ui.focus.FocusRequester?> { null }
 
 /**
  * 把顶部导航占用的高度放进「接口」而不是「内容」里。

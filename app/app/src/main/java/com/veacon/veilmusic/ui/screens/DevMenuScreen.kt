@@ -78,7 +78,11 @@ fun DevMenuScreen(
     // 播放设置整区默认折叠，展开后才显示各播放项（需求：设置项规整）。
     var showPlayback by remember { mutableStateOf(devPrefs.getBoolean("show_playback", false)) }
     // 界面设置、应用设置像「开发者选项」一样由一个开关控制展开。
-    var showUiSettings by remember { mutableStateOf(devPrefs.getBoolean("show_ui_settings", false)) }
+        var showUiSettings by remember { mutableStateOf(devPrefs.getBoolean("show_ui_settings", false)) }
+        // 定时切换深浅色：开关 + 深色时段起止小时（0–23）。
+        var autoDark by remember { mutableStateOf(com.veacon.veilmusic.data.AppearanceSchedule.enabled(ctx)) }
+        var autoDarkStart by remember { mutableStateOf(com.veacon.veilmusic.data.AppearanceSchedule.startMin(ctx)) }
+        var autoDarkEnd by remember { mutableStateOf(com.veacon.veilmusic.data.AppearanceSchedule.endMin(ctx)) }
     var showAppSettings by remember { mutableStateOf(devPrefs.getBoolean("show_app_settings", false)) }
     var confirmReset by remember { mutableStateOf(false) }
     var showSourceManager by remember { mutableStateOf(false) }
@@ -135,6 +139,44 @@ fun DevMenuScreen(
                         { com.veacon.veilmusic.ui.theme.AppPalette.setDark(ctx, false) },
                         { com.veacon.veilmusic.ui.theme.AppPalette.setDark(ctx, true) },
                         decEnabled = dark, incEnabled = !dark)
+                    SettingDivider()
+                    // 定时切换深浅色：开启后按设定的起止小时自动切换（跨零点也正确）。
+                    Toggle(tx("定时切换深浅色", "Scheduled dark mode"), autoDark,
+                        tx("在设定时段自动切到深色，其余时间用浅色", "Go dark during the set hours")) {
+                        val next = !autoDark
+                        com.veacon.veilmusic.data.AppearanceSchedule.setEnabled(ctx, next)
+                        autoDark = next
+                        // 开关一拨立刻生效一次，不用等下一分钟轮询。
+                        com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                    }
+                    if (autoDark) {
+                        SettingDivider()
+                        Stepper(tx("深色开始", "Dark from"), com.veacon.veilmusic.data.AppearanceSchedule.label(autoDarkStart),
+                            tx("按半小时调整，跨零点也正确", "Half-hour steps; across midnight works too"),
+                            {
+                                autoDarkStart = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkStart, -1)
+                                com.veacon.veilmusic.data.AppearanceSchedule.setStartMin(ctx, autoDarkStart)
+                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                            },
+                            {
+                                autoDarkStart = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkStart, 1)
+                                com.veacon.veilmusic.data.AppearanceSchedule.setStartMin(ctx, autoDarkStart)
+                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                            })
+                        SettingDivider()
+                        Stepper(tx("深色结束", "Dark until"), com.veacon.veilmusic.data.AppearanceSchedule.label(autoDarkEnd),
+                            tx("到点自动切回浅色", "Switch back to light at this time"),
+                            {
+                                autoDarkEnd = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkEnd, -1)
+                                com.veacon.veilmusic.data.AppearanceSchedule.setEndMin(ctx, autoDarkEnd)
+                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                            },
+                            {
+                                autoDarkEnd = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkEnd, 1)
+                                com.veacon.veilmusic.data.AppearanceSchedule.setEndMin(ctx, autoDarkEnd)
+                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                            })
+                    }
                     SettingDivider()
                     Stepper(tr(R.string.msg_198), pstate.fluidQuality.label, tr(R.string.msg_199),
                         { playerVm.stepFluidQuality(-1) }, { playerVm.stepFluidQuality(1) })

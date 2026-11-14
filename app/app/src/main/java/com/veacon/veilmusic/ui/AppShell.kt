@@ -1,4 +1,4 @@
-﻿package com.veacon.veilmusic.ui
+package com.veacon.veilmusic.ui
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -61,6 +61,7 @@ import com.veacon.veilmusic.ui.components.TopNavBar
 import com.veacon.veilmusic.ui.components.LocalMiniCapsuleInset
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.veacon.veilmusic.ui.components.LocalMiniCapsuleFocus
+import com.veacon.veilmusic.ui.components.LocalVersionFooterFocus
 import com.veacon.veilmusic.ui.components.MiniPlayerCapsule
 import androidx.compose.ui.draw.clipToBounds
 import com.veacon.veilmusic.ui.navigation.BrowsingPageMotion
@@ -407,9 +408,11 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         // 只把「胶囊高度」通过 CompositionLocal 下发，让各页把可滚动内容的
         // 底部内边距加出来 —— 既不会露出割裂的一条空白带，最后一行也能滚到胶囊上方。
         // 同时下发胶囊的焦点入口：资料库侧栏走到「艺人」按 Down 时直接落到胶囊。
+        val versionFooterFocus = remember { FocusRequester() }
         CompositionLocalProvider(
             LocalMiniCapsuleInset provides miniCapsuleInset,
             LocalMiniCapsuleFocus provides (if (miniCapsuleVisible) capsuleFocus else null),
+            LocalVersionFooterFocus provides versionFooterFocus,
         ) {
         val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
         NavHost(
@@ -424,6 +427,7 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 .clipToBounds()
                 .focusRequester(contentFocus)
 .contentFocusExitPolicy(isOnNowPlaying, browsingRoot, tabFocus.getValue(destinationTab),
+    footer = versionFooterFocus,
     capsule = if (miniCapsuleVisible && contentHasFocus) capsuleFocus else null,
 )
                 // 内容区按「下」走到头时兜底落到迷你胶囊：先按常规向下移动焦点，
@@ -933,6 +937,13 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
           }
           // 开发者选项点「重新观看新手引导」时立刻重新弹出（同进程内）。
           val guideReplay by com.veacon.veilmusic.ui.guide.GuideState.replayRequests.collectAsState()
+          // 定时切换深浅色：每分钟检查一次（纯 prefs 读取，开销可忽略），到点自动切。
+          LaunchedEffect(Unit) {
+              while (true) {
+                  runCatching { com.veacon.veilmusic.data.AppearanceSchedule.apply(appContext) }
+                  kotlinx.coroutines.delay(60_000)
+              }
+          }
           LaunchedEffect(guideReplay) {
               if (guideReplay > 0L) showGuide = true
           }
@@ -940,8 +951,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
               com.veacon.veilmusic.ui.guide.GuideScreen(
                   playerVm = playerVm,
                   settingsVm = guideVm,
-                  homeVm = homeVm,
-                  navVm = navVm,
                   onDone = { showGuide = false },
                   modifier = Modifier.fillMaxSize(),
               )

@@ -1,6 +1,12 @@
 package com.veacon.veilmusic.ui.guide
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
@@ -11,6 +17,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,15 +25,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,36 +43,39 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Glow
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
 import com.veacon.veilmusic.R
 import com.veacon.veilmusic.data.AudioQuality
 import com.veacon.veilmusic.data.CrossfadePreferences
-import com.veacon.veilmusic.data.DecoderMode
+
 import com.veacon.veilmusic.i18n.AppLanguage
 import com.veacon.veilmusic.i18n.tr
+import com.veacon.veilmusic.ui.components.AlbumCard
 import com.veacon.veilmusic.ui.components.MiniPlayerCapsule
 import com.veacon.veilmusic.ui.components.TopNavBar
+import com.veacon.veilmusic.ui.components.artworkCorners
 import com.veacon.veilmusic.ui.navigation.TopNavTab
-import com.veacon.veilmusic.ui.screens.HomeScreen
-import com.veacon.veilmusic.ui.screens.NowPlayingScreen
+import com.veacon.veilmusic.ui.screens.LyricLineRow
 import com.veacon.veilmusic.ui.screens.SettingDivider
 import com.veacon.veilmusic.ui.screens.SettingsSection
 import com.veacon.veilmusic.ui.screens.Stepper
@@ -72,51 +83,61 @@ import com.veacon.veilmusic.ui.screens.Toggle
 import com.veacon.veilmusic.ui.theme.AppPalette
 import com.veacon.veilmusic.ui.viewmodel.DevMenuState
 import com.veacon.veilmusic.ui.viewmodel.DevMenuViewModel
-import com.veacon.veilmusic.ui.viewmodel.HomeViewModel
-import com.veacon.veilmusic.ui.viewmodel.NavigationViewModel
 import com.veacon.veilmusic.ui.viewmodel.PlayerState
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
+import kotlinx.coroutines.delay
 
 /** 引导页设置文案与设置页同款逻辑：英文界面用英文，其余用中文。 */
 private fun tx(zh: String, en: String) = if (AppLanguage.code == "en") en else zh
 
-/** 电视壳子的机身色 / 外缘高光色（深浅主题共用，模拟屏幕外的塑料边框）。 */
+/** 电视壳子的机身色 / 外缘高光色。 */
 private val BezelBody = Color(0xFF101014)
 private val BezelEdge = Color(0xFF2E2E36)
 
 /**
- * **新手引导页** —— 左右分屏：左侧 60% 电视预览区，右侧 40% 控制台。
+ * **新手引导页** —— 左右分屏：左侧 60% 预览区，右侧 40% 控制台。
  *
- * - **左侧**：把真实的 [NowPlayingScreen]（第 1 页）/ [HomeScreen] + [TopNavBar] +
- *   [MiniPlayerCapsule]（第 2 页）**按 16:9 缩放**塞进一个"电视壳子"里居中展示；
- *   壳子以外的留白与右侧控制台同底色（页面背景），不会出现刺眼的色块拼接。
- * - **左侧完全冻结**：整块 `focusProperties { canFocus = false }` + 吞掉全部按键与触摸；
- *   万一被真实屏幕内部的 FocusRequester 抢走焦点，focus jail 会立刻弹回右侧。
- * - **右侧完全对齐设置页**：同款页面标题（32sp Bold）/ 副标题 / [SettingsSection] 分区卡片
- *   （同底色 + 14dp 圆角）/ [Toggle] · [Stepper] 行（≥84dp 行高，控件右对齐）。
+ * 性能原则（重要）：预览区**只复用真实组件**（[LyricLineRow] / [MiniPlayerCapsule] /
+ * [AlbumCard] / [artworkCorners]）+ 内置演示数据，**不挂载整页** [com.veacon.veilmusic.ui.screens.NowPlayingScreen]
+ * 或 [com.veacon.veilmusic.ui.screens.HomeScreen] —— 后者会让整棵 UI 树在 AppShell 里被组合两遍，
+ * 两套歌词滚动 / 动画 / 焦点逻辑同时跑，全 App 掉帧。
  *
- * 页面：0 = 播放与界面设置（左：播放页）；1 = 实验性功能（左：首页）。
+ * - 预览区完全冻结：不可聚焦、吞掉全部按键与触摸；
+ * - 焦点只锁在右侧设置卡片与右下角翻页按钮之间；
+ * - 右侧设置项就是**真实设置**，拨动立即生效（下次进真实页面自然一致）。
+ *
+ * 页面：0 = 播放与界面设置（预览播放页）；1 = 实验性功能（预览首页）。
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun GuideScreen(
     playerVm: PlayerViewModel,
     settingsVm: DevMenuViewModel,
-    homeVm: HomeViewModel,
-    navVm: NavigationViewModel,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
-    guideVm: GuideViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val pstate by playerVm.state.collectAsState()
     val vmState by settingsVm.state.collectAsState()
     val wordByWordLyrics by settingsVm.wordByWordLyrics.collectAsState()
 
-    // 页面：0=播放与界面设置（左侧播放页）1=实验性功能（左侧首页）
     var page by rememberSaveable { mutableIntStateOf(0) }
 
-    // 切页后焦点重置到当前页第一个设置项（进入引导页时同样生效）。
+    // 预览用的模拟进度：20fps 足够驱动歌词扫光（比逐帧省一大截），
+    // 且随引导页离开组合而自动取消，不会在后台空转。
+    var previewProgressMs by remember { mutableLongStateOf(GuideDemoData.LOOP_START_MS) }
+    LaunchedEffect(Unit) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        val loop = GuideDemoData.LOOP_DURATION_MS.coerceAtLeast(1L)
+        while (true) {
+            previewProgressMs = GuideDemoData.LOOP_START_MS +
+                ((android.os.SystemClock.elapsedRealtime() - started) % loop)
+            delay(50)
+        }
+    }
+    val progress: () -> Long = { previewProgressMs }
+
+    // 切页后焦点重置到当前页第一个设置项。
     val firstItemFocus = remember { FocusRequester() }
     LaunchedEffect(page) {
         withFrameNanos { }
@@ -126,35 +147,14 @@ fun GuideScreen(
     // 引导中吞掉返回键：防止误触退出导致引导半途而废。
     BackHandler(enabled = true) { }
 
-    // 进入引导页自动播放演示曲目《爱人错过》：让左侧真实播放页不是空态。
-    // 已有曲目在播时不打断 —— 只有当前没有歌的时候才接管。
-    LaunchedEffect(Unit) {
-        if (playerVm.state.value.currentSong != null) return@LaunchedEffect
-        guideVm.demoSong()?.let { playerVm.playSong(it) }
-    }
-
-    // focus jail：左侧真实屏幕自带 FocusRequester，可能把光标抢进预览区。
-    // 一旦发现焦点落到左侧，立刻弹回右侧第一个设置项 —— 保证"焦点只锁在右侧"。
-    var leftStoleFocus by remember { mutableStateOf(false) }
-    LaunchedEffect(leftStoleFocus) {
-        if (leftStoleFocus) {
-            leftStoleFocus = false
-            runCatching { firstItemFocus.requestFocus() }
-        }
-    }
-
     Row(modifier.fillMaxSize().background(AppPalette.background)) {
-        // ─────────── 左侧 60%：16:9 电视预览（完全冻结） ───────────
+        // ─────────── 左侧 60%：预览（完全冻结） ───────────
         Box(
             Modifier
                 .weight(0.6f)
                 .fillMaxHeight()
-                .clipToBounds()
                 .focusProperties { canFocus = false }
-                .onFocusChanged { if (it.hasFocus) leftStoleFocus = true }
-                // 预览（preview）阶段吞掉全部按键：方向键不会在预览区里移动/触发任何控件。
                 .onPreviewKeyEvent { true }
-                // 吞掉触摸：真实屏幕的 onClick 不会被点到。
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -166,14 +166,8 @@ fun GuideScreen(
             contentAlignment = Alignment.Center,
         ) {
             TvFrame(Modifier.fillMaxSize().padding(20.dp)) {
-                when (page) {
-                    0 -> NowPlayingScreen(
-                        playerVm = playerVm,
-                        navVm = navVm,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    else -> HomePreview(playerVm, homeVm, pstate, Modifier.fillMaxSize())
-                }
+                if (page == 0) PlayerPreview(pstate, wordByWordLyrics, progress, Modifier.fillMaxSize())
+                else HomePreview(playerVm, pstate, progress, Modifier.fillMaxSize())
             }
         }
 
@@ -182,72 +176,63 @@ fun GuideScreen(
             Modifier.weight(0.4f).fillMaxHeight()
                 .padding(start = 20.dp, end = 34.dp, top = 36.dp, bottom = 20.dp),
         ) {
-            // 页面标题：与设置页同款字号与颜色。
             Text(
                 if (page == 0) tx("播放与界面设置", "Playback & appearance") else tx("实验性功能", "Experimental"),
                 fontSize = 32.sp, fontWeight = FontWeight.Bold, color = AppPalette.primary,
             )
             Text(
                 tx("左侧预览区不可操作，只会跟着这里的开关变化。",
-                   "The TV preview is frozen — it only follows the switches below."),
-                fontSize = 13.sp,
-                color = AppPalette.secondary,
+                   "The preview is frozen — it only follows the switches below."),
+                fontSize = 13.sp, color = AppPalette.secondary,
                 modifier = Modifier.padding(top = 6.dp, bottom = 24.dp),
             )
 
-            // 设置项可滚动；翻页按钮固定在下方，永远看得见、点得到（触摸 / 遥控器都行）。
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()),
             ) {
                 Column(Modifier.fillMaxWidth().focusGroup(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     if (page == 0) {
-                    // 第 1 页：5 项，单列。
-                    SettingsSection(tx("播放与界面", "Playback & interface")) {
-                        Toggle(tr(R.string.msg_202), pstate.motionArtworkEnabled, "",
-                            modifier = Modifier.focusRequester(firstItemFocus),
-                            onToggle = { playerVm.toggleMotionArtwork() })
-                        SettingDivider()
-                        Toggle(tr(R.string.msg_204), pstate.artworkRounded, "",
-                            onToggle = { playerVm.toggleArtworkRounded() })
-                        SettingDivider()
-                        QualityItem(vmState,
-                            onDec = { settingsVm.stepAudioQuality(-1) },
-                            onInc = { settingsVm.stepAudioQuality(1) })
-                        SettingDivider()
-                        DecoderItem(pstate,
-                            onDec = { playerVm.setDecoderMode(DecoderMode.SOFTWARE) },
-                            onInc = { playerVm.setDecoderMode(DecoderMode.HARDWARE) })
-                        SettingDivider()
-                        Toggle(tr(R.string.msg_335), wordByWordLyrics, "",
-                            onToggle = { settingsVm.setWordByWordLyrics(!wordByWordLyrics) })
+                        SettingsSection(tx("播放与界面", "Playback & interface")) {
+                            Toggle(tr(R.string.msg_202), pstate.motionArtworkEnabled, "",
+                                modifier = Modifier.focusRequester(firstItemFocus),
+                                onToggle = { playerVm.toggleMotionArtwork() })
+                            SettingDivider()
+                            Toggle(tr(R.string.msg_204), pstate.artworkRounded, "",
+                                onToggle = { playerVm.toggleArtworkRounded() })
+                            SettingDivider()
+                            QualityItem(vmState,
+                                onDec = { settingsVm.stepAudioQuality(-1) },
+                                onInc = { settingsVm.stepAudioQuality(1) })
+                            SettingDivider()
+                            Toggle(tr(R.string.msg_335), wordByWordLyrics, "",
+                                onToggle = { settingsVm.setWordByWordLyrics(!wordByWordLyrics) })
+                        }
+                    } else {
+                        SettingsSection(tx("实验性功能", "Experimental")) {
+                            CrossfadeItem(vmState,
+                                onDec = { settingsVm.setCrossfade(CrossfadePreferences.step(vmState.crossfadeMs, -1)) },
+                                onInc = { settingsVm.setCrossfade(CrossfadePreferences.step(vmState.crossfadeMs, 1)) },
+                                modifier = Modifier.focusRequester(firstItemFocus))
+                            SettingDivider()
+                            Toggle(tr(R.string.msg_351), pstate.navTitleAsSong, "",
+                                onToggle = { playerVm.setNavTitleAsSong(!pstate.navTitleAsSong) })
+                            SettingDivider()
+                            Toggle(tx("迷你播放胶囊", "Mini player capsule"), pstate.miniCapsuleEnabled, "",
+                                onToggle = { playerVm.setMiniCapsuleEnabled(!pstate.miniCapsuleEnabled) })
+                        }
+                        Text(
+                            tx("实验性功能可能会不稳定和使用出现问题，按需开启",
+                               "Experimental features can be unstable — enable only if you need them."),
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AppPalette.accent,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
                     }
-                } else {
-                    // 第 2 页：3 项，单列。
-                    SettingsSection(tx("实验性功能", "Experimental")) {
-                        CrossfadeItem(vmState,
-                            onDec = { settingsVm.setCrossfade(CrossfadePreferences.step(vmState.crossfadeMs, -1)) },
-                            onInc = { settingsVm.setCrossfade(CrossfadePreferences.step(vmState.crossfadeMs, 1)) },
-                            modifier = Modifier.focusRequester(firstItemFocus))
-                        SettingDivider()
-                        Toggle(tr(R.string.msg_351), pstate.navTitleAsSong, "",
-                            onToggle = { playerVm.setNavTitleAsSong(!pstate.navTitleAsSong) })
-                        SettingDivider()
-                        Toggle(tx("迷你播放胶囊", "Mini player capsule"), pstate.miniCapsuleEnabled, "",
-                            onToggle = { playerVm.setMiniCapsuleEnabled(!pstate.miniCapsuleEnabled) })
-                    }
-                    Text(
-                        tx("实验性功能可能会不稳定和使用出现问题，按需开启",
-                           "Experimental features can be unstable — enable only if you need them."),
-                        fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AppPalette.accent,
-                        modifier = Modifier.padding(start = 4.dp),
-                    )
                 }
             }
-            }
 
-            // 翻页按钮：唯一的切页入口（方向键永远切不了页）。
+            // 翻页按钮：固定在右下角，永远可见（触摸与遥控器都能用）。
             Row(
-                Modifier.fillMaxWidth().padding(top = 26.dp),
+                Modifier.fillMaxWidth().padding(top = 18.dp),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -263,75 +248,159 @@ fun GuideScreen(
     }
 }
 
-// ─────────────────── 左侧：电视壳子（16:9 居中） ───────────────────
+// ─────────────────── 电视壳子（16:9，两层，扁平） ───────────────────
 
 /**
- * 把 [content] 按 **16:9** 等比缩放进一个居中的"电视壳子"里：
- * 先按真实电视上的布局尺寸（1080p / density 2 ≈ 960×540dp）排版，再用 [graphicsLayer]
- * 整体缩小，这样预览与真机是**同一套比例**，而不是在小盒子里重新排版（后者会让控件显得巨大）。
- * 壳子之外由调用方保持页面底色，所以留白与右侧控制台同色。
+ * 把 [content] 放进一个居中的 16:9「电视壳子」。
+ * 只有两层：机身（圆角 + 描边 + 内边距即边框厚度）→ 内容（一次圆角裁切），
+ * 避免多层 clip 造成离屏合成开销。
  */
 @Composable
 private fun TvFrame(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val bezel = 14.dp
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-        // 可用区域内能放下的最大 16:9 屏幕；真实界面直接按 16:9 自适应铺满（不做等比缩放）。
         val innerWidth = minOf(maxWidth - bezel * 2, (maxHeight - bezel * 2) * 16f / 9f)
         val innerHeight = innerWidth * 9f / 16f
         Box(
             Modifier
                 .size(innerWidth + bezel * 2, innerHeight + bezel * 2)
-                // 机身
                 .clip(RoundedCornerShape(22.dp))
                 .background(BezelBody)
                 .border(2.dp, BezelEdge, RoundedCornerShape(22.dp))
-                .padding(bezel),
+                .padding(bezel)
+                .clip(RoundedCornerShape(10.dp)),
+            content = { content() },
+        )
+    }
+}
+
+// ─────────────────── 预览区：播放页 ───────────────────
+
+/** 播放页预览：左列封面（Ken Burns + 圆角联动）+ 右列真实歌词组件（逐字扫光联动）。 */
+@Composable
+private fun PlayerPreview(
+    pstate: PlayerState,
+    wordByWord: Boolean,
+    progress: () -> Long,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 22.dp),
+        horizontalArrangement = Arrangement.spacedBy(44.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            Modifier.weight(0.4f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)).clipToBounds()) { content() }
+            val radius = if (pstate.artworkRounded) 10.dp else 0.dp
+            Box(
+                Modifier.weight(1f)
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                    .artworkCorners(radius, pstate.renderCompat)
+                    .background(Color(0xFF181818)),
+            ) {
+                // Ken Burns：动态封面开启时 1.0→1.1 缓慢往复缩放，关闭时静止。
+                val kb = rememberInfiniteTransition(label = "guideKenBurns")
+                val kbScale by kb.animateFloat(
+                    initialValue = 1f, targetValue = 1.1f,
+                    animationSpec = infiniteRepeatable(tween(5200, easing = LinearEasing), RepeatMode.Reverse),
+                    label = "guideKenBurnsScale",
+                )
+                AsyncImage(
+                    model = GuideDemoData.COVER_URI,
+                    contentDescription = GuideDemoData.song.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        val s = if (pstate.motionArtworkEnabled && !pstate.lowPowerMode) kbScale else 1f
+                        scaleX = s; scaleY = s
+                        transformOrigin = TransformOrigin.Center
+                    },
+                )
+            }
+            Text(GuideDemoData.song.title, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                color = AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+            Text(GuideDemoData.song.artistName, fontSize = 14.sp,
+                color = AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+        }
+
+        // 右：真实歌词组件（逐字扫光由模拟进度驱动；字形跟随简繁设置）。
+        val lyrics = GuideDemoData.lyrics(pstate.lyricsScript)
+        val progressMs = progress()
+        val activeIdx = lyrics.indexOfLast { it.startMs <= progressMs }
+        Column(
+            Modifier.weight(0.6f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val from = (activeIdx - 2).coerceAtLeast(0)
+            val to = (activeIdx + 2).coerceAtMost(lyrics.lastIndex)
+            for (i in from..to) {
+                LyricLineRow(
+                    line = lyrics[i],
+                    isActive = i == activeIdx,
+                    isPast = i < activeIdx,
+                    progress = progress,
+                    onSeek = { },
+                    wordByWord = wordByWord,
+                    fontScale = 0.85f,
+                    focusable = false,
+                )
+            }
         }
     }
 }
 
-// ─────────────────── 左侧第 2 页：真实首页（顶栏 + 首页 + 胶囊） ───────────────────
+// ─────────────────── 预览区：首页 ───────────────────
 
-/**
- * 首页预览：按 AppShell 的层级原样拼装**真实**组件 —— 顶栏 [TopNavBar] + 首页 [HomeScreen]
- * + 底部 [MiniPlayerCapsule]，全部使用真实数据。
- *
- * 因此「顶部歌名」开关（`navTitleAsSong`）与「迷你胶囊」开关（`miniCapsuleEnabled`）
- * 一关，画面上对应的元素就**彻底消失**。
- */
+/** 首页预览：顶部歌名条（开关联动）+ 真实专辑卡流 + 真实迷你胶囊（开关关闭则整条不组合）。 */
 @Composable
 private fun HomePreview(
     playerVm: PlayerViewModel,
-    homeVm: HomeViewModel,
     pstate: PlayerState,
+    progress: () -> Long,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier) {
-        Column(Modifier.fillMaxSize()) {
-            // 顶栏：不可聚焦（focusEnabled=false），仍是真实组件与真实歌名逻辑。
+    Box(modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(top = 20.dp, bottom = 96.dp)) {
+            // 顶栏直接用**真实 TopNavBar**（不可聚焦）：页签、头像、位置全部与真实界面一致。
+            // 「顶部栏显示歌名」开启时，最左侧的「正在播放」胶囊替换成当前歌名 —— 只显示歌名，
+            // 不带歌手（与真实顶栏行为完全相同）。
             TopNavBar(
                 selected = TopNavTab.ListenNow,
                 onSelect = { },
-                isPlaying = pstate.isPlaying,
-                beatAnalyzer = playerVm.beatAnalyzer,
-                nowPlayingTitle = if (pstate.navTitleAsSong) pstate.currentSong?.title else null,
+                isPlaying = true,
+                nowPlayingTitle = if (pstate.navTitleAsSong) "爱人错过" else null,
                 focusEnabled = false,
             )
-            HomeScreen(
-                playerVm = playerVm,
-                vm = homeVm,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Spacer(Modifier.height(18.dp))
+            Row(
+                Modifier.fillMaxWidth().weight(1f).padding(horizontal = 56.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(3) {
+                    AlbumCard(
+                        album = GuideDemoData.album,
+                        size = 170,
+                        onClick = { },
+                        motionEnabled = false,
+                        focusable = false,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
-        // 底部真实迷你胶囊：开关关闭就整条不组合。
+
+        // 底部悬浮真实胶囊（预览模式：假歌 + 模拟进度）。开关关掉 → 整条不组合。
         if (pstate.miniCapsuleEnabled) {
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp)) {
+            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
                 MiniPlayerCapsule(
                     playerVm = playerVm,
                     onOpen = { },
                     onOpenQueue = { },
+                    previewSong = GuideDemoData.song,
+                    previewProgressMs = progress(),
                     heightPct = pstate.miniCapsuleHeightPct,
                     widthPct = pstate.miniCapsuleWidthPct,
                     albumTint = pstate.miniCapsuleAlbumTint,
@@ -342,7 +411,7 @@ private fun HomePreview(
     }
 }
 
-// ─────────────────── 设置项（文案与设置页强绑定，只留标题） ───────────────────
+// ─────────────────── 设置项（复用设置页组件与文案） ───────────────────
 
 /** 音质（与设置页同一份枚举与步进）。 */
 @Composable
@@ -355,7 +424,7 @@ private fun QualityItem(
     val quality = vmState.audioQuality
     Stepper(
         tx("音质", "Audio quality"),
-        tx(quality.label, quality.label),
+        quality.label,
         "",
         onDec, onInc,
         decEnabled = quality.ordinal > 0,
@@ -364,18 +433,6 @@ private fun QualityItem(
     )
 }
 
-/** 解码方式：硬解 / 软解。 */
-@Composable
-private fun DecoderItem(pstate: PlayerState, onDec: () -> Unit, onInc: () -> Unit) {
-    val hw = pstate.decoderMode == DecoderMode.HARDWARE
-    Stepper(
-        tx("解码方式", "Audio decoder"),
-        if (hw) tx("硬解", "Hardware") else tx("软解", "Software"),
-        "",
-        onDec, onInc,
-        decEnabled = hw, incEnabled = !hw,
-    )
-}
 
 /** 交叉渐变。 */
 @Composable
@@ -394,13 +451,11 @@ private fun CrossfadeItem(
     )
 }
 
-// ─────────────────── 翻页按钮 ───────────────────
+// ─────────────────── 翻页按钮（遥控器 + 触摸） ───────────────────
 
 /**
- * 圆角胶囊翻页钮：与设置页同配色语言（聚焦变红）。
- *
- * 电视端的 [Surface] 只认遥控器 OK，触摸点不动 —— 这里显式补一个 [detectTapGestures]，
- * 并用 350ms 去抖，避免"触摸 + OK"重复触发导致一次跳两页。
+ * 圆角胶囊翻页钮。电视端 [Surface] 只认遥控器 OK，这里显式补触摸点击，
+ * 并用 350ms 去抖避免「触摸 + OK」重复触发导致一次跳两页。
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -429,6 +484,7 @@ private fun GuidePageButton(label: String, onClick: () -> Unit) {
             label,
             fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
             color = AppPalette.adaptive(Color(0xFF1D1D1F), Color.White),
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 26.dp, vertical = 11.dp),
         )
     }

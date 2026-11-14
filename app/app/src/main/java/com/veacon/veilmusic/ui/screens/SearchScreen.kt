@@ -135,10 +135,13 @@ fun SearchScreen(playerVm: PlayerViewModel, onAlbumClick: (String) -> Unit = {},
                         // FocusRequester runs, which closed the editor instantly.
                         .onFocusChanged {
                             if (it.isFocused) {
-                                hasFocused = true
                                 focusedAt = android.os.SystemClock.elapsedRealtime()
-                                // 拿到焦点就唤起输入法（部分设备 / ROM 不会自动弹）。
-                                runCatching { keyboard?.show() }
+                                // 只在「第一次」拿到焦点时唤起输入法：避免每次焦点抖动都在
+                                // 焦点回调里触发 IME → 窗口 insets 变化 → 整棵树重新布局。
+                                if (!hasFocused) {
+                                    hasFocused = true
+                                    runCatching { keyboard?.show() }
+                                }
                             } else if (hasFocused && editing &&
                                 android.os.SystemClock.elapsedRealtime() - focusedAt > 400L) {
                                 // 只有真正的失焦才收起编辑器：输入法窗口弹出瞬间的失焦不算，

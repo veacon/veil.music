@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -39,9 +40,11 @@ import com.veacon.veilmusic.ui.theme.AppPalette
 fun AppVersionFooter(modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     val capsuleFocus = LocalMiniCapsuleFocus.current
+    val footerFocus = LocalVersionFooterFocus.current
     Box(
         modifier
             .fillMaxWidth()
+            .then(if (footerFocus != null) Modifier.focusRequester(footerFocus) else Modifier)
             .focusable()
             .focusProperties {
                 down = capsuleFocus ?: FocusRequester.Cancel
