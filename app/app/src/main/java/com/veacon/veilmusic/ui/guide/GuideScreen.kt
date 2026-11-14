@@ -145,9 +145,10 @@ fun GuideScreen(
         runCatching { firstItemFocus.requestFocus() }
     }
 
-    // 焦点狱：预览区里的真实控件（迷你胶囊的按钮等）本身可聚焦，一旦光标被吸进左侧，
-    // 立刻收回到右侧第一个设置项 —— 光标只允许在「右侧设置项 ↔ 右下角翻页按钮」之间移动。
-    var consoleFocused by remember { mutableStateOf(false) }
+    // 焦点狱：只针对**左侧预览区**。预览里的真实控件（迷你胶囊的按钮）本身可聚焦，
+    // 光标一旦被吸进左边，就立刻收回右侧第一个设置项。
+    // 注意：绝不能写成"只要不在控制台就弹回" —— 那样从设置项往下走到翻页按钮的瞬间也会被误判，
+    // 结果就是永远到不了「下一页」。
     var jailed by remember { mutableStateOf(false) }
     LaunchedEffect(jailed) {
         if (jailed) {
@@ -161,11 +162,10 @@ fun GuideScreen(
     BackHandler(enabled = true) { }
 
     Row(
-        modifier.fillMaxSize().background(AppPalette.background)
-            // 返回键 = Exit 方向：在引导页里一律拦掉，光标不能被带出去。
-            .focusProperties { onExit = { cancelFocusChange() } }
-            // 焦点在引导页内、但不在右侧控制台（= 跑到预览区了）→ 立刻收回。
-            .onFocusChanged { if (it.hasFocus && !consoleFocused) jailed = true },
+        // 注意：这里**不能**再拦 Exit 方向（曾导致从设置项往下进入按钮行的焦点搜索被阻断，
+        // 结果永远到不了「下一页」）。返回键已由下面的 BackHandler 吞掉，且引导页期间
+        // 底层页面不组合，光标无处可逃。
+        modifier.fillMaxSize().background(AppPalette.background),
     ) {
         // ─────────── 左侧 60%：预览（完全冻结） ───────────
         Box(
@@ -173,6 +173,8 @@ fun GuideScreen(
                 .weight(0.6f)
                 .fillMaxHeight()
                 .focusProperties { canFocus = false }
+                // 光标一旦被吸进预览区（预览里的真实胶囊按钮可聚焦），立刻收回右侧。
+                .onFocusChanged { if (it.hasFocus) jailed = true }
                 .onPreviewKeyEvent { true }
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
@@ -193,10 +195,7 @@ fun GuideScreen(
         // ─────────── 右侧 40%：控制台（对齐设置页） ───────────
         Column(
             Modifier.weight(0.4f).fillMaxHeight()
-                .padding(start = 20.dp, end = 34.dp, top = 36.dp, bottom = 20.dp)
-                .onFocusChanged { consoleFocused = it.hasFocus }
-                // 控制台自身也不允许 Exit：返回键不该把光标丢到右边之外。
-                .focusProperties { onExit = { cancelFocusChange() } },
+                .padding(start = 20.dp, end = 34.dp, top = 36.dp, bottom = 20.dp),
         ) {
             Text(
                 if (page == 0) tx("播放与界面设置", "Playback & appearance") else tx("实验性功能", "Experimental"),
