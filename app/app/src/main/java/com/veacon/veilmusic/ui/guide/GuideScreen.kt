@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -144,10 +145,28 @@ fun GuideScreen(
         runCatching { firstItemFocus.requestFocus() }
     }
 
+    // 焦点狱：预览区里的真实控件（迷你胶囊的按钮等）本身可聚焦，一旦光标被吸进左侧，
+    // 立刻收回到右侧第一个设置项 —— 光标只允许在「右侧设置项 ↔ 右下角翻页按钮」之间移动。
+    var consoleFocused by remember { mutableStateOf(false) }
+    var jailed by remember { mutableStateOf(false) }
+    LaunchedEffect(jailed) {
+        if (jailed) {
+            jailed = false
+            withFrameNanos { }
+            runCatching { firstItemFocus.requestFocus() }
+        }
+    }
+
     // 引导中吞掉返回键：防止误触退出导致引导半途而废。
     BackHandler(enabled = true) { }
 
-    Row(modifier.fillMaxSize().background(AppPalette.background)) {
+    Row(
+        modifier.fillMaxSize().background(AppPalette.background)
+            // 返回键 = Exit 方向：在引导页里一律拦掉，光标不能被带出去。
+            .focusProperties { onExit = { cancelFocusChange() } }
+            // 焦点在引导页内、但不在右侧控制台（= 跑到预览区了）→ 立刻收回。
+            .onFocusChanged { if (it.hasFocus && !consoleFocused) jailed = true },
+    ) {
         // ─────────── 左侧 60%：预览（完全冻结） ───────────
         Box(
             Modifier
@@ -174,7 +193,10 @@ fun GuideScreen(
         // ─────────── 右侧 40%：控制台（对齐设置页） ───────────
         Column(
             Modifier.weight(0.4f).fillMaxHeight()
-                .padding(start = 20.dp, end = 34.dp, top = 36.dp, bottom = 20.dp),
+                .padding(start = 20.dp, end = 34.dp, top = 36.dp, bottom = 20.dp)
+                .onFocusChanged { consoleFocused = it.hasFocus }
+                // 控制台自身也不允许 Exit：返回键不该把光标丢到右边之外。
+                .focusProperties { onExit = { cancelFocusChange() } },
         ) {
             Text(
                 if (page == 0) tx("播放与界面设置", "Playback & appearance") else tx("实验性功能", "Experimental"),

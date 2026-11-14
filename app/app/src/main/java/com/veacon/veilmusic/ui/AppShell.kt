@@ -409,6 +409,11 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         // 底部内边距加出来 —— 既不会露出割裂的一条空白带，最后一行也能滚到胶囊上方。
         // 同时下发胶囊的焦点入口：资料库侧栏走到「艺人」按 Down 时直接落到胶囊。
         val versionFooterFocus = remember { FocusRequester() }
+        // 引导页显示期间**不组合底层页面**（方案 A）：整棵 UI 树只存在一份，
+        // 既省掉双份组合 / 双份动画的开销，也彻底杜绝光标钻到"看不见的"底层页面里。
+        // 代价：退出引导后各页滚动位置会重置一次（ViewModel 是 Activity 级的，数据不受影响）。
+        var showGuide by remember { mutableStateOf(false) }
+        if (!showGuide) {
         CompositionLocalProvider(
             LocalMiniCapsuleInset provides miniCapsuleInset,
             LocalMiniCapsuleFocus provides (if (miniCapsuleVisible) capsuleFocus else null),
@@ -898,6 +903,7 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
             )
         }
         }
+        }
 
         // 版本行已改为各页滚动内容的最末尾（ReturnLazyColumn/ReturnLazyVerticalGrid 的
         // versionFooter 开关），不再是固定底部的浮层——不滑到最底部看不见。
@@ -931,7 +937,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         // 若用户正在「重播设置」流程（语言等），等它结束再进引导 —— 先语言后引导。
         // 完成后写入 guide_prefs 的版本号，之后不再自动弹出。
           val guideVm: com.veacon.veilmusic.ui.viewmodel.DevMenuViewModel = hiltViewModel()
-          var showGuide by remember { mutableStateOf(false) }
           LaunchedEffect(showOnboarding) {
               if (!showOnboarding && !com.veacon.veilmusic.ui.guide.GuideState.completed(appContext)) showGuide = true
           }
