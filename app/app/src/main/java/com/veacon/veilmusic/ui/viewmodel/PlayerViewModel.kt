@@ -1618,7 +1618,17 @@ class PlayerViewModel @Inject constructor(
             //   开播与否改由书签里的 was_playing 决定。）
             pendingRestore = RestoreInfo(song, posMs, full)
             // Lyrics/motion are just display — safe (and nice) to warm now.
-            if (full) loadLyrics(song.id)
+            if (full) {
+                // V84 上游：先把上次会话保存的歌词快照塞进缓存——恢复瞬间就有词可画，
+                // 不用等 Apple 接口返回（网络慢时播放页只有歌名没有词，很突兀）。
+                val savedLines = runCatching {
+                    prefs.getString("saved_current_lyrics", null)?.let {
+                        moshi.adapter(SavedLyrics::class.java).fromJson(it).linesFor(song.id)
+                    }
+                }.getOrNull()
+                if (savedLines != null) lyricsCache[song.id] = savedLines
+                loadLyrics(song.id)
+            }
             loadMotion(song.id)
             if (prefs.getBoolean("was_playing", true)) {
                 webServer.addLog("PLR", "restoreState idx=$idx posMs=$posMs song=${song.title} — 续播")
@@ -1642,6 +1652,12 @@ class PlayerViewModel @Inject constructor(
     private fun startPendingRestore(autoPlay: Boolean = true) {
         val r = pendingRestore ?: return
         pendingRestore = null
+        // V84 上游：恢复的歌曲若歌词为空且已判「无歌词」，可能是重启后缓存被清——
+        // 在真正开播前再给一次 loadLyrics 机会。
+        if (r.full && _state.value.currentSong?.id == r.song.id &&
+            _state.value.lyrics.isEmpty() && _state.value.exhaustedEmptyLyricsFor == r.song.id) {
+            loadLyrics(r.song.id)
+        }
         hasPlayedSomething = true
         val lxMode = r.full && lx.isEnabled()
         val standalone = !lxMode && r.full && useStandalone()
@@ -1856,7 +1872,8 @@ class PlayerViewModel @Inject constructor(
 
     fun stepFluidQuality(dir: Int) {
         val qualities = FluidQuality.entries
-        val next = qualities[(_state.value.fluidQuality.ordinal + dir).coerceIn(0, qualities.lastIndex)]
+        // V84 上游：循环步进——到「高画质」再按「+」回到「关闭」，不再卡在边界。
+        val next = qualities[((_state.value.fluidQuality.ordinal + dir) % qualities.size + qualities.size) % qualities.size]
         _state.update { it.copy(fluidQuality = next) }
         prefs.edit { putString("fluid_quality", next.name) }
     }
@@ -2837,6 +2854,8 @@ class PlayerViewModel @Inject constructor(
             if (_state.value.currentSong?.id == songId) _state.update {
                 it.copy(lyrics = cached, lyricsSource = lyricsSourceCache[songId])
             }
+            // V84 上游：同步落盘——重启恢复的瞬间才有歌词可画。
+            saveCurrentLyrics(songId, cached, lyricsSourceCache[songId])
             return
         }
         val song = _state.value.currentSong?.takeIf { it.id == songId } ?: return
@@ -2857,7 +2876,11 @@ class PlayerViewModel @Inject constructor(
                     }
                 },
                 publish = { lines ->
-                    _state.update { if (stillCurrent()) it.copy(lyrics = lines, lyricsSource = lyricsSourceCache[songId]) else it }
+                    if (stillCurrent()) {
+                        _state.update { it.copy(lyrics = lines, lyricsSource = lyricsSourceCache[songId]) }
+                        // V84 上游：歌词落盘，供重启恢复时先画再刷新。
+                        saveCurrentLyrics(songId, lines, lyricsSourceCache[songId])
+                    }
                 },
                 report = { attempt, count, error ->
                     lyricsFailureNotice.report(attempt, count)
@@ -2867,6 +2890,15 @@ class PlayerViewModel @Inject constructor(
                 },
             )
         }
+    }
+
+    /** V84 上游：当前歌词快照落盘（含来源标签），供重启恢复的瞬间先画再刷新。 */
+    private fun saveCurrentLyrics(songId: String, lines: List<com.veacon.veilmusic.data.network.LyricLine>, source: String?) {
+        if (lines.isEmpty()) return
+        runCatching {
+            val json = moshi.adapter(SavedLyrics::class.java).toJson(SavedLyrics(songId, lines, source))
+            prefs.edit { putString("saved_current_lyrics", json) }
+        }.onFailure { webServer.addLog("LYRICS", "save failed ${it.javaClass.simpleName}") }
     }
 
     /** Warm the lyrics cache for an upcoming song so a track change shows them with no blank flash. */

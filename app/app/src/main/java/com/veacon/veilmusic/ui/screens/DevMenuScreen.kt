@@ -953,9 +953,10 @@ internal fun LanguageStepper() {
         com.veacon.veilmusic.i18n.LanguageChoice.Chinese -> "简体中文"
         com.veacon.veilmusic.i18n.LanguageChoice.English -> "English"
     }
-    fun changeLanguage(direction: Int) {
-        com.veacon.veilmusic.i18n.AppLanguage.select(choices[(choice.ordinal + direction + choices.size) % choices.size])
-    }
+        fun changeLanguage(direction: Int) {
+            // V84 上游：读实时选中的序号而不是闭包捕获的旧值——否则连续按两下会跳过一档语言。
+            com.veacon.veilmusic.i18n.AppLanguage.select(choices[(com.veacon.veilmusic.i18n.AppLanguage.choice.ordinal + direction + choices.size) % choices.size])
+        }
     Stepper(tr(R.string.msg_313), label, tr(R.string.msg_314),
         { changeLanguage(-1) }, { changeLanguage(1) })
 }

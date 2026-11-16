@@ -50,17 +50,23 @@ internal class NavigationReturnState(val nav: NavHostController) {
     fun finishDetailFocus(id: String?) { if (pendingDetailFocus == id) pendingDetailFocus = null }
     var generation by mutableIntStateOf(0)
     var returnToTab by mutableStateOf<TopNavTab?>(null)
+    // V84 上游：Tab 返回链路的挂起标记——requestTabFocus 时保留、焦点真正落到 Tab 后清除；
+    // 挂起期间禁用页面入场动画，避免「返回 Tab 却看到整页淡入、光标看不见」。
+    var tabReturnPending by mutableStateOf(false)
     var active: String? = null
     // Any explicit key/touch input cancels a delayed first-entry focus request.
     var inputSerial: Long = 0L
         private set
     val restoring get() = pending != null
     fun request(id: String) { pending=id; generation++ }
-    fun cancel() { inputSerial++; pendingDetailFocus=null; if(pending != null || returnToTab != null) { pending=null; returnToTab=null; generation++ } }
+    fun cancel() { inputSerial++; tabReturnPending=false; pendingDetailFocus=null; if(pending != null || returnToTab != null) { pending=null; returnToTab=null; generation++ } }
     fun back() {
         pendingDetailFocus=null
         val previous=nav.previousBackStackEntry
         if (previous != null) {
+            // 上游 V84：返回目标若带「回到 Tab」标记，先挂起 Tab 返回链路，
+            // 让 requestTabFocus 的焦点等待循环知道这次返回以 Tab 收尾。
+            tabReturnPending = previous.savedStateHandle.get<String>("return.tabFocus") != null
             request(previous.id)
             if (!nav.popBackStack()) cancel()
         } else {
@@ -109,13 +115,16 @@ internal fun rememberReturnTarget(enabled: Boolean = true): Pair<Modifier, () ->
 
 /** Dialog/Popup focus must never replace the control that opened it. */
 @Composable
-internal fun ReturnFocusLayer(content: @Composable () -> Unit) {
+internal fun ReturnFocusLayer(restoreOnDismiss: Boolean = true, content: @Composable () -> Unit) {
     val page=LocalReturnPage.current
     val coordinator=LocalNavigationReturn.current
     val origin=remember { page?.last }
+    val shouldRestore by androidx.compose.runtime.rememberUpdatedState(restoreOnDismiss)
     DisposableEffect(page) {
         onDispose {
-            if (page != null && origin != null) {
+            // V84 上游：进全屏歌词等场景可关闭「弹窗消失即恢复焦点」，焦点改由
+            // 全屏视图自己管理（否则全屏返回后光标被弹窗送回旧控件上）。
+            if (shouldRestore && page != null && origin != null) {
                 page.last=origin
                 if (coordinator?.nav?.currentBackStackEntry?.id == page.entry.id) coordinator.request(page.entry.id)
             }
@@ -152,7 +161,10 @@ internal fun NavGraphBuilder.returningComposable(
             val tabOrigin=entry.savedStateHandle.remove<String>("return.tabFocus")
             if(tabOrigin != null) {
                 coordinator.pending=null
-                if(mode.inputMode != InputMode.Touch) coordinator.returnToTab=runCatching { TopNavTab.valueOf(tabOrigin) }.getOrNull()
+                if(mode.inputMode != InputMode.Touch) {
+                    coordinator.returnToTab=runCatching { TopNavTab.valueOf(tabOrigin) }.getOrNull()
+                    if (coordinator.returnToTab == null) coordinator.tabReturnPending = false
+                } else coordinator.tabReturnPending = false
                 return@LaunchedEffect
             }
             val address=page.last
@@ -202,6 +214,9 @@ internal fun NavGraphBuilder.returningComposable(
                 if(!restored && !touchReturn) coordinator.returnToTab=coordinator.owner(entry)
             }
         }
-        CompositionLocalProvider(LocalReturnPage provides page,LocalReturnPath provides emptyList()) { content(entry) }
+        CompositionLocalProvider(LocalReturnPage provides page, LocalReturnPath provides emptyList(),
+            // Tab 返回挂起期间禁用入场动画：光标是瞬时落到 Tab 上的，整页淡入会让
+            // 用户以为按键没生效。上游 V84 同款。
+            LocalMotionInteractive provides (LocalMotionInteractive.current && !(coordinator.tabReturnPending && coordinator.nav.currentBackStackEntry?.id == entry.id))) { content(entry) }
     }
 }

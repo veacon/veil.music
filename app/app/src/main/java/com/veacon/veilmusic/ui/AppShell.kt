@@ -96,7 +96,11 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
     var navBarHasFocus by remember { mutableStateOf(false) }
     val libraryContentFocus = remember { FocusRequester() }
     fun requestTabFocus(tab: TopNavTab) {
+        // V84 上游：cancel 会清掉挂起的 Tab 返回标记；从播放器返回时这个标记
+        // 还要用于「返回期间禁动画」，所以在 cancel 前先读出来、cancel 后恢复。
+        val returningToTab = returnState.tabReturnPending
         returnState.cancel()
+        returnState.tabReturnPending = returningToTab
         selectedTab = tab
         pendingTabFocus = tab
         tabFocusRequestId++
@@ -217,12 +221,14 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
             // Explicit Back/Up means focus must be visible on a Tab immediately,
             // rather than waiting for a second D-pad event to enter keyboard mode.
             inputModeManager.requestInputMode(androidx.compose.ui.input.InputMode.Keyboard)
-            focusManager.clearFocus(force = true)
+            // V84 上游：不再 clearFocus(force)——强制清空会把刚要落位的光标打掉，
+            // 表现为「返回 Tab 后按一下方向键光标才出现」。
             repeat(12) {
                 withFrameNanos { }
-                if (focusedTopTab == target) { pendingTabFocus = null; return@LaunchedEffect }
+                if (focusedTopTab == target) { pendingTabFocus = null; returnState.tabReturnPending = false; return@LaunchedEffect }
                 runCatching { tabFocus.getValue(target).requestFocus() }
             }
+            returnState.tabReturnPending = false
         }
     }
     LaunchedEffect(returnState.pending, returnState.pendingDetailFocus) { if (contentFocusHandoff) pendingTabFocus=null }
@@ -370,7 +376,8 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         }
     }
     val returnFromPlayer: () -> Unit = {
-        focusManager.clearFocus(force = true)
+        // V84 上游：返回播放页前的强制清焦点会丢掉恢复链路需要的焦点状态，
+        // 交给 returnState.back() 自己处理。
         returnState.back()
     }
     LaunchedEffect(returnState.returnToTab) {
