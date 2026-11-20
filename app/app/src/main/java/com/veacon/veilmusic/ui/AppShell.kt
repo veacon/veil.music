@@ -915,6 +915,13 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         // 版本行已改为各页滚动内容的最末尾（ReturnLazyColumn/ReturnLazyVerticalGrid 的
         // versionFooter 开关），不再是固定底部的浮层——不滑到最底部看不见。
 
+        // 焦点外圈 overlay：放在内容/顶栏之上、音乐胶囊之下。
+        // 这样外圈包住所有卡片，但音乐胶囊始终悬浮在最上层不被外圈覆盖。
+        // Canvas 用 positionInRoot() 取坐标；本 Box 铺满且原点即屏幕 (0,0)，坐标系一致。
+        com.veacon.veilmusic.ui.components.LocalFocusFrameController.current?.let { controller ->
+            com.veacon.veilmusic.ui.components.FocusFrameOverlay(controller)
+        }
+
         // 实验室：底部迷你播放胶囊（移植自 v1.1.2）。播放页不显示（页内已有完整控件）。
         if (miniCapsuleVisible) {
             Box(
