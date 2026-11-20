@@ -8,6 +8,8 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.veacon.veilmusic.ui.AppShell
 import com.veacon.veilmusic.ui.viewmodel.MusicVideoViewModel
 import com.veacon.veilmusic.ui.viewmodel.NavigationViewModel
@@ -49,7 +51,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             com.veacon.veilmusic.ui.components.LargeScreenGate(onAccessChanged = ::updateWindowAccess) {
                 com.veacon.veilmusic.ui.components.StartupHost { ready ->
-                    com.veacon.veilmusic.ui.theme.ProvideTvFontWeights { AppShell(onStartupReady = ready) }
+                    // TV 焦点外圈系统：overlay 画在所有内容之上；卡片/控件把焦点
+                    // 位置报告给同一个 controller，一整条 spring 跟随绘制渐变色外圈。
+                    val focusFrameController = androidx.compose.runtime.remember {
+                        com.veacon.veilmusic.ui.components.FocusFrameController()
+                    }
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxSize()
+                    ) {
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            com.veacon.veilmusic.ui.components.LocalFocusFrameController provides focusFrameController
+                        ) {
+                            com.veacon.veilmusic.ui.theme.ProvideTvFontWeights { AppShell(onStartupReady = ready) }
+                        }
+                        // 焦点外圈 overlay 已下沉到 AppShell 内部（内容之上、音乐胶囊之下），
+                        // 保证音乐胶囊始终悬浮在最前，不被外圈覆盖。见 AppShell.kt。
+                    }
                 }
             }
         }
