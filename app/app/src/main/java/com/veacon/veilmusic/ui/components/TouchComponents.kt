@@ -85,6 +85,10 @@ fun TouchSurface(
     glow: ClickableSurfaceGlow = ClickableSurfaceDefaults.glow(),
     interactionSource: MutableInteractionSource? = null,
     onContextMenu: (() -> Unit)? = null,
+    focusRadius: Dp = DefaultFocusFrameRadius,
+    focusScale: Float = DefaultFocusFrameScale,
+    focusInset: Dp = DefaultFocusFrameInset,
+    clipToControl: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -96,7 +100,7 @@ fun TouchSurface(
     val (returnModifier, rememberOrigin) = com.veacon.veilmusic.ui.navigation.rememberReturnTarget(interactive)
     androidx.tv.material3.Surface(
         onClick = { if (interactive) { rememberOrigin(); onClick() } },
-        modifier = modifier.remoteContextMenu(interactive && focused, onContextMenu?.let { action -> { rememberOrigin(); action() } }).onGloballyPositioned(artworkHost::surfacePlaced).then(returnModifier).then(if (interactive) Modifier else Modifier.focusProperties { canFocus = false }).touchClicks(interactive, source, { rememberOrigin(); onClick() }, onLongClick?.let { action -> { rememberOrigin(); action() } }),
+        modifier = modifier.remoteContextMenu(interactive && focused, onContextMenu?.let { action -> { rememberOrigin(); action() } }).onGloballyPositioned(artworkHost::surfacePlaced).then(returnModifier).then(if (interactive) Modifier else Modifier.focusProperties { canFocus = false }).touchClicks(interactive, source, { rememberOrigin(); onClick() }, onLongClick?.let { action -> { rememberOrigin(); action() } }).focusFrame(cornerRadius = focusRadius, focusedScale = focusScale, focusInset = focusInset, clipToControl = clipToControl),
         onLongClick = onLongClick?.let { action -> { if (interactive) { rememberOrigin(); action() } } },
         enabled = enabled,
         tonalElevation = tonalElevation,
@@ -142,6 +146,10 @@ fun TouchCard(
     glow: CardGlow = CardDefaults.glow(),
     interactionSource: MutableInteractionSource? = null,
     onContextMenu: (() -> Unit)? = null,
+    focusRadius: Dp = DefaultFocusFrameRadius,
+    focusScale: Float = DefaultFocusFrameScale,
+    focusInset: Dp = DefaultFocusFrameInset,
+    clipToControl: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -153,7 +161,7 @@ fun TouchCard(
     val (returnModifier, rememberOrigin) = com.veacon.veilmusic.ui.navigation.rememberReturnTarget(interactive)
     androidx.tv.material3.Card(
         onClick = { if (interactive) { rememberOrigin(); onClick() } },
-        modifier = modifier.remoteContextMenu(interactive && focused, onContextMenu?.let { action -> { rememberOrigin(); action() } }).onGloballyPositioned(artworkHost::surfacePlaced).then(returnModifier).then(if (interactive) Modifier else Modifier.focusProperties { canFocus = false }).touchClicks(interactive, source, { rememberOrigin(); onClick() }, onLongClick?.let { action -> { rememberOrigin(); action() } }),
+        modifier = modifier.remoteContextMenu(interactive && focused, onContextMenu?.let { action -> { rememberOrigin(); action() } }).onGloballyPositioned(artworkHost::surfacePlaced).then(returnModifier).then(if (interactive) Modifier else Modifier.focusProperties { canFocus = false }).touchClicks(interactive, source, { rememberOrigin(); onClick() }, onLongClick?.let { action -> { rememberOrigin(); action() } }).focusFrame(cornerRadius = focusRadius, focusedScale = focusScale, focusInset = focusInset, clipToControl = clipToControl),
         onLongClick = onLongClick?.let { action -> { if(interactive) { rememberOrigin(); action() } } },
         shape = shape,
         colors = colors,
