@@ -123,12 +123,18 @@ import com.veacon.veilmusic.ui.components.TouchSeekBar
 import com.veacon.veilmusic.ui.components.artworkCornerClip
 import com.veacon.veilmusic.ui.components.artworkCorners
 import com.veacon.veilmusic.ui.background.MacBackground
+import com.veacon.veilmusic.ui.background.LavaBackground
 import com.veacon.veilmusic.ui.components.touchClick
 import com.veacon.veilmusic.util.TvDevice
 import com.veacon.veilmusic.ui.viewmodel.RepeatMode
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -176,6 +182,35 @@ fun NowPlayingScreen(
     val interaction by navVm.playerInteraction.collectAsState()
     val showQueue = toggleCount % 2 == 1
     val smoothProgress = rememberSmoothProgressMs(state.progressMs, state.isPlaying && !state.isLoading)
+    // ── 麦克风律动：RECORD_AUDIO 权限流 + 采集联动（进播放页且播放中才采集）──
+    val appContext = LocalContext.current.applicationContext
+    var spectrumGranted by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    val spectrumLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        spectrumGranted = granted
+        playerVm.audioSpectrum.setActive(playerVm.spectrumEnabled() && granted && state.isPlaying)
+    }
+    fun requestSpectrumPermission() {
+        playerVm.spectrumPrefs.markPermissionRequested()
+        spectrumLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    // 进播放页且播放中且开关开且未授权且从未弹过 → 自动弹一次系统权限（之后从设置页管理）
+    LaunchedEffect(state.isPlaying, spectrumGranted) {
+        if (playerVm.spectrumEnabled() && state.isPlaying && !spectrumGranted &&
+            !playerVm.spectrumPrefs.permissionRequested()) requestSpectrumPermission()
+    }
+    // 采集联动：暂停/关开关/离开播放页 → 停止采集（无播放时也不做会话探针）
+    DisposableEffect(state.isPlaying, spectrumGranted) {
+        playerVm.audioSpectrum.setActive(playerVm.spectrumEnabled() && state.isPlaying && spectrumGranted)
+        onDispose { playerVm.audioSpectrum.setActive(false) }
+    }
+    val spectrumProvider: (() -> com.veacon.veilmusic.media.AudioSpectrum)? =
+        if (playerVm.spectrumEnabled() && spectrumGranted && state.isPlaying) playerVm.audioSpectrum::sample else null
+    // 背景风格：流体（Mac 流体）/ 熔岩（Lava 流体，随封面取色）——设置页可切换
+    val backgroundStyle by playerVm.backgroundStyle.collectAsState()
+    val pulseMultiplier = com.veacon.veilmusic.ui.background.LavaPulseSpeed.multiplier(
+        playerVm.pulseSpeedIndex.collectAsState().value)
     val playFocus = remember { FocusRequester() }
     val splitCoverFocus = remember { FocusRequester() }
     val fullCoverFocus = remember { FocusRequester() }
@@ -444,10 +479,19 @@ fun NowPlayingScreen(
                 onSelectedIndex = { wallSelectedIndex = it }, gridFocus = wallGridFocus,
                 touchEnabled = albumWall && chromeVisible,
                 onOpen = ::openWallCard)
+            else if (backgroundStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA) LavaBackground(
+                artworkUrl = song.artworkUrl(500), quality = state.fluidQuality,
+                playing = state.isPlaying, reduceMotion = state.reduceMotion, lowPower = state.lowPowerMode,
+                modifier = Modifier.fillMaxSize(),
+                spectrum = spectrumProvider,
+                pulseSpeedMultiplier = pulseMultiplier,
+            )
             else MacBackground(
                 artworkUrl = song.artworkUrl(500), quality = state.fluidQuality,
                 playing = state.isPlaying, reduceMotion = state.reduceMotion, lowPower = state.lowPowerMode,
                 modifier = Modifier.fillMaxSize(),
+                spectrum = spectrumProvider,
+                pulseSpeedMultiplier = pulseMultiplier,
             )
         }
         // Remount when switching orientation so the old split view cannot flash in portrait.
@@ -573,6 +617,7 @@ fun NowPlayingScreen(
                             }
                         }
                         Spacer(Modifier.height(0.dp))
+                        com.veacon.veilmusic.ui.components.ProvideFocusFrameVisibility(chromeAlpha) {
                         Column(Modifier.fillMaxWidth().graphicsLayer { alpha = chromeAlpha }) {
                             PlayerProgressBar(smoothProgress, song, playFocus, playerVm.player,
                                 visualScale = UnderCoverVisualScale, loading = state.isLoading && !state.isPlaying)
@@ -588,6 +633,7 @@ fun NowPlayingScreen(
                                 PlaybackOrderButton(state.playbackOrder(),visualScale=UnderCoverVisualScale,
                                     onClick=playerVm::cyclePlaybackOrder)
                             }
+                        }
                         }
                     }
                     }, panel={
@@ -1008,6 +1054,7 @@ internal fun FullScreenLyrics(
         }
         }
         if (footerVisible || footerAlpha > 0f) {
+        com.veacon.veilmusic.ui.components.ProvideFocusFrameVisibility(ctlAlpha.coerceAtMost(footerAlpha)) {
         CompositionLocalProvider(com.veacon.veilmusic.ui.components.LocalMotionInteractive provides
             (com.veacon.veilmusic.ui.components.LocalMotionInteractive.current && footerVisible)) {
         if (portrait) {
@@ -1085,6 +1132,7 @@ internal fun FullScreenLyrics(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            TransportButton(TransportIcon.Prev,        ) {
             TransportButton(TransportIcon.Prev, onClick = onPrev)
             TransportButton(if (isPlaying) TransportIcon.Pause else TransportIcon.Play, onClick = onPlayPause,
                 loading = loading, active = isPlaying, modifier = Modifier.focusRequester(playFocus))
@@ -1094,6 +1142,7 @@ internal fun FullScreenLyrics(
         }
         }
     }
+}
 }
 
 /**
