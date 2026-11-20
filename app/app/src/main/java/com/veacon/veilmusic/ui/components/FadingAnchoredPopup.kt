@@ -43,7 +43,13 @@ fun FadingAnchoredPopup(
             // compositors do not repaint a zero-alpha popup until the next key event.
             enter = EnterTransition.None,
             exit = fadeOut(tween(if (motion.enabled) motion.exitMs else 0))) {
-            CompositionLocalProvider(LocalMotionInteractive provides interactive, LocalMenuOpeningInputMode provides openingMode) { content() }
+            CompositionLocalProvider(
+                LocalMotionInteractive provides interactive,
+                LocalMenuOpeningInputMode provides openingMode,
+                // Popup 是独立 window，坐标与 Activity 根上的焦点外圈 overlay 不一致，
+                // 关闭上报避免外圈错位。
+                LocalFocusFrameEnabled provides false,
+            ) { content() }
         }
     }
     }
