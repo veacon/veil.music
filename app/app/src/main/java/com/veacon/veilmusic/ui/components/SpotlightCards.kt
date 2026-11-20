@@ -58,6 +58,9 @@ fun SpotlightHeroCard(album: Album, width: Int = 360, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.width(width.dp),
+        // 外圈已由 TouchCard 统一挂载，这里只透传本卡片原有的精确参数。
+        focusRadius = 9.dp,
+        focusScale = 1.055f,
         scale = CardDefaults.scale(focusedScale = 1.055f, pressedScale = 0.97f),
         glow = CardDefaults.glow(glow = Glow.None, focusedGlow = Glow.None, pressedGlow = Glow.None),
         border = CardDefaults.border(border = Border.None, focusedBorder = Border.None, pressedBorder = Border.None),
@@ -110,7 +113,11 @@ fun GradientCard(album: Album, width: Int = 250, onClick: () -> Unit, onLongClic
     Card(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.width(width.dp).onFocusChanged { focused = it.isFocused || it.hasFocus },
+        modifier = Modifier.width(width.dp)
+            .onFocusChanged { focused = it.isFocused || it.hasFocus },
+        // 外圈已由 TouchCard 统一挂载，这里只透传本卡片原有的精确参数。
+        focusRadius = 16.dp,
+        focusScale = 1.066f,
         scale = CardDefaults.scale(focusedScale = 1.066f, pressedScale = 0.97f),
         glow = CardDefaults.glow(glow = Glow.None, focusedGlow = Glow.None, pressedGlow = Glow.None),
         border = CardDefaults.border(border = Border.None, focusedBorder = Border.None, pressedBorder = Border.None),
