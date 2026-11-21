@@ -1,4 +1,4 @@
-﻿package com.veacon.veilmusic.ui.screens
+package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
@@ -282,11 +282,27 @@ fun LibraryScreen(
         }
     }
 
+    // P0-5：只有导入弹窗打开期间才启动手机页，关闭立刻停服。
+    DisposableEffect(showImport) {
+        if (showImport) vm.acquirePhoneServer()
+        onDispose { if (showImport) vm.releasePhoneServer() }
+    }
+    // 服务是按需启动的：地址异步就绪，弹窗期间轮询到拿到为止。
+    var phoneUrl by remember(showImport) { mutableStateOf("") }
+    LaunchedEffect(showImport) {
+        if (!showImport) return@LaunchedEffect
+        while (phoneUrl.isEmpty()) {
+            phoneUrl = vm.serverUrl()
+            if (phoneUrl.isEmpty()) kotlinx.coroutines.delay(150)
+        }
+    }
+
     // 导入歌单：只弹二维码，链接在手机上粘（电视端输入框会卡住遥控器）
     FadeThrough(showImport, contentKey = { if (it) true else null }) { visible ->
         if (visible) {
             ImportPlaylistDialog(
-                serverUrl = vm.serverUrl(),
+                // 服务按需启动，地址是异步就绪的：跟着端点变化重算二维码内容。
+                serverUrl = phoneUrl,
                 sync = appleSync,
                 onSyncApple = { vm.syncApplePlaylists { message -> toast(message) } },
                 onDismiss = { showImport = false },
@@ -1122,7 +1138,7 @@ private fun PlaylistPickerDialog(
                 pls.isEmpty() -> Text(tr(R.string.msg_136), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), fontSize = 13.sp,
                     modifier = Modifier.padding(16.dp))
                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    items(pls.size) { i ->
+                    items(pls.size, key = { i -> pls[i].id }) { i ->
                         val pl = pls[i]
                         ContextMenuItem(pl.name,
                             { playerVm.addToPlaylist(pl.id, pl.name, song); onDismiss() },

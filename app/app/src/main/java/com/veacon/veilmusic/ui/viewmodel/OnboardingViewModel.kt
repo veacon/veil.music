@@ -47,6 +47,16 @@ class OnboardingViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, OnboardingState())
     private var mutPollJob: Job? = null
 
+    init {
+        // P0-5：引导页是第一屏手机配置入口，进入时启服，离开即停。
+        webServer.acquire(viewModelScope, "onboarding")
+    }
+
+    override fun onCleared() {
+        webServer.release("onboarding")
+        super.onCleared()
+    }
+
     /** Refresh readiness without navigating away; the user finishes on the TV. */
     fun startMutPolling() {
         if (mutPollJob?.isActive == true) return

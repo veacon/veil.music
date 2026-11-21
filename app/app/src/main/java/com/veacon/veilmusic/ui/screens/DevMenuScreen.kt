@@ -24,6 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -51,8 +57,6 @@ import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -67,6 +71,7 @@ fun DevMenuScreen(
     val vm: DevMenuViewModel = hiltViewModel()
     val state by vm.state.collectAsState()
     val wordByWordLyrics by vm.wordByWordLyrics.collectAsState()
+    val lyricElastic by vm.lyricElastic.collectAsState()
     val update by vm.update.collectAsState()
     val selectedSource by vm.downloadSource.collectAsState()
     val pstate by remember(playerVm) {
@@ -75,15 +80,13 @@ fun DevMenuScreen(
     val ctx = LocalContext.current
     // 开发者选项的展开状态持久化：切换界面后回来仍保持上次的开关。
     val devPrefs = remember(ctx) { ctx.getSharedPreferences("dev_menu_settings", android.content.Context.MODE_PRIVATE) }
-        var showDev by remember { mutableStateOf(devPrefs.getBoolean("show_dev", false)) }
+        var showDev by remember { mutableStateOf(devPrefs.getBoolean("show_dev", true)) }
         // 「发现页」（新手引导页）的入口开关状态。
-        var guideAutoShow by remember { mutableStateOf(com.veacon.veilmusic.ui.guide.GuideState.autoShow(ctx)) }
     // 播放设置整区默认折叠，展开后才显示各播放项（需求：设置项规整）。
-    var showPlayback by remember { mutableStateOf(devPrefs.getBoolean("show_playback", false)) }
+    var showPlayback by remember { mutableStateOf(devPrefs.getBoolean("show_playback", true)) }
     // 界面设置、应用设置像「开发者选项」一样由一个开关控制展开。
-        var showUiSettings by remember { mutableStateOf(devPrefs.getBoolean("show_ui_settings", false)) }
-        var showAccount by remember { mutableStateOf(devPrefs.getBoolean("show_account", false)) }
-        var showGeneral by remember { mutableStateOf(devPrefs.getBoolean("show_general", false)) }
+        var showUiSettings by remember { mutableStateOf(devPrefs.getBoolean("show_ui_settings", true)) }
+        var showGeneral by remember { mutableStateOf(devPrefs.getBoolean("show_general", true)) }
         // 定时切换深浅色：开关 + 深色时段起止小时（0–23）。
         var autoDark by remember { mutableStateOf(com.veacon.veilmusic.data.AppearanceSchedule.enabled(ctx)) }
         var autoDarkStart by remember { mutableStateOf(com.veacon.veilmusic.data.AppearanceSchedule.startMin(ctx)) }
@@ -107,33 +110,47 @@ fun DevMenuScreen(
         while (true) { vm.refreshCacheUsage(); kotlinx.coroutines.delay(2_000) }
     }
 
+    // 设置页分区：一次只渲染一个组，保证每组一页放得下。
+    var section by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val scrollState = rememberScrollState()
     val returning = com.veacon.veilmusic.ui.navigation.LocalNavigationReturn.current?.restoring == true
     LaunchedEffect(tabBarFocused, returning) { if (tabBarFocused && !returning) scrollState.animateScrollTo(0) }
 
-    Box(modifier.fillMaxSize().background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFFFFFFF), Color(0xFF101012)))) {
-        Column(
-            // 顶部/底部留白必须在 verticalScroll 之外：写在里面时它是"可滚动内容"的一部分，
-            // 焦点滚动会把当前行顶到 y=0（导航条下面）或压到屏幕最底，焦点框看不见。
-            // 注意：不要在这里挂 focusProperties { up = Cancel } ——它会传染给子树内所有行，
-            // 导致整个设置列表按「上」全部失效。首行自己挂了 returnToTabOnUp 拦截「上」
-            // 回 Tab 栏，其余行交给系统空间搜索逐项移动即可。
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxHeight()
-                .fillMaxWidth().padding(top = 100.dp, bottom = 48.dp)
-                .verticalScroll(scrollState)
-                .padding(start = pageHorizontalInset, end = pageHorizontalInset),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(tr(R.string.msg_182), fontSize = 32.sp, fontWeight = FontWeight.Bold,
-                                        color = com.veacon.veilmusic.ui.theme.AppPalette.primary)
-                Text(tr(R.string.msg_183), fontSize = 13.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
-            }
-
-            // 账户与同步：Apple 登录（手机扫码，免自行获取令牌）与资料库同步。
-            val displayAuth = remember(ctx) { com.veacon.veilmusic.data.AppleDisplayAuth.get(ctx) }
-            val displayState by displayAuth.state.collectAsState()
-            SettingsSection(tx("账户与同步", "Account & sync")) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val inset = pageHorizontalInset
+        // 与资料库 SectionSidebar 同一套宽度算法
+        val sidebarWidth = 208.dp.coerceAtMost((maxWidth - inset * 2) * 0.32f)
+        Box(Modifier.fillMaxSize().background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFFFFFFF), Color(0xFF101012)))) {
+        Row(Modifier.fillMaxSize().padding(horizontal = inset)) {
+            // 左列：与资料库一致的分区导航
+            SettingsSidebar(
+                labels = settingsSectionLabels(english),
+                selected = section,
+                onSelect = { section = it },
+                onReturnToTab = onReturnToTab,
+                modifier = Modifier.width(sidebarWidth),
+            )
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight()
+                    // 与左列同一起点：左列 top=96 且首个子项是标题，这里用同高透明占位对齐
+                    .padding(top = 96.dp, bottom = 20.dp)
+                    .verticalScroll(scrollState)
+                    .padding(start = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // 占位：与左列「设置」标题完全同高（透明），保证右侧第一行与「账号外观」齐平
+                Text(
+                    "设置",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Transparent,
+                    modifier = Modifier.padding(bottom = 14.dp),
+                )
+                val displayAuth = remember(ctx) { com.veacon.veilmusic.data.AppleDisplayAuth.get(ctx) }
+                val displayState by displayAuth.state.collectAsState()
+                    when (section) {
+                        0 -> {   // 账号外观
+            SettingsSection(tx("账号外观", "Account & appearance")) {
                 // 扫码登录会话状态机（epoch 防重入；离开设置页即关服）。
                 var phoneSignInVisible by remember { mutableStateOf(false) }
                 var phoneUrl by remember { mutableStateOf<String?>(null) }
@@ -151,6 +168,8 @@ fun DevMenuScreen(
                 }
                 fun startPhoneSignIn() {
                     if (phoneSignInVisible) return
+                    // 展示方案默认关闭（不发任何网络请求）：用户主动扫码时再打开。
+                    if (!displayAuth.isEnabled()) displayAuth.setEnabled(true)
                     val epoch = phoneEpoch.incrementAndGet()
                     phoneSignInVisible = true
                     phonePhase = com.veacon.veilmusic.ui.components.PhoneSignInPhase.Starting
@@ -205,348 +224,304 @@ fun DevMenuScreen(
                         }
                     }
                 }
-                // 设置页首行挂回 Tab 栏入口（按上回苹果标志）；容器级 focusProperties
-                // 保证其余行按上只在列表内移动、列表顶部按上原地停住不飞出。
-                Toggle(tx("账户与同步", "Account & sync"), showAccount,
-                    tx("Apple 登录与资料库同步", "Apple sign-in and library sync"),
-                    modifier = Modifier.returnToTabOnUp(onReturnToTab),
-                ) {
-                    showAccount = !showAccount; devPrefs.edit().putBoolean("show_account", showAccount).apply()
+                val statusLine = when (displayState.status) {
+                    "ready", "checking" -> tx("已登录", "Signed in") +
+                        displayState.accountName.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty() +
+                        displayState.storefront.takeIf { it.isNotBlank() }?.let { " · ${it.uppercase()}" }.orEmpty()
+                    "invalid" -> tx("登录已失效，请重新扫码登录", "Sign-in expired — scan the QR code again")
+                    "unavailable" -> tx("暂时连不上 Apple Music，稍后重试", "Can't reach Apple Music right now — try again later")
+                    else -> tx("未登录", "Not signed in")
                 }
-                if (showAccount) {
+                // 「手机扫码登录」整行可点：点开就是二维码流程；登录后云端歌单也铺在这一行里。
+                // 这一行是本区块第一行，按「上」挂回 Tab 栏入口；其余行按「上」只在列表内移动。
+                SignInRow(
+                    statusLine = statusLine,
+                    syncedCount = displayState.playlists.size,
+                    loadingLibrary = displayState.loadingLibrary,
+                    modifier = Modifier.returnToTabOnUp(onReturnToTab),
+                    onClick = { if (phoneSignInVisible) closePhoneSignIn() else startPhoneSignIn() },
+                )
+                SettingDivider()
+                ActionSettingRow(
+                    tx("刷新同步歌单及推荐页", "Refresh synced playlists and recommendations"),
+                    tx("重新拉取云端歌单与首页推荐内容",
+                       "Re-fetch cloud playlists and the Home recommendations"),
+                ) {
+                    vm.refreshSyncedContent()
+                    android.widget.Toast.makeText(ctx, "已刷新", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                if (phoneSignInVisible) {
+                    com.veacon.veilmusic.ui.components.PhoneSignInDialog(
+                        url = phoneUrl, phase = phonePhase, failReason = phoneFailReason,
+                        onRetry = { closePhoneSignIn(); startPhoneSignIn() },
+                        onDismiss = ::closePhoneSignIn,
+                    )
+                }
+                SettingDivider()
+                Toggle(tr(R.string.msg_351), pstate.navTitleAsSong, tr(R.string.msg_352)) {
+                    playerVm.setNavTitleAsSong(!pstate.navTitleAsSong)
+                }
+                SettingDivider()
+                Toggle(tx("迷你播放胶囊", "Mini player capsule"), pstate.miniCapsuleEnabled,
+                    tx("底部常驻胶囊播放条，带主题自适应背景", "Always-on bottom bar with a theme-aware background")) {
+                    playerVm.setMiniCapsuleEnabled(!pstate.miniCapsuleEnabled)
+                }
+                if (pstate.miniCapsuleEnabled) {
                     SettingDivider()
-                    Toggle(tx("Apple Music 展示", "Apple Music display"),
-                        displayState.enabled,
-                        tx("读取账号、区域与云端歌单用于界面展示；用手机扫码登录，播放仍走落雪音源",
-                           "Reads account, storefront and cloud playlists for the UI; sign in by scanning the QR with your phone"),
-                    ) { displayAuth.setEnabled(!displayState.enabled) }
-                    if (displayState.enabled) {
-                        SettingDivider()
-                        val statusLine = when (displayState.status) {
-                            "ready", "checking" -> tx("已登录", "Signed in") +
-                                displayState.accountName.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty() +
-                                displayState.storefront.takeIf { it.isNotBlank() }?.let { " · ${it.uppercase()}" }.orEmpty()
-                            "invalid" -> tx("登录已失效，请重新扫码登录", "Sign-in expired — scan the QR code again")
-                            "unavailable" -> tx("暂时连不上 Apple Music，稍后重试", "Can't reach Apple Music right now — try again later")
-                            else -> tx("未登录，点击下方「手机扫码登录」完成授权", "Not signed in — use \"Sign in on your phone\" below")
-                        }
-                        Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(statusLine, fontSize = 12.sp, lineHeight = 18.sp,
-                                color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
-                            when {
-                                // 对齐 am_atv：登录成功后、资料库就绪前的加载提示。
-                                displayState.loadingLibrary -> Text(
-                                    "${displayState.accountName.ifBlank { tx("Apple 账号", "Apple account") }} ${tx("正在获取资料库信息…", "is loading library info…")}",
-                                    fontSize = 12.sp, lineHeight = 18.sp,
-                                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
-                                )
-                                displayState.playlists.isNotEmpty() -> Text(
-                                    tx("云端歌单 ${displayState.playlists.size} 个", "${displayState.playlists.size} cloud playlists"),
-                                    fontSize = 12.sp, lineHeight = 18.sp,
-                                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)),
-                                )
-                            }
-                        }
-                        SettingDivider()
-                        Toggle(tx("手机扫码登录", "Sign in on your phone"), false,
-                            if (displayState.signedIn) tx("已登录 · 点击重新扫码换号", "Signed in · tap to scan again and switch account")
-                            else tx("用手机扫屏幕上的二维码完成 Apple 授权，无需手动获取令牌",
-                                "Scan the QR on screen with your phone and authorize with Apple — no token hunting"),
-                        ) { if (phoneSignInVisible) closePhoneSignIn() else startPhoneSignIn() }
-                        if (phoneSignInVisible) {
-                            com.veacon.veilmusic.ui.components.PhoneSignInDialog(
-                                url = phoneUrl, phase = phonePhase, failReason = phoneFailReason,
-                                onRetry = { closePhoneSignIn(); startPhoneSignIn() },
-                                onDismiss = ::closePhoneSignIn,
-                            )
-                        }
+                    Stepper(tx("高度", "Height"), "${pstate.miniCapsuleHeightPct}%",
+                        tx("胶囊高度占可用区域的百分比", "Capsule height as a percentage of the available area"),
+                        { playerVm.setMiniCapsuleHeightPct((pstate.miniCapsuleHeightPct - 5).coerceAtLeast(60)) },
+                        { playerVm.setMiniCapsuleHeightPct((pstate.miniCapsuleHeightPct + 5).coerceAtMost(140)) },
+                        decEnabled = pstate.miniCapsuleHeightPct > 60,
+                        incEnabled = pstate.miniCapsuleHeightPct < 140)
+                    SettingDivider()
+                    Stepper(tx("宽度", "Width"), "${pstate.miniCapsuleWidthPct}%",
+                        tx("胶囊宽度占可用区域的百分比", "Capsule width as a percentage of the available area"),
+                        { playerVm.setMiniCapsuleWidthPct((pstate.miniCapsuleWidthPct - 5).coerceAtLeast(60)) },
+                        { playerVm.setMiniCapsuleWidthPct((pstate.miniCapsuleWidthPct + 5).coerceAtMost(100)) },
+                        decEnabled = pstate.miniCapsuleWidthPct > 60,
+                        incEnabled = pstate.miniCapsuleWidthPct < 100)
+                    SettingDivider()
+                    Toggle(tx("背景跟随专辑取色", "Album colour background"), pstate.miniCapsuleAlbumTint,
+                        tx("用专辑主色给胶囊上色", "Tint the capsule with the album artwork colour")) {
+                        playerVm.setMiniCapsuleAlbumTint(!pstate.miniCapsuleAlbumTint)
                     }
+                    SettingDivider()
+                    Toggle(tx("显示播放进度线", "Playback progress line"), pstate.miniCapsuleProgressLine,
+                        tx("胶囊底边的一条细线；关掉更干净", "The thin line along the capsule bottom edge")) {
+                        playerVm.setMiniCapsuleProgressLine(!pstate.miniCapsuleProgressLine)
+                    }
+                }
+                SettingDivider()
+                val dark = com.veacon.veilmusic.ui.theme.AppPalette.isDark
+                Toggle(tx("深色模式", "Dark mode"), dark,
+                    tx("关闭则使用浅色界面", "Off = light appearance")) {
+                    com.veacon.veilmusic.ui.theme.AppPalette.setDark(ctx, !dark)
+                }
+                SettingDivider()
+                Toggle(tx("定时切换深浅色", "Scheduled dark mode"), autoDark,
+                    tx("在设定时段自动切到深色，其余时间用浅色", "Go dark during the set hours")) {
+                    val next = !autoDark
+                    com.veacon.veilmusic.data.AppearanceSchedule.setEnabled(ctx, next)
+                    autoDark = next
+                    com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                }
+                if (autoDark) {
+                    SettingDivider()
+                    Stepper(tx("深色开始", "Dark from"),
+                        com.veacon.veilmusic.data.AppearanceSchedule.label(autoDarkStart),
+                        tx("按半小时选择", "Half-hour steps"),
+                        {
+                            autoDarkStart = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkStart, -1)
+                            com.veacon.veilmusic.data.AppearanceSchedule.setStartMin(ctx, autoDarkStart)
+                            com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                        },
+                        {
+                            autoDarkStart = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkStart, 1)
+                            com.veacon.veilmusic.data.AppearanceSchedule.setStartMin(ctx, autoDarkStart)
+                            com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                        })
+                    SettingDivider()
+                    Stepper(tx("深色结束", "Dark until"),
+                        com.veacon.veilmusic.data.AppearanceSchedule.label(autoDarkEnd),
+                        tx("到点自动切回浅色", "Switch back to light at this time"),
+                        {
+                            autoDarkEnd = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkEnd, -1)
+                            com.veacon.veilmusic.data.AppearanceSchedule.setEndMin(ctx, autoDarkEnd)
+                            com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                        },
+                        {
+                            autoDarkEnd = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkEnd, 1)
+                            com.veacon.veilmusic.data.AppearanceSchedule.setEndMin(ctx, autoDarkEnd)
+                            com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
+                        })
                 }
             }
-            SettingsSection(tx("外观与动效", "Appearance & motion")) {
-                Toggle(tx("外观与动效", "Appearance & motion"), showUiSettings,
-                    tx("主题、背景风格与播放页动效", "Theme, background styles and player motion"),
-                ) {
-                    showUiSettings = !showUiSettings; devPrefs.edit().putBoolean("show_ui_settings", showUiSettings).apply()
-                }
-                if (showUiSettings) {
-                    val dark = com.veacon.veilmusic.ui.theme.AppPalette.isDark
-                    Stepper(tx("界面模式", "Appearance"), if (dark) tx("深色", "Dark") else tx("浅色", "Light"),
-                        tx("选择应用界面的显示模式", "Choose the app appearance"),
-                        { com.veacon.veilmusic.ui.theme.AppPalette.setDark(ctx, false) },
-                        { com.veacon.veilmusic.ui.theme.AppPalette.setDark(ctx, true) },
-                        decEnabled = dark, incEnabled = !dark)
-                    SettingDivider()
-                    // 定时切换深浅色：开启后按设定的起止小时自动切换（跨零点也正确）。
-                    Toggle(tx("定时切换深浅色", "Scheduled dark mode"), autoDark,
-                        tx("在设定时段自动切到深色，其余时间用浅色", "Go dark during the set hours")) {
-                        val next = !autoDark
-                        com.veacon.veilmusic.data.AppearanceSchedule.setEnabled(ctx, next)
-                        autoDark = next
-                        // 开关一拨立刻生效一次，不用等下一分钟轮询。
-                        com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
-                    }
-                    if (autoDark) {
-                        SettingDivider()
-                        Stepper(tx("深色开始", "Dark from"), com.veacon.veilmusic.data.AppearanceSchedule.label(autoDarkStart),
-                            tx("按半小时调整，跨零点也正确", "Half-hour steps; across midnight works too"),
-                            {
-                                autoDarkStart = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkStart, -1)
-                                com.veacon.veilmusic.data.AppearanceSchedule.setStartMin(ctx, autoDarkStart)
-                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
-                            },
-                            {
-                                autoDarkStart = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkStart, 1)
-                                com.veacon.veilmusic.data.AppearanceSchedule.setStartMin(ctx, autoDarkStart)
-                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
-                            })
-                        SettingDivider()
-                        Stepper(tx("深色结束", "Dark until"), com.veacon.veilmusic.data.AppearanceSchedule.label(autoDarkEnd),
-                            tx("到点自动切回浅色", "Switch back to light at this time"),
-                            {
-                                autoDarkEnd = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkEnd, -1)
-                                com.veacon.veilmusic.data.AppearanceSchedule.setEndMin(ctx, autoDarkEnd)
-                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
-                            },
-                            {
-                                autoDarkEnd = com.veacon.veilmusic.data.AppearanceSchedule.step(autoDarkEnd, 1)
-                                com.veacon.veilmusic.data.AppearanceSchedule.setEndMin(ctx, autoDarkEnd)
-                                com.veacon.veilmusic.data.AppearanceSchedule.apply(ctx)
-                            })
-                    }
-                    SettingDivider()
-                    Stepper(tr(R.string.msg_198), pstate.fluidQuality.label, tr(R.string.msg_199),
-                        { playerVm.stepFluidQuality(-1) }, { playerVm.stepFluidQuality(1) })
-                    SettingDivider()
-                    // 背景风格：流体（主线 Mac 流体）/ 熔岩（Lava 流体，随封面取色）——两种风格都支持背景律动。
-                    val bgStyle by playerVm.backgroundStyle.collectAsState()
-                    Stepper(tx("背景风格", "Background style"),
-                        if (bgStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA) tx("熔岩", "Lava") else tx("流体", "Fluid"),
-                        tx("播放页背景的呈现风格", "How the player background is rendered"),
-                        { playerVm.setBackgroundStyle(com.veacon.veilmusic.data.BackgroundStylePreferences.FLUID) },
-                        { playerVm.setBackgroundStyle(com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA) },
-                        decEnabled = bgStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA,
-                        incEnabled = bgStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.FLUID)
-                    SettingDivider()
-                    // 脉动速度倍率：流体与熔岩共享六档（0.3 / 0.5 / 1 / 1.5 / 2 / 2.5），
-                    // 只改背景渲染的演化节奏，切档相位连续不跳帧。
-                    val pulseIndex by playerVm.pulseSpeedIndex.collectAsState()
-                    Stepper(tx("脉动速度", "Pulse speed"),
-                        com.veacon.veilmusic.ui.background.LavaPulseSpeed.label(pulseIndex),
-                        tx("背景随鼓点脉动的速度倍率，两种背景风格共享",
-                           "Beat-reactive speed multiplier shared by both background styles"),
-                        { playerVm.stepPulseSpeed(-1) }, { playerVm.stepPulseSpeed(1) },
-                        decEnabled = pulseIndex > 0,
-                        incEnabled = pulseIndex < com.veacon.veilmusic.ui.background.LavaPulseSpeed.STEPS.lastIndex)
-                    SettingDivider()
-                    // 背景律动：随音乐节拍呼吸背景（Visualizer 只读本应用的播放频谱）。
+                        }
+                        1 -> {   // 背景动效
+            SettingsSection(tx("背景动效", "Background")) {
+                val bgStyle by playerVm.backgroundStyle.collectAsState()
+                Stepper(tx("背景风格", "Background style"),
+                    if (bgStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA)
+                        tx("熔岩", "Lava") else tx("流体", "Fluid"),
+                    tx("播放页背景的呈现风格（画质统一为高）",
+                       "How the player background is rendered (quality is always High)"),
+                    { playerVm.setBackgroundStyle(com.veacon.veilmusic.data.BackgroundStylePreferences.FLUID) },
+                    { playerVm.setBackgroundStyle(com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA) },
+                    decEnabled = bgStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.LAVA,
+                    incEnabled = bgStyle == com.veacon.veilmusic.data.BackgroundStylePreferences.FLUID)
+                SettingDivider()
+                val bgFps by playerVm.backgroundFps.collectAsState()
+                Stepper(tx("背景帧率", "Background frame rate"), "$bgFps fps",
+                    tx("背景动画每秒渲染帧数；卡顿明显时切 30",
+                       "Frames per second for the background animation. Switch to 30 if it stutters."),
+                    { playerVm.setBackgroundFps(30) }, { playerVm.setBackgroundFps(60) },
+                    decEnabled = bgFps != 30, incEnabled = bgFps != 60)
+                SettingDivider()
+                val pulseIndex by playerVm.pulseSpeedIndex.collectAsState()
+                Stepper(tx("脉动速度", "Pulse speed"),
+                    com.veacon.veilmusic.ui.background.LavaPulseSpeed.label(pulseIndex),
+                    tx("背景随节拍脉动的速度倍率", "Beat-reactive speed multiplier"),
+                    { playerVm.stepPulseSpeed(-1) }, { playerVm.stepPulseSpeed(1) },
+                    decEnabled = pulseIndex > 0,
+                    incEnabled = pulseIndex < com.veacon.veilmusic.ui.background.LavaPulseSpeed.STEPS.lastIndex)
+                SettingDivider()
+                    // 背景律动：一个设置项同时管理律动开关与麦克风授权（Visualizer 只读本应用频谱）。
                     var spectrumOn by remember { mutableStateOf(playerVm.spectrumEnabled()) }
-                    var spectrumGranted by remember {
-                        mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+                    var permissionTick by remember { mutableIntStateOf(0) }
+                    val spectrumPermState = remember(permissionTick) {
+                        com.veacon.veilmusic.data.microphonePermissionState(ctx, playerVm.spectrumPrefs)
                     }
                     val spectrumLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                        spectrumGranted = granted
+                        playerVm.spectrumPrefs.recordPermissionResult(granted)
+                        if (granted) playerVm.setSpectrumEnabled(true)
+                        spectrumOn = playerVm.spectrumEnabled()
+                        permissionTick++
                     }
-                    Toggle(tx("背景律动", "Beat-reactive backdrop"), spectrumOn,
-                        tx("随音乐节拍让播放页背景呼吸（需麦克风权限，只读本应用频谱）",
-                            "Let the player background breathe with the music (mic permission; reads only this app's spectrum)")) {
-                        spectrumOn = !spectrumOn
-                        playerVm.setSpectrumEnabled(spectrumOn)
+                    val spectrumSubtitle = when (spectrumPermState) {
+                        com.veacon.veilmusic.data.SpectrumPermissionState.Granted ->
+                            tx("随音乐节拍让播放页背景呼吸，只读取本应用频谱",
+                                "Breathe with the music; reads only this app's spectrum")
+                        com.veacon.veilmusic.data.SpectrumPermissionState.Denied ->
+                            tx("麦克风权限被拒绝，请到系统设置中允许后重试",
+                                "Microphone denied — allow it in system settings, then retry")
+                        com.veacon.veilmusic.data.SpectrumPermissionState.Unavailable ->
+                            tx("此设备不支持频谱采集，律动不可用",
+                                "Spectrum capture unavailable on this device")
+                        com.veacon.veilmusic.data.SpectrumPermissionState.NotRequested ->
+                            tx("开启时请求麦克风权限，只读取本应用频谱",
+                                "Requests mic permission when enabled; reads only this app's spectrum")
                     }
-                    if (spectrumOn && !spectrumGranted) {
-                        SettingDivider()
-                        Toggle(tx("允许麦克风", "Allow microphone"), false,
-                            tx("授权后返回播放页即可开始律动", "Grant to enable the reactive backdrop")) {
-                            spectrumLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    Toggle(tx("背景节拍律动", "Beat-reactive backdrop"), spectrumOn, spectrumSubtitle) {
+                        if (spectrumOn) {
+                            playerVm.setSpectrumEnabled(false)
+                            spectrumOn = false
+                        } else {
+                            when (spectrumPermState) {
+                                com.veacon.veilmusic.data.SpectrumPermissionState.Granted -> {
+                                    playerVm.setSpectrumEnabled(true); spectrumOn = true
+                                }
+                                com.veacon.veilmusic.data.SpectrumPermissionState.Denied,
+                                com.veacon.veilmusic.data.SpectrumPermissionState.NotRequested ->
+                                    spectrumLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                com.veacon.veilmusic.data.SpectrumPermissionState.Unavailable -> Unit
+                            }
                         }
                     }
-                    SettingDivider()
-                    Stepper(tr(R.string.msg_200), lyricsScaleLabel(pstate.lyricsScale), tr(R.string.msg_201),
-                        { playerVm.stepLyricsScale(-1) }, { playerVm.stepLyricsScale(1) })
-                    SettingDivider()
-                    Toggle(tr(R.string.msg_202), pstate.motionArtworkEnabled, tr(R.string.msg_203)) { playerVm.toggleMotionArtwork() }
-                    SettingDivider()
-                    Toggle(tr(R.string.msg_204), pstate.artworkRounded, tr(R.string.msg_205)) { playerVm.toggleArtworkRounded() }
-                    SettingDivider()
-                    // 渲染兼容（封面花屏修复，原实验室分组）：只影响已确认花屏机型。
-                    Toggle(
-                        tr(R.string.msg_344),
-                        pstate.renderCompat,
-                        when {
-                            pstate.renderCompat -> tr(R.string.msg_349)
-                            pstate.renderCompatManual -> tr(R.string.msg_350)
-                            else -> tr(R.string.msg_348)
-                        },
-                    ) { playerVm.setRenderCompat(!pstate.renderCompat) }
-                    SettingDivider()
-                    // 顶部交互栏显示当前播放歌名（原实验室分组）。
-                    Toggle(
-                        tr(R.string.msg_351),
-                        pstate.navTitleAsSong,
-                        tr(R.string.msg_352),
-                    ) { playerVm.setNavTitleAsSong(!pstate.navTitleAsSong) }
-                    SettingDivider()
-                    // 底部迷你播放胶囊（原实验室分组）：常驻底部，背景随主题深浅并做高斯模糊。
-                    Toggle(
-                        tx("迷你播放胶囊", "Mini player capsule"),
-                        pstate.miniCapsuleEnabled,
-                        tx("底部常驻播放条，背景随主题深浅并做模糊", "Always-on bottom bar with a theme-aware blurred background"),
-                    ) { playerVm.setMiniCapsuleEnabled(!pstate.miniCapsuleEnabled) }
-                    if (pstate.miniCapsuleEnabled) {
-                        SettingDivider()
-                        Stepper(
-                            tx("高度", "Height"),
-                            "${pstate.miniCapsuleHeightPct}%",
-                            tx("图标、封面与文字一起缩放", "Icons, art and text scale together"),
-                            { playerVm.nudgeMiniCapsuleHeightPct(-5) },
-                            { playerVm.nudgeMiniCapsuleHeightPct(5) },
-                            decEnabled = pstate.miniCapsuleHeightPct > 60,
-                            incEnabled = pstate.miniCapsuleHeightPct < 140,
-                        )
-                        SettingDivider()
-                        Stepper(
-                            tx("宽度", "Width"),
-                            "${pstate.miniCapsuleWidthPct}%",
-                            tx("只改占屏宽的比例", "Only changes the width span"),
-                            { playerVm.nudgeMiniCapsuleWidthPct(-5) },
-                            { playerVm.nudgeMiniCapsuleWidthPct(5) },
-                            decEnabled = pstate.miniCapsuleWidthPct > 60,
-                            incEnabled = pstate.miniCapsuleWidthPct < 100,
-                        )
-                        SettingDivider()
-                        Toggle(
-                            tx("背景跟随专辑取色", "Album colour background"),
-                            pstate.miniCapsuleAlbumTint,
-                            tx("关闭后胶囊只随深浅主题变化，呈一层磨砂玻璃",
-                               "Off: background follows light/dark only, like frosted glass"),
-                        ) { playerVm.setMiniCapsuleAlbumTint(!pstate.miniCapsuleAlbumTint) }
-                        SettingDivider()
-                        Toggle(
-                            tx("显示播放进度线", "Playback progress line"),
-                            pstate.miniCapsuleProgressLine,
-                            tx("胶囊内底边的一条细线，随播放推进；关闭后胶囊更干净",
-                               "The thin line along the capsule's bottom edge; hide it for a cleaner look"),
-                        ) { playerVm.setMiniCapsuleProgressLine(!pstate.miniCapsuleProgressLine) }
-                    }
-                }
             }
-            SettingsSection(tx("播放与音质", "Playback & audio")) {
-                Toggle(
-                    tx("播放与音质", "Playback & audio"),
-                    showPlayback,
-                    tr(R.string.msg_playback_settings_sub),
-                ) { showPlayback = !showPlayback; devPrefs.edit().putBoolean("show_playback", showPlayback).apply() }
-                if (showPlayback) {
-                    SettingDivider()
+                        }
+                        2 -> {   // 封面动效
+            SettingsSection(tx("封面动效", "Artwork")) {
+                Toggle(tr(R.string.msg_202), pstate.motionArtworkEnabled, tr(R.string.msg_203)) {
+                    playerVm.toggleMotionArtwork()
+                }
+                SettingDivider()
+                Toggle(tr(R.string.msg_204), pstate.artworkRounded, tr(R.string.msg_205)) {
+                    playerVm.toggleArtworkRounded()
+                }
+                SettingDivider()
+                Toggle(tr(R.string.msg_344), pstate.renderCompat, when {
+                    pstate.renderCompat -> tr(R.string.msg_349)
+                    pstate.renderCompatManual -> tr(R.string.msg_350)
+                    else -> tr(R.string.msg_348)
+                }) { playerVm.setRenderCompat(!pstate.renderCompat) }
+            }
+                        }
+                        3 -> {   // 播放音质
+            SettingsSection(tx("播放音质", "Audio")) {
                 val quality = state.audioQuality
-                Stepper(
-                    tx("音质", "Audio quality"),
-                    tx(quality.label, quality.label),
-                    tx(quality.hint, quality.hint),
-                    { vm.stepAudioQuality(-1) },
-                    { vm.stepAudioQuality(1) },
+                Stepper(tx("音质", "Audio quality"), quality.label, quality.hint,
+                    { vm.stepAudioQuality(-1) }, { vm.stepAudioQuality(1) },
                     decEnabled = quality.ordinal > 0,
-                    incEnabled = quality.ordinal < com.veacon.veilmusic.data.AudioQuality.entries.lastIndex,
-                )
+                    incEnabled = quality.ordinal < com.veacon.veilmusic.data.AudioQuality.entries.lastIndex)
                 SettingDivider()
                 val decoder = pstate.decoderMode
                 val hw = decoder == com.veacon.veilmusic.data.DecoderMode.HARDWARE
-                Stepper(
-                    tx("解码方式", "Audio decoder"),
+                Stepper(tx("解码方式", "Audio decoder"),
                     if (hw) tx("硬解", "Hardware") else tx("软解", "Software"),
-                    if (hw) tx("系统解码；变速或杂音请切回软解",
-                               "System decoder; switch back if audio crackles")
-                    else tx("内置 FFmpeg 解码，兼容性最好",
-                            "Built-in FFmpeg decoder — the most consistent"),
+                    tx("系统解码更省电；FFmpeg 软解更稳定",
+                       "System decoder is lighter; FFmpeg is more consistent"),
                     { playerVm.setDecoderMode(com.veacon.veilmusic.data.DecoderMode.SOFTWARE) },
                     { playerVm.setDecoderMode(com.veacon.veilmusic.data.DecoderMode.HARDWARE) },
-                    decEnabled = hw,
-                    incEnabled = !hw,
-                )
+                    decEnabled = !hw, incEnabled = hw)
                 SettingDivider()
-                Toggle(tr(R.string.msg_193), pstate.volumeLeveling, tr(R.string.msg_194)) { playerVm.toggleVolumeLeveling() }
-
+                Toggle(tr(R.string.msg_193), pstate.volumeLeveling, tr(R.string.msg_194)) {
+                    playerVm.toggleVolumeLeveling()
+                }
                 SettingDivider()
-                    Stepper(tr(R.string.msg_187), tr(R.string.msg_188).format(com.veacon.veilmusic.i18n.AppLanguage.locale, state.crossfadeMs / 1000f),
-                        tr(R.string.msg_189), { vm.setCrossfade(com.veacon.veilmusic.data.CrossfadePreferences.step(state.crossfadeMs, -1)) },
-                        { vm.setCrossfade(com.veacon.veilmusic.data.CrossfadePreferences.step(state.crossfadeMs, 1)) })
-                    if (state.pcServerIp.isNotBlank()) {
-                        SettingDivider()
-                        Toggle(tr(R.string.msg_190), state.standaloneOn,
-                            if (state.standaloneOn) tr(R.string.msg_191) else tr(R.string.msg_192)) {
-                            vm.toggleStandalone()
+                val crossfadeS = (state.crossfadeMs / 1000L).toInt()
+                Stepper(tr(R.string.msg_187),
+                    tr(R.string.msg_188).format(com.veacon.veilmusic.i18n.AppLanguage.locale, state.crossfadeMs / 1000f),
+                    tr(R.string.msg_189),
+                    { vm.setCrossfade(((crossfadeS - 1).coerceAtLeast(0) * 1000L)) },
+                    { vm.setCrossfade(((crossfadeS + 1).coerceAtMost(12) * 1000L)) },
+                    decEnabled = crossfadeS > 0, incEnabled = crossfadeS < 12)
+                SettingDivider()
+                Toggle(tr(R.string.msg_190), state.standaloneOn, if (state.standaloneOn) tr(R.string.msg_191) else tr(R.string.msg_192)) {
+                    vm.toggleStandalone()
+                }
+                SettingDivider()
+                Toggle(tx("统一输出采样率", "Unified output rate"), pstate.unifySampleRate,
+                    tx("把输出统一到设备原生采样率，减少重建", "Resample to the device rate to avoid sink rebuilds")) {
+                    playerVm.setUnifySampleRate(!pstate.unifySampleRate)
+                }
+                SettingDivider()
+                Toggle(tx("音频直通（offload）", "Audio offload"), pstate.audioOffload,
+                    tx("让 DSP 直接吃压缩流，降低 CPU 占用", "Feed the DSP the compressed stream to cut CPU use")) {
+                    playerVm.setAudioOffload(!pstate.audioOffload)
+                }
+            }
                         }
-                    }
-                    SettingDivider()
-                    Toggle(
-                        tx("统一输出采样率", "Unified output rate"),
-                        pstate.unifySampleRate,
-                        tx("统一重采样到设备原生采样率，换歌不再重建输出",
-                           "Resample to the device's native rate so tracks don't rebuild output"),
-                    ) { playerVm.setUnifySampleRate(!pstate.unifySampleRate) }
-                    if (playerVm.audioOffloadSupported()) {
-                        SettingDivider()
-                        Toggle(
-                            tx("音频直通（offload）", "Audio offload"),
-                            pstate.audioOffload,
-                            tx("交给音频 DSP 解码更省电；会关闭均衡与律动背景",
-                               "DSP decodes for lower power; disables leveling and beat visuals"),
-                        ) { playerVm.setAudioOffload(!pstate.audioOffload) }
-                    }
+                        4 -> {   // 歌词设置
+            SettingsSection(tx("歌词设置", "Lyrics")) {
+                val scaleLabels = listOf(0.8f, 1.0f, 1.25f, 1.6f, 2.0f).map { lyricsScaleLabel(it) }
+                val scaleIdx = listOf(0.8f, 1.0f, 1.25f, 1.6f, 2.0f)
+                    .indexOfFirst { kotlin.math.abs(it - pstate.lyricsScale) < 0.05f }.let { if (it < 0) 2 else it }
+                Stepper(tr(R.string.msg_200), lyricsScaleLabel(pstate.lyricsScale), tr(R.string.msg_201),
+                    { playerVm.setLyricsScale(listOf(0.8f, 1.0f, 1.25f, 1.6f, 2.0f)[(scaleIdx - 1).coerceAtLeast(0)]) },
+                    { playerVm.setLyricsScale(listOf(0.8f, 1.0f, 1.25f, 1.6f, 2.0f)[(scaleIdx + 1).coerceAtMost(4)]) },
+                    decEnabled = scaleIdx > 0, incEnabled = scaleIdx < 4)
                 SettingDivider()
-                Toggle(
-                    tr(R.string.msg_357),
-                    pstate.lyricsScript == com.veacon.veilmusic.data.LyricsScript.TRADITIONAL,
-                    tr(R.string.msg_358),
-                ) { playerVm.setLyricsScript(
-                    if (pstate.lyricsScript == com.veacon.veilmusic.data.LyricsScript.TRADITIONAL)
-                        com.veacon.veilmusic.data.LyricsScript.SIMPLIFIED
-                    else com.veacon.veilmusic.data.LyricsScript.TRADITIONAL
-                ) }
-                SettingDivider()
-                // 逐字歌词（原实验室分组）：歌词按字点亮。
                 Toggle(tx("逐字歌词", "Word-by-word lyrics"), wordByWordLyrics,
-                    tx("歌词按字逐个点亮，随演唱节奏显示", "Lyrics light up per character with the vocals")) {
+                    tx("歌词按字逐个点亮，随演唱节奏显示", "Light up lyrics per character as they are sung")) {
                     vm.setWordByWordLyrics(!wordByWordLyrics)
                 }
                 SettingDivider()
-                Stepper(tr(R.string.msg_213), tr(R.string.msg_214, state.lyricsOffsetMs), tr(R.string.msg_215),
-                    { vm.setLyricsOffset(state.lyricsOffsetMs - 50) }, { vm.setLyricsOffset(state.lyricsOffsetMs + 50) })
+                Toggle(tx("歌词缓动回弹", "Lyric ease & rebound"), lyricElastic,
+                    tx("当前行平滑放大、已唱行收暗，切换行有缓动效果", "The current line eases in while others dim")) {
+                    vm.setLyricElastic(!lyricElastic)
                 }
+                SettingDivider()
+                val offsets = (-20..20).map { it * 50L }
+                Stepper(tr(R.string.msg_213),
+                    tr(R.string.msg_214, state.lyricsOffsetMs), tr(R.string.msg_215),
+                    { vm.setLyricsOffset((state.lyricsOffsetMs - 50L).coerceAtLeast(-1000L)) },
+                    { vm.setLyricsOffset((state.lyricsOffsetMs + 50L).coerceAtMost(1000L)) },
+                    decEnabled = state.lyricsOffsetMs > -1000L,
+                    incEnabled = state.lyricsOffsetMs < 1000L)
+                SettingDivider()
+                Stepper(tx("歌词字形", "Lyrics script"),
+                    if (pstate.lyricsScript == com.veacon.veilmusic.data.LyricsScript.TRADITIONAL)
+                        tx("繁体", "Traditional") else tx("简体", "Simplified"),
+                    tx("歌词使用简体还是繁体显示", "Show lyrics in Simplified or Traditional Chinese"),
+                    { playerVm.setLyricsScript(com.veacon.veilmusic.data.LyricsScript.SIMPLIFIED) },
+                    { playerVm.setLyricsScript(com.veacon.veilmusic.data.LyricsScript.TRADITIONAL) },
+                    decEnabled = pstate.lyricsScript == com.veacon.veilmusic.data.LyricsScript.TRADITIONAL,
+                    incEnabled = pstate.lyricsScript != com.veacon.veilmusic.data.LyricsScript.TRADITIONAL)
             }
-            SettingsSection(tx("通用", "General")) {
-                Toggle(tx("通用", "General"), showGeneral,
-                    tx("语言、蓝牙同步、缓存、手机配置与关于", "Language, Bluetooth sync, cache, phone setup and about"),
-                ) { showGeneral = !showGeneral; devPrefs.edit().putBoolean("show_general", showGeneral).apply() }
-                if (showGeneral) {
-                SettingDivider()
+                        }
+                        5 -> {   // 通用设置
+            SettingsSection(tx("通用设置", "General")) {
                 LanguageStepper()
-                SettingDivider()
-                Toggle(tr(R.string.msg_211), pstate.avSyncAuto, tr(R.string.msg_212)) {
-                    playerVm.setAvSyncAuto(!pstate.avSyncAuto)
-                }
-                SettingDivider()
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(tr(R.string.msg_216), fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
-                    Text(com.veacon.veilmusic.i18n.AppLanguage.outputLabel(pstate.avOutputLabel) + if (pstate.avSyncAuto && pstate.avOnBluetooth) tr(R.string.msg_217) else "",
-                        fontSize = 12.sp, lineHeight = 18.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
-                }
-                SettingDivider()
-                CacheSettingsContent(state.cacheCapacityGb, state.cacheUsedBytes, state.cacheBusy,
-                    state.cacheMessage, vm::setCacheCapacity, vm::clearCache)
-                SettingDivider()
-                // 手机配置入口：遥控器输入不便时的唯一网页入口（导入歌单、改播放设置）。
-                PhoneServerRow(state.webServerUrl)
                 SettingDivider()
                 val details = when (update.phase) {
                     "checking" -> tx("正在检查更新…", "Checking for updates…")
-                    "available" -> tx("发现新版本 ${update.info?.version}", "Update available: ${update.info?.version}")
-                    "latest" -> tx("当前已是最新版本", "You're up to date")
+                    "available" -> tx("有新版本 ${update.info?.version}", "Update available: ${update.info?.version}")
+                    "latest" -> tx("当前已是最新版本", "You are up to date")
                     "downloading" -> tx("正在下载 ${update.progress}%", "Downloading ${update.progress}%")
                     "ready", "permission" -> tx("安装包已下载，点击继续安装", "Download complete; select to install")
                     "incompatible" -> tx("新版本不支持当前系统", "The update requires a newer Android version")
-                    "error", "downloadError", "installError" -> tx("检查或安装失败，点击重试", "Update failed; select to retry")
+                    "error", "downloadError", "installError" -> tx("更新失败，点击重试", "Update failed; select to retry")
                     else -> tx("点击检查更新", "Select to check for updates")
                 }
                 ActionSettingRow(tx("当前版本 ${com.veacon.veilmusic.BuildConfig.VERSION_NAME}", "Version ${com.veacon.veilmusic.BuildConfig.VERSION_NAME}"), details) {
@@ -554,59 +529,44 @@ fun DevMenuScreen(
                     else vm.checkUpdates(manual = true)
                 }
                 SettingDivider()
-                // 发现页（新手引导）：入口开关 + 重新观看。
-                Toggle(tx("自动弹出新手引导", "Auto-show the guide"), guideAutoShow, "") {
-                    val next = !guideAutoShow
-                    com.veacon.veilmusic.ui.guide.GuideState.setAutoShow(ctx, next)
-                    guideAutoShow = next
-                }
-                SettingDivider()
-                ActionSettingRow(
-                    tx("重新观看新手引导", "Replay the onboarding guide"),
-                    tx("清掉完成标记并立刻重新打开", "Clear the flag and reopen it right away"),
-                ) {
-                    com.veacon.veilmusic.ui.guide.GuideState.requestReplay(ctx)
-                }
-                SettingDivider()
                 ActionSettingRow(tr(R.string.msg_232), tr(R.string.msg_233), danger = true) { confirmReset = true }
-                }
             }
-            SettingsSection(tr(R.string.msg_219)) {
-                Toggle(tr(R.string.msg_220), showDev, tr(R.string.msg_221)) { showDev = !showDev; devPrefs.edit().putBoolean("show_dev", showDev).apply() }
-            }
-            if (showDev) {
-                SettingsSection(tr(R.string.msg_222)) {
-                    ActionSettingRow(tr(R.string.msg_223), tr(R.string.msg_224)) { vm.clearLogs() }
-                    SettingDivider()
-                    LazyColumn(Modifier.fillMaxWidth().height(260.dp).padding(20.dp), reverseLayout = true,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (netLogs.isEmpty() && state.logs.isEmpty()) item {
-                            Text(tr(R.string.msg_225), fontSize = 12.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
                         }
-                        items(netLogs.reversed()) { line -> Text(line, fontSize = 12.sp, lineHeight = 18.sp,
-                            fontFamily = FontFamily.Monospace, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8))) }
-                        items(state.logs.reversed()) { log -> Text(com.veacon.veilmusic.ui.viewmodel.LogStage.localize(log.message), fontSize = 12.sp, lineHeight = 18.sp,
-                            fontFamily = FontFamily.Monospace, color = when (log.level) {
-                                "ERROR" -> Color(0xFFB22222); "WARN" -> Color(0xFF8A6500)
-                                else -> com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8))
-                            }) }
+                        6 -> {   // 诊断工具
+            SettingsSection(tx("诊断工具", "Diagnostics")) {
+                ActionSettingRow(tr(R.string.msg_223), tr(R.string.msg_224)) { vm.clearLogs() }
+                SettingDivider()
+                LazyColumn(Modifier.fillMaxWidth().height(260.dp).padding(20.dp), reverseLayout = true,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (netLogs.isEmpty() && state.logs.isEmpty()) item {
+                        Text(tr(R.string.msg_225), fontSize = 12.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
                     }
+                    items(netLogs.reversed()) { line -> Text(line, fontSize = 12.sp, lineHeight = 18.sp,
+                        fontFamily = FontFamily.Monospace, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8))) }
+                    items(state.logs.reversed()) { log -> Text(com.veacon.veilmusic.ui.viewmodel.LogStage.localize(log.message), fontSize = 12.sp, lineHeight = 18.sp,
+                        fontFamily = FontFamily.Monospace, color = when (log.level) {
+                            "ERROR" -> Color(0xFFB22222); "WARN" -> Color(0xFF8A6500)
+                            else -> com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8))
+                        }) }
                 }
+                SettingDivider()
                 SettingsSection(tr(R.string.msg_226)) { BugReportRow(state.webServerUrl) }
-                SettingsSection(tr(R.string.msg_227)) {
-                    ActionSettingRow(tx("配置音源", "Configure sources"), tx("停用、删除内置音源", "Disable or delete built-in sources")) {
-                        showSourceManager = true
-                    }
-                    SettingDivider()
-                    ActionSettingRow(tr(R.string.msg_230), tr(R.string.msg_231)) {
-                        playerVm.stopPlayback(); android.os.Process.killProcess(android.os.Process.myPid())
-                    }
+                SettingDivider()
+                ActionSettingRow(tx("配置音源", "Configure sources"), tx("停用、删除内置音源", "Disable or delete built-in sources")) {
+                    showSourceManager = true
+                }
+                SettingDivider()
+                ActionSettingRow(tr(R.string.msg_230), tr(R.string.msg_231)) {
+                    playerVm.stopPlayback(); android.os.Process.killProcess(android.os.Process.myPid())
                 }
             }
-            // 版本行：挂在设置内容的最末尾，随 verticalScroll 滚动——不滑到最底部看不见。
-            com.veacon.veilmusic.ui.components.AppVersionFooter()
+                        }
+                    }
+                com.veacon.veilmusic.ui.components.AppVersionFooter()
+            }
         }
     }
+        }
 
     if (confirmReset) {
         ResetAppDialog(onDismiss = { confirmReset = false }) {
@@ -731,8 +691,8 @@ private fun DownloadSourceDialog(
                     Text(tx_dialog("选择下载线路", "Choose download source"), fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = palette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
-                    Text(tx_dialog("4 线程并发下载；加速线路失败会自动回退直连。",
-                            "4 parallel connections. If a mirror fails, downloading falls back to the official direct link."),
+                    Text(tx_dialog("单线程下载；加速线路失败会自动回退直连。",
+                            "Single-connection download. If a mirror fails, downloading falls back to the official direct link."),
                         fontSize = 13.sp, lineHeight = 19.sp,
                         color = palette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
                     Spacer(Modifier.height(6.dp))
@@ -895,9 +855,93 @@ internal fun nowPlayingLabel(title: String?, fallback: String): String {
     return name.substring(0, name.offsetByCodePoints(0, NOW_PLAYING_MAX_CHARS))
 }
 
+
+/** 设置页左列分区（与资料库一致的两列式）。 */
+@Composable
+internal fun settingsSectionLabels(english: Boolean): List<String> = listOf(
+    if (english) "Account" else "账号外观",
+    if (english) "Backdrop" else "背景动效",
+    if (english) "Artwork" else "封面动效",
+    if (english) "Audio" else "播放音质",
+    if (english) "Lyrics" else "歌词设置",
+    if (english) "General" else "通用设置",
+    if (english) "Diagnostics" else "诊断工具",
+)
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun SettingsSidebar(
+    labels: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onReturnToTab: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    // 与资料库 SectionSidebar 同一套视觉：208dp 宽、12dp 圆角、选中红底、键盘模式下焦点即选中。
+    val inputModeManager = androidx.compose.ui.platform.LocalInputModeManager.current
+    Column(
+        modifier = modifier.fillMaxHeight()
+            .background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFFFFFFF), Color(0xFF101012)))
+            .padding(end = 16.dp, top = 96.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            "设置",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
+            modifier = Modifier.padding(bottom = 14.dp),
+        )
+        labels.forEachIndexed { index, label ->
+            val isSel = index == selected
+            Surface(
+                onClick = { onSelect(index) },
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = if (isSel) Color(0x33FA233B) else Color.Transparent,
+                    focusedContainerColor = if (isSel) Color(0x4DFA233B)
+                        else com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+                ),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+                modifier = Modifier.fillMaxWidth()
+                    .onFocusChanged {
+                        if (it.isFocused && inputModeManager.inputMode == androidx.compose.ui.input.InputMode.Keyboard) onSelect(index)
+                    }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (event.key == androidx.compose.ui.input.key.Key.DirectionUp && index == 0) {
+                            onReturnToTab?.invoke(); true
+                        } else false
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    // 选中项左侧的红色竖条（与资料库 SectionSidebar 完全一致）
+                    Box(
+                        Modifier.width(3.dp).height(18.dp).clip(RoundedCornerShape(2.dp))
+                            .background(if (isSel) Color(0xFFFA233B) else Color.Transparent)
+                    )
+                    Text(
+                        text = label,
+                        fontSize = 16.sp,
+                        fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (isSel) com.veacon.veilmusic.ui.theme.AppPalette.primary
+                            else com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionLabel(title)
         Column(Modifier.fillMaxWidth().background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)), RoundedCornerShape(14.dp)), content = content)
     }
@@ -911,15 +955,90 @@ internal fun SettingDivider() {
 @Composable
 internal fun RowScope.SettingText(label: String, sub: String) {
     Column(Modifier.weight(1f).padding(end = 20.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+        Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold,
             color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
-        Text(sub, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+        Text(sub, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+    }
+}
+
+/** 选择型设置行：点开弹一个小卡片选值（替代原来的 -+ 步进器）。 */
+/** 选择型设置行：点开弹一个贴着本行的白色小气泡（与播放页歌词菜单同一套）。 */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun ChoiceRow(
+    label: String,
+    value: String,
+    sub: String,
+    options: List<String>,
+    selected: Int,
+    onPick: (Int) -> Unit,
+) {
+    val visibility = remember { androidx.compose.animation.core.MutableTransitionState(false) }
+    val firstFocus = remember { FocusRequester() }
+    Box {
+        Surface(
+            onClick = { visibility.targetState = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)),
+            ),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SettingText(label, sub)
+                Text(
+                    value, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF3C3C43), Color(0xFFE3E3E8)),
+                )
+            }
+        }
+        PlayerBubbleMenu(
+            visibility = visibility,
+            onDismiss = { visibility.targetState = false },
+            initialFocus = firstFocus,
+        ) {
+            Column(
+                Modifier.width(220.dp).heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                options.forEachIndexed { index, option ->
+                    val isSel = index == selected
+                    Surface(
+                        onClick = { onPick(index); visibility.targetState = false },
+                        modifier = Modifier.fillMaxWidth().then(
+                            if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                        ),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = if (isSel) Color(0x33FA233B) else Color.Transparent,
+                            focusedContainerColor = Color(0xFFE8E8ED),
+                        ),
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
+                    ) {
+                        Text(
+                            option, fontSize = 15.sp, maxLines = 1,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSel) Color(0xFFFA233B) else Color(0xFF1D1D1F),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
 internal fun Stepper(label: String, value: String, sub: String, onDec: () -> Unit, onInc: () -> Unit, modifier: Modifier = Modifier, decEnabled: Boolean = true, incEnabled: Boolean = true) {
-    Row(modifier.fillMaxWidth().heightIn(min = 84.dp).padding(horizontal = 20.dp, vertical = 16.dp),
+    Row(modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically) {
         SettingText(label, sub)
         Row(Modifier.width(190.dp), verticalAlignment = Alignment.CenterVertically,
@@ -942,14 +1061,13 @@ internal fun StepBtn(symbol: String, onClick: () -> Unit, enabled: Boolean = tru
         // 到边界时只做两件事：符号调淡 + 语义上标记 disabled（读屏/测试照旧）。
         // 但不能真的禁用：禁用的按钮不可聚焦，点完一步焦点会掉出本行、被顶栏接走。
         // 点到边界的那一下由各 step 函数自己夹取，等于空操作。
-        modifier = Modifier.size(36.dp).then(
+        modifier = Modifier.width(46.dp).height(30.dp).then(
             if (disabledSemantics) Modifier.semantics { disabled() } else Modifier),
-        shape = ClickableSurfaceDefaults.shape(ContentActionShape),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(9.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)), focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.accent,
             focusedContentColor = Color.White, contentColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF3C3C43), Color(0xFFE3E3E8))),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
-        focusRadius = 18.dp, focusScale = 1f, clipToControl = true) {
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None)) {
         Box(Modifier.fillMaxSize(), Alignment.Center) {
             // 颜色不写死：聚焦时跟随 focusedContentColor（白字）。
             Text(symbol, fontSize = 20.sp, modifier = Modifier.alpha(if (dimmed) 0.45f else 1f))
@@ -964,10 +1082,8 @@ internal fun Toggle(label: String, on: Boolean, sub: String, modifier: Modifier 
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
-        // 设置行不缩放：外圈严格贴合控件边界（圆角/尺寸与选项一致），不再放大溢出。
-        focusRadius = 10.dp, focusScale = 1f, clipToControl = true) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 84.dp).padding(horizontal = 20.dp, vertical = 16.dp),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically) {
             SettingText(label, sub)
             Box(Modifier.width(48.dp).height(28.dp)
@@ -991,7 +1107,7 @@ internal fun SectionLabel(text: String) {
  */
 @Composable
 internal fun InfoRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 84.dp).padding(horizontal = 20.dp, vertical = 16.dp),
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically) {
         SettingText(label, "")
         Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1,
@@ -1004,7 +1120,7 @@ internal fun InfoRow(label: String, value: String) {
 
 @Composable
 private fun StatusChip(label: String, ok: Boolean, sub: String? = null) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 84.dp).padding(horizontal = 20.dp, vertical = 16.dp),
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically) {
         SettingText(label, sub.orEmpty())
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1021,16 +1137,59 @@ internal fun ActionSettingRow(label: String, description: String, danger: Boolea
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
-        focusRadius = 10.dp, focusScale = 1f, clipToControl = true) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 84.dp).padding(horizontal = 20.dp, vertical = 16.dp),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(label, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                     color = if (danger) Color(0xFFB22222) else com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
                 Text(description, fontSize = 12.sp, lineHeight = 18.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
             }
             Text("›", fontSize = 22.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
+        }
+    }
+}
+
+/**
+ * 「手机扫码登录」入口行：整行可点、右侧只有箭头，**没有开关**——开关对"扫码"这种一次性动作没有意义，
+ * 而且原来那个假开关（永远为 false）看起来像"登录没生效"。点进去直接开二维码流程。
+ *
+ * 登录后的状态与云端歌单也铺在这一行里（.cn 区域的歌单同样列出），
+ * 设置页不再需要另一块单独的状态区，减少一处"看起来重复"的信息。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun SignInRow(
+    statusLine: String,
+    syncedCount: Int,
+    loadingLibrary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 只显示「登录情况 + 同步了几个歌单」，不再铺歌单名。
+    Surface(onClick = onClick, modifier = modifier.fillMaxWidth(),
+        colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent,
+            focusedContainerColor = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D))),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("点击扫码登录 Apple Music", fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)))
+                Text(statusLine, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)))
+                val syncText = when {
+                    loadingLibrary -> if (com.veacon.veilmusic.i18n.AppLanguage.code == "en") "Syncing playlists…" else "正在同步歌单…"
+                    syncedCount > 0 -> if (com.veacon.veilmusic.i18n.AppLanguage.code == "en") "$syncedCount playlists synced" else "已同步 $syncedCount 个歌单"
+                    else -> if (com.veacon.veilmusic.i18n.AppLanguage.code == "en") "No cloud playlists synced" else "暂无已同步歌单"
+                }
+                Text(syncText, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF8E8E93), Color(0xFFA3A3AA)))
+            }
         }
     }
 }
@@ -1094,7 +1253,6 @@ internal fun LanguageStepper() {
         com.veacon.veilmusic.i18n.LanguageChoice.English -> "English"
     }
         fun changeLanguage(direction: Int) {
-            // V84 上游：读实时选中的序号而不是闭包捕获的旧值——否则连续按两下会跳过一档语言。
             com.veacon.veilmusic.i18n.AppLanguage.select(choices[(com.veacon.veilmusic.i18n.AppLanguage.choice.ordinal + direction + choices.size) % choices.size])
         }
     Stepper(tr(R.string.msg_313), label, tr(R.string.msg_314),

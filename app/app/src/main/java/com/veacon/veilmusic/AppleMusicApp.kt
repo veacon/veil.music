@@ -26,9 +26,17 @@ class AppleMusicApp : Application(), ImageLoaderFactory {
      * Memory remains capped at 64 MiB — 15% of RAM was
      * ~225 MB on this box, far too much to hold in a memory-starved foreground app.
      */
-    override fun newImageLoader(): ImageLoader =
+    private val imageLoader by lazy { buildImageLoader() }
+
+    override fun newImageLoader(): ImageLoader = imageLoader
+
+    private fun buildImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
-            .memoryCache { MemoryCache.Builder(this).maxSizeBytes(64 * 1024 * 1024).build() }
+            .memoryCache {
+                // P1-1：按 DeviceTuning 单点判定分档（1GB 机 24MB / 中端 48MB / 其余 64MB）。
+                val cacheMb = com.veacon.veilmusic.util.DeviceTuning.profile(this).coilCacheMb
+                MemoryCache.Builder(this).maxSizeBytes(cacheMb * 1024 * 1024).build()
+            }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
@@ -48,6 +56,21 @@ class AppleMusicApp : Application(), ImageLoaderFactory {
             })
             .build()
 
+    /** 背景帧预算在内存压力下先降到 30fps，压力解除恢复。 */
+    private var userBackgroundFps = com.veacon.veilmusic.ui.background.BackgroundFrameRate.DEFAULT
+    private val backgroundSink = object : com.veacon.veilmusic.util.MemoryPressure.Sink {
+        override fun onTrim(level: Int) {
+            if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+                userBackgroundFps = com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps
+                com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps = 30
+            }
+        }
+        override fun onRelaxed() {
+            com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps = userBackgroundFps
+        }
+    }
+
     @Inject lateinit var webServer: InAppWebServer
     @Inject lateinit var repo: MusicRepository
     @Inject lateinit var mutPrefs: MutPreferences
@@ -59,10 +82,28 @@ class AppleMusicApp : Application(), ImageLoaderFactory {
         super.onCreate()
         com.veacon.veilmusic.i18n.AppLanguage.initialize(this)
         com.veacon.veilmusic.util.CrashReporter.install(this)
-        // 音源初始化（10 个 QuickJS 脚本）在 Application 阶段就开始，与首帧绘制、首页请求
-        // 并行预热；不要等窗口尺寸闸门，更不要等用户点下第一首歌才开始加载脚本。
+        android.util.Log.i("DeviceTuning", com.veacon.veilmusic.util.DeviceTuning.describe(this))
+        // P0-9：不再在 Application 阶段预热全部 QuickJS 脚本 —— 没用到落雪源时
+        // 一个 lx-js-* 线程都不该存在；首次真正解析时才按需启动（优先上次用过的音源）。
         lxPlayback.logger = { msg -> webServer.addLog("LX", msg) }
-        appScope.launch { runCatching { lxPlayback.ensureReady() } }
+        // P0-8：内存压力时背景最后让路（降到 30fps），压力解除恢复用户档位。
+        com.veacon.veilmusic.util.MemoryPressure.register(backgroundSink)
+    }
+
+    /**
+     * P0-8：应用级内存压力编排。让路顺序由注册方决定（Coil 在下面直接处理，
+     * 其余组件通过 [com.veacon.veilmusic.util.MemoryPressure] 注册）。
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        when (level) {
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                imageLoader.memoryCache?.clear()
+            }
+        }
+        com.veacon.veilmusic.util.MemoryPressure.trim(level)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

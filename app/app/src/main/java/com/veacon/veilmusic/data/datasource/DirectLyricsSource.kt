@@ -52,7 +52,7 @@ class DirectLyricsSource @Inject constructor(
     private fun sourceOf(songId: String): String = sourceCache[songId] ?: ""
     private fun rememberSource(songId: String, source: String) { if (source.isNotBlank()) sourceCache[songId] = source }
 
-    /** 「歌词换源」用：清掉这首歌的缓存，强制走一遍完整歌词级联（Apple → 网易云/QQ → lrclib）。 */
+    /** 「歌词换源」用：清掉这首歌的缓存，强制走一遍完整歌词级联（Apple → QQ → 酷狗 → 网易云 → 酷我 → 其他 → lrclib）。 */
     fun invalidate(songId: String) { cache.remove(songId); sourceCache.remove(songId) }
 
     /** 「歌词字形（简/繁）」切换后用：缓存里存的是原文字形，转换在返回时做，这里整体作废重取。 */
@@ -78,7 +78,7 @@ class DirectLyricsSource @Inject constructor(
         durationSec: Long = 0,
     ): List<LyricLine> = getLyricsBundle(songId, storefront, title, artist, durationSec).lines
 
-    /** 歌词 + 命中的来源标签（网易云 / QQ音乐 / 酷狗 / 酷我 / 咪咕 / lrclib），供「歌词来源」展示。 */
+    /** 歌词 + 命中的来源标签（Apple Music / QQ音乐 / 酷狗 / 网易云 / 酷我 / 咪咕 / lrclib），供「歌词来源」展示。 */
     suspend fun getLyricsBundle(
         songId: String,
         storefront: String,
@@ -90,27 +90,30 @@ class DirectLyricsSource @Inject constructor(
         cached(songId)?.let { return@withContext scripted(LyricsBundle(it, sourceOf(songId))) }
         Log.i("DirectLyrics", "getLyrics song=$songId title='$title' artist='$artist' exclude=$excludeSources")
 
-        // 级联顺序（登录 Apple 时）：
-        //   1) Apple syllable-lyrics —— 只有它带逐字时间轴，播放页的逐字动画依赖 words；
-        //   2) 五大平台（网易云 → QQ → 酷狗 → 酷我 → 咪咕）—— 中文歌词覆盖最全；
-        //   3) Apple 行级 lyrics —— 中文平台都没命中时的兜底；
-        //   4) lrclib。
+        // 歌词来源优先级（高 → 低），回退与命中都严格按此顺序：
+        //   1) Apple —— syllable-lyrics（带逐字时间轴）先试，其次行级 lyrics；
+        //   2) QQ音乐 → 酷狗 → 网易云 → 酷我 → 咪咕（见 ThirdPartyLyrics.fetch）；
+        //   3) 其他来源 —— lrclib 兜底。
         // 未登录（没有 Music-User-Token）时 Apple 两个接口都是 403/404，直接跳过，
         // 避免每首歌白白多等两次请求。
         val appleAllowed = "Apple Music" !in excludeSources &&
             mutPrefs.hasMUT() && !songId.startsWith("imp-")
         val isLibrary = songId.startsWith("i.")
 
+        // Apple 作为一个来源要「榨干」再往下走：先把带逐字的 syllable-lyrics 试遍所有端点，
+        // 没有才退回行级 lyrics。只有这样 Apple 才算完整命中过，再交给第三方平台。
         if (appleAllowed) {
-            val wordTimed = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), listOf("syllable-lyrics"))
-            if (wordTimed.isNotEmpty()) {
+            for (suffixes in listOf(listOf("syllable-lyrics"), listOf("lyrics"))) {
+                val lines = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), suffixes)
+                if (lines.isEmpty()) continue
                 // 缓存里存**原文**（字形转换在返回时做），换开关时整体作废即可，不会二次转换。
-                val bundle = LyricsBundle(wordTimed, "Apple Music")
+                val bundle = LyricsBundle(lines, "Apple Music")
                 store(songId, bundle.lines); rememberSource(songId, "Apple Music")
                 return@withContext scripted(bundle)
             }
         }
 
+        // 第三方平台：QQ音乐 → 酷狗 → 网易云 → 酷我 → 咪咕，第一个命中的即返回。
         if (title.isNotEmpty() && artist.isNotEmpty()) {
             val third = thirdParty.fetch(title, artist, durationSec, excludeSources)
             if (third.lines.isNotEmpty()) {
@@ -120,16 +123,7 @@ class DirectLyricsSource @Inject constructor(
             }
         }
 
-        if (appleAllowed) {
-            val lineOnly = tryAppleTtml(songId, storefront, isLibrary, emptyMap(), listOf("lyrics"))
-            if (lineOnly.isNotEmpty()) {
-                val bundle = LyricsBundle(lineOnly, "Apple Music")
-                store(songId, bundle.lines); rememberSource(songId, "Apple Music")
-                return@withContext scripted(bundle)
-            }
-        }
-
-        // lrclib fallback
+        // 其他来源：lrclib 兜底。
         if (title.isNotEmpty() && artist.isNotEmpty()) {
             val lrc = tryLrclib(title, artist, durationSec)
             if (lrc.isNotEmpty()) {

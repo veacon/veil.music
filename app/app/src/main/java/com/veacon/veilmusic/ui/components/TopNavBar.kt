@@ -48,23 +48,17 @@ import com.veacon.veilmusic.ui.components.Icon
 
 private const val TabSelectionDurationMillis = com.veacon.veilmusic.ui.navigation.TabMotion.durationMillis
 
-/** Beat-reactive 3-bar equalizer beside the Now Playing tab. A gentle per-bar wobble keeps it alive
- *  between beats; the live [BeatAnalyzer] energy punches all three up on each beat (Apple-style). */
+/** Beat-reactive 3-bar equalizer beside the Now Playing tab. 波次1 删掉了节拍 DSP 后只剩
+ *  各条自走的一点摆动，保持 Apple 风格「正在播放」指示器还在呼吸。 */
 @Composable
-private fun EqBars(beatAnalyzer: com.veacon.veilmusic.media.BeatAnalyzer?) {
-    val energy by (beatAnalyzer?.energy?.collectAsState() ?: remember { mutableStateOf(0f) })
-    // Sensitivity: bass-onset energy peaks low, so lift small values (gamma < 1) and add gain
-    // before clamping — a quiet beat should still visibly punch the bars.
-    val sens = (energy.coerceIn(0f, 1f).pow(0.55f) * 1.6f).coerceIn(0f, 1f)
-    // Snappy attack, graceful fall.
-    val punch by animateFloatAsState(sens, tween(55, easing = LinearEasing), label = "eqPunch")
+private fun EqBars() {
     val inf = rememberInfiniteTransition(label = "eq")
-    val w1 by inf.animateFloat(0.30f, 0.70f, infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Reverse), label = "w1")
-    val w2 by inf.animateFloat(0.65f, 0.28f, infiniteRepeatable(tween(310, easing = LinearEasing), RepeatMode.Reverse), label = "w2")
-    val w3 by inf.animateFloat(0.38f, 0.72f, infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Reverse), label = "w3")
+    val w1 by inf.animateFloat(0.16f, 1.00f, infiniteRepeatable(tween(430, easing = LinearEasing), RepeatMode.Reverse), label = "w1")
+    val w2 by inf.animateFloat(1.00f, 0.22f, infiniteRepeatable(tween(310, easing = LinearEasing), RepeatMode.Reverse), label = "w2")
+    val w3 by inf.animateFloat(0.28f, 1.00f, infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Reverse), label = "w3")
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(12.dp).testTag("dynamicPlayingIndicator")) {
         listOf(w1, w2, w3).forEach { wob ->
-            val frac = (wob * 0.28f + punch * 0.9f).coerceIn(0.18f, 1f)
+            val frac = wob.coerceIn(0.16f, 1f)
             Box(Modifier.width(2.dp).fillMaxHeight(frac).clip(RoundedCornerShape(1.dp)).background(Color(0xFFFA233B)))
         }
     }
@@ -77,7 +71,6 @@ fun TopNavBar(
     selected: TopNavTab,
     onSelect: (TopNavTab) -> Unit,
     isPlaying: Boolean = false,
-    beatAnalyzer: com.veacon.veilmusic.media.BeatAnalyzer? = null,
     modifier: Modifier = Modifier,
     contentFocusRequester: FocusRequester? = null,
     tabFocusRequesters: Map<TopNavTab, FocusRequester> = emptyMap(),
@@ -213,7 +206,7 @@ fun TopNavBar(
                                 color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
-                            if (tab == TopNavTab.NowPlaying && isPlaying) EqBars(beatAnalyzer)
+                            if (tab == TopNavTab.NowPlaying && isPlaying) EqBars()
                         }
                     } }
                 }

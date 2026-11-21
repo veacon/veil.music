@@ -12,8 +12,6 @@ import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.CacheControl
 import okhttp3.OkHttpClient
@@ -118,12 +116,12 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
         return result
     }
     /**
-     * 下载更新包，默认 [THREADS] 个并发分片。
+     * 下载更新包：单线程整包下载，每个 APK 只建立一条连接。
      *
      * - 直连仍走 [client] 的严格重定向白名单；加速线路用独立客户端（镜像可能跳到自己的 CDN）。
      *   最终以 SHA-256 + APK 签名/版本校验兜底，换主机不降低安全性。
-     * - 任一分片拿不到 206（服务端或镜像不支持 Range）就整体回退单线程。
      * - 加速线路整体失败再自动回退官方直连重试一次；用户主动取消则不回退。
+     * - 单线程便于按下载请求数准确统计有多少用户完成了更新。
      */
     suspend fun download(info: UpdateInfo, onProgress: (Int) -> Unit,
         source: DownloadSource = DownloadSource.DIRECT): File = withContext(Dispatchers.IO) {
@@ -144,14 +142,9 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
     }
 
     private fun clientFor(source: DownloadSource): OkHttpClient {
-        // OkHttp 默认每主机 5 个并发，不显式抬高的话分片会被排队，等于没并发。
-        val dispatcher = okhttp3.Dispatcher().apply {
-            maxRequests = THREADS * 2
-            maxRequestsPerHost = THREADS
-        }
         if (source == DownloadSource.DIRECT) {
             // 保留 verifiedRedirects：直连只允许跳到 GitHub 自己的 CDN。
-            return client.newBuilder().dispatcher(dispatcher)
+            return client.newBuilder()
                 .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS).build()
         }
         // 镜像的重定向目标不固定；安全由下载后的 SHA-256 + 签名校验保证。
@@ -160,7 +153,6 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
             .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
             .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .dispatcher(dispatcher)
             .build()
     }
 
@@ -170,58 +162,13 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
         val part = File(dir, "download.part"); val dest = File(dir, "update.apk")
         part.delete(); dest.delete()
         try {
-            // 预分配：每个分片用自己的 RandomAccessFile 独立 seek，写互不重叠的区间。
-            java.io.RandomAccessFile(part, "rw").use { it.setLength(info.size) }
-            if (!downloadChunked(info, url, onProgress, http, part)) {
-                part.delete()
-                downloadSingle(info, url, onProgress, http, part)
-            }
+            // 单线程整包下载：每个 APK 只建立一条连接，便于按下载请求数准确统计完成更新的用户数。
+            downloadSingle(info, url, onProgress, http, part)
             verifyChecksum(part, info)
             validateApk(part, info)
             if (!part.renameTo(dest)) throw IOException("Could not save APK")
             dest
         } catch (e: Exception) { part.delete(); throw e }
-    }
-
-    /** @return false 表示服务端不支持 Range，调用方应回退单线程。 */
-    private suspend fun downloadChunked(info: UpdateInfo, url: String, onProgress: (Int) -> Unit,
-        http: OkHttpClient, part: File): Boolean = coroutineScope {
-        val ranges = chunkRanges(info.size, THREADS)
-        val done = java.util.concurrent.atomic.AtomicLong(0)
-        val jobs = ranges.map { range -> this.async(Dispatchers.IO) {
-            checkCancelled()
-            val req = Request.Builder().url(url)
-                .header("Range", "bytes=${range.first}-${range.last}").build()
-            val call = http.newCall(req)
-            liveCalls.add(call)
-            try {
-                call.execute().use { resp ->
-                    if (resp.code != 206) throw RangeUnsupported()
-                    val body = resp.body ?: throw IOException("Empty chunk")
-                    java.io.RandomAccessFile(part, "rw").use { raf ->
-                        raf.seek(range.first)
-                        val buf = ByteArray(32768)
-                        var written = 0L
-                        val expected = range.last - range.first + 1
-                        body.byteStream().use { input ->
-                            while (true) {
-                                if (cancelRequested) throw DownloadCancelled()
-                                val n = input.read(buf); if (n < 0) break
-                                if (written + n > expected) throw IOException("Chunk overflow")
-                                raf.write(buf, 0, n); written += n
-                                val total = done.addAndGet(n.toLong())
-                                onProgress((100 * total / info.size).toInt().coerceIn(0, 100))
-                            }
-                        }
-                        if (written != expected) throw IOException("Incomplete chunk ${range.first}")
-                    }
-                }
-            } finally { liveCalls.remove(call) }
-        } }
-        try {
-            jobs.forEach { it.await() }
-            true
-        } catch (_: RangeUnsupported) { false }
     }
 
     private fun downloadSingle(info: UpdateInfo, url: String, onProgress: (Int) -> Unit,
@@ -283,11 +230,6 @@ class AppUpdates(private val context: Context, private val manifestUrl: String =
         return true
     }
 }
-
-/** 并发分片数。GitHub release CDN 支持 Range；镜像不支持时会自动回退单线程。 */
-private const val THREADS = 4
-
-private class RangeUnsupported : IOException("Server does not support byte ranges")
 
 /** 用户主动取消下载；在 [AppUpdates.download] 里转成协程取消异常，避免误触发线路回退重下。 */
 private class DownloadCancelled : IOException("Download cancelled")

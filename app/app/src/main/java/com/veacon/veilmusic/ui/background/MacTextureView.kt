@@ -142,10 +142,11 @@ internal class MacTextureView(context: Context, private val clock: MacClock, pri
         private var choreographer: Choreographer? = null
         private val vsyncFrame = Choreographer.FrameCallback { timestamp -> onVsync(timestamp) }
         private fun onVsync(timestamp: Long) {
-            if (!stopping.get() && !closed && active) {
-                choreographer?.postFrameCallback(vsyncFrame)
-                render()
-            }
+            if (stopping.get() || closed || !active) return
+            // P0-7：暂停时不再每帧调度，只保留最后一帧；状态/画面变化由 wake() 重新拉起。
+            if (!renderState.playing) return
+            choreographer?.postFrameCallback(vsyncFrame)
+            render()
         }
         private val frame = Runnable {
             choreographer?.postFrameCallback(vsyncFrame)

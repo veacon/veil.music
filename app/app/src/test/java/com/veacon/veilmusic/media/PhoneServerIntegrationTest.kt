@@ -41,7 +41,7 @@ class PhoneServerIntegrationTest {
         val importer = com.veacon.veilmusic.data.local.PlaylistImporter(okhttp3.OkHttpClient(),
             com.veacon.veilmusic.data.local.LocalLibraryStore(context, com.veacon.veilmusic.data.di.NetworkModule.provideMoshi()))
         return InAppWebServer(context, MutPreferences(context), repo, LyricsOffsetPreferences(context),
-            CrossfadePreferences(context), StandalonePreferences(context), ServerPreferences(context), BeatAnalyzer(), verifier, lx, importer,
+            CrossfadePreferences(context), StandalonePreferences(context), ServerPreferences(context), verifier, lx, importer,
             LyricsScriptPreferences(context))
     }
 
@@ -61,7 +61,7 @@ class PhoneServerIntegrationTest {
         val server = server()
         try {
             assertEquals("", server.serverUrl())
-            server.boot(scope)
+            server.start(scope)
             awaitReady(server)
             assertNotEquals(8080, server.port)
             assertNotEquals(8081, server.port)
@@ -80,7 +80,7 @@ class PhoneServerIntegrationTest {
         val server = server()
         try {
             repeat(4) {
-                server.boot(scope)
+                server.start(scope)
                 awaitReady(server)
                 assertTrue(get(server.port, "/status").startsWith("HTTP/1.1 200 OK"))
                 server.stop()
@@ -98,13 +98,12 @@ class PhoneServerIntegrationTest {
         val vm = OnboardingViewModel(OnboardingPreferences(context), MutPreferences(context), server, verifier)
         store.put("login", vm)
         try {
+            // 波次2 P0-5：引导页自己按需启服 —— 创建 ViewModel 后端口应已就绪。
+            kotlinx.coroutines.runBlocking { awaitReady(server) }
+            val bound = server.serverUrl()
+            assertTrue(bound.isNotEmpty())
             shadowOf(Looper.getMainLooper()).idle()
-            assertEquals("", vm.state.value.phoneUrl)
-            assertTrue(vm.state.value.phoneServerUnavailable)
-            server.boot(scope)
-            awaitReady(server)
-            shadowOf(Looper.getMainLooper()).idle()
-            assertEquals(server.serverUrl(), vm.state.value.phoneUrl)
+            assertEquals(bound, vm.state.value.phoneUrl)
             assertFalse(vm.state.value.phoneServerUnavailable)
             server.stop()
             shadowOf(Looper.getMainLooper()).idle()
@@ -119,7 +118,7 @@ class PhoneServerIntegrationTest {
         clearPhoneNetworks(context)
         addPhoneNetwork(context, true, "192.168.1.44")
         try {
-            server.boot(scope)
+            server.start(scope)
             awaitReady(server)
             assertEquals("http://192.168.1.44:${server.port}", server.serverUrl())
             val status = JSONObject(get(server.port, "/status").substringAfter("\r\n\r\n"))
@@ -137,7 +136,7 @@ class PhoneServerIntegrationTest {
         val vm = OnboardingViewModel(OnboardingPreferences(context), MutPreferences(context), server, verifier)
         store.put("login", vm)
         try {
-            server.boot(scope)
+            server.start(scope)
             awaitReady(server)
             shadowOf(Looper.getMainLooper()).idle()
             val port = server.port
@@ -178,7 +177,7 @@ class PhoneServerIntegrationTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val server = server().also { it.setEnabled(true) }
         try {
-            server.boot(scope)
+            server.start(scope)
             awaitReady(server)
             val text = java.net.URLEncoder.encode("晴天 - 周杰伦\n富士山下 - 陈奕迅", "UTF-8")
             // 显式固定中文：本测试回归的是「中文正文不丢失」，响应文案随界面语言切换。
@@ -196,7 +195,7 @@ class PhoneServerIntegrationTest {
         val server = server()
         try {
             server.setEnabled(false)
-            server.boot(scope)
+            server.start(scope)
             assertFalse(server.running)
             assertEquals("", server.serverUrl())
         } finally { server.stop(); scope.cancel() }

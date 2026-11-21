@@ -45,7 +45,7 @@ class PhoneEnglishCoverageTest {
             LocalLibraryStore(context, NetworkModule.provideMoshi()))
         return InAppWebServer(context, MutPreferences(context), repo,
             LyricsOffsetPreferences(context), CrossfadePreferences(context),
-            StandalonePreferences(context), ServerPreferences(context), BeatAnalyzer(),
+            StandalonePreferences(context), ServerPreferences(context),
             TokenVerifier { TokenVerification.Valid }, lx, importer, LyricsScriptPreferences(context))
     }
 
@@ -71,7 +71,7 @@ class PhoneEnglishCoverageTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val s = server()
         try {
-            s.boot(scope)
+            s.start(scope)
             runBlocking { withTimeout(5000) { while (!s.running) delay(10) } }
             block(s)
         } finally { s.stop(); scope.cancel() }

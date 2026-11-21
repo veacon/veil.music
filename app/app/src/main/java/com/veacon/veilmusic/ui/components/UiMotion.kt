@@ -96,9 +96,6 @@ fun MotionDialog(
     androidx.compose.ui.window.Dialog(onDismissRequest = { if (interactive) onDismissRequest() }, properties = properties) {
         CompositionLocalProvider(
             LocalMenuOpeningInputMode provides openingMode,
-            // Dialog 是独立 window，positionInRoot 相对该 window，与画在 Activity 根上的
-            // 焦点外圈 overlay 坐标系不一致；关闭上报避免外圈画到错误位置。
-            LocalFocusFrameEnabled provides false,
         ) {
             Box(Modifier.graphicsLayer { alpha = opacity?.value ?: 1f }.motionInput(interactive)) { content() }
         }

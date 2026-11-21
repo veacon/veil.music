@@ -137,9 +137,12 @@ class BrowsingPageNavigationTest {
 
     @Test fun touchStillSelectsTabs() {
         mount()
-        compose.onNodeWithContentDescription("浏览").performClick()
+        // 用 TopNavTab.label 而不是硬编码中文：标签走 tr() 本地化，
+        // 具体中/英取决于 AppLanguage 的初始化时序，硬编码会让这个用例
+        // 在并行分叉（每个 fork 的初始化顺序不同）时随机失败。
+        compose.onNodeWithContentDescription(TopNavTab.Browse.label).performClick()
         compose.runOnIdle { assertEquals("browse", nav.currentDestination?.route) }
-        compose.onNodeWithContentDescription("搜索").performClick()
+        compose.onNodeWithContentDescription(TopNavTab.Search.label).performClick()
         compose.runOnIdle { assertEquals("search", nav.currentDestination?.route) }
     }
 

@@ -46,8 +46,7 @@ import com.veacon.veilmusic.media.AppleDirectClient
 import com.veacon.veilmusic.media.AppleMusicDrmCallback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import com.veacon.veilmusic.media.BeatAnalyzer
-import com.veacon.veilmusic.media.BeatAwareRenderersFactory
+import com.veacon.veilmusic.media.AudioRenderersFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -78,9 +77,6 @@ private const val PROBE_CDM_KEY = false
 /** Path 1: decrypt segments in-app with our own CDM and play CLEAR AAC (no MediaDrm),
  *  which is what kills the 0x4004 chop. Falls back to the MediaDrm path on failure. */
 private const val DECRYPT_IN_APP = true
-
-/** DIAGNOSTIC: capture decoded PCM of the first track to inspect the chop offline. */
-private const val CAPTURE_PCM = false
 
 /**
  * What the Now Playing screen draws behind the card.
@@ -144,6 +140,11 @@ data class ResolvedStream(
         }
 }
 
+/**
+ * 播放器单一状态源。所有字段都是不可变的（List 视为只读），标 @Immutable 后
+ * Compose 可以按字段级相等性跳过重组（波次2 P0-6）。
+ */
+@androidx.compose.runtime.Immutable
 data class PlayerState(
     val currentSong:      Song?           = null,
     val song:             Song?           = null,
@@ -164,8 +165,6 @@ data class PlayerState(
     val motionUrl:        String?         = null,
     /** A/V-sync EXTRA the user dials on top of everything. 0 normally; the only value shown in the UI. */
     val lyricsOffsetMs:   Long            = 0L,
-    /** Automatic A/V sync: add the Bluetooth delta when a BT output is live. Factory default OFF. */
-    val avSyncAuto:       Boolean         = false,
     /** A BT output is currently active. */
     val avOnBluetooth:    Boolean         = false,
     /** Total delay applied to the LYRIC clock: hidden 200 ms baseline (+ BT delta) + extra. */
@@ -194,7 +193,8 @@ data class PlayerState(
     /** Show the clock and the queue/lyrics panel hint on Now Playing. Off = a cleaner, art-only view. */
     val showNowPlayingInfo: Boolean = true,
     /** Animated album art is enabled by default; one bounded, muted decoder at a time. */
-    val motionArtworkEnabled: Boolean = false,
+    /** 动态封面：默认打开（本轮需求）。 */
+    val motionArtworkEnabled: Boolean = true,
     /** Projector orb drift speed: 0.6 slow · 1.0 normal · 1.6 fast. */
     val orbSpeed: Float = 1.0f,
     /** Lyrics font scale: 0.8 extra small · 1.0 small · 1.25 standard · 1.6 large · 2.0 extra large. */
@@ -276,11 +276,13 @@ class PlayerViewModel @Inject constructor(
     private val lx: com.veacon.veilmusic.luoxue.LxPlayback,
     private val localLibrary: com.veacon.veilmusic.data.local.LocalLibraryStore,
     private val playbackCache: com.veacon.veilmusic.data.cache.PlaybackCache,
-    val beatAnalyzer: BeatAnalyzer,
 ) : ViewModel() {
 
     /** 歌词逐字播放开关：设置页改，播放页通过 StateFlow 即时生效。 */
     val wordByWordLyrics: kotlinx.coroutines.flow.StateFlow<Boolean> = lyricsMotionPrefs.wordByWord
+
+    /** 歌词动效开关：遮罩扫过 + 长音字符弹起 + 当前行挤压（对齐 am_atv / Apple Music）。 */
+    val lyricElastic: kotlinx.coroutines.flow.StateFlow<Boolean> = lyricsMotionPrefs.elastic
 
     private var albumWallPrefetch: kotlinx.coroutines.Deferred<List<com.veacon.veilmusic.ui.wall.CachedWallCard>>? = null
 
@@ -352,11 +354,68 @@ class PlayerViewModel @Inject constructor(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("player_state", Context.MODE_PRIVATE)
 
+    // ── 2.3.7 背景律动 / 熔岩风格 ──────────────────────────────────────────
+    val spectrumPrefs = com.veacon.veilmusic.data.SpectrumPreferences(context)
+    /**
+     * 主线程缓存的音频会话 id。ExoPlayer 的所有方法（含 audioSessionId getter）只能在
+     * 应用主线程调用，跨线程访问直接抛 IllegalStateException；频谱探测在自己的
+     * HandlerThread 上每 500ms 轮询，不能直接读 [player]，因此由主线程在播放器
+     * 事件和实例交接时刷新此缓存，探测线程只读缓存值。
+     */
+    @Volatile
+    var cachedAudioSessionId: Int = 0
+        private set
+
+    /** 主线程调用：同步缓存当前播放器的 audio session id（频谱采集的会话来源）。 */
+    fun refreshCachedAudioSessionId() {
+        val previous = cachedAudioSessionId
+        cachedAudioSessionId = runCatching { player.audioSessionId }.getOrDefault(0)
+        if (cachedAudioSessionId != previous) {
+            webServer.addLog("SPEC", "audio session id -> $cachedAudioSessionId")
+        }
+    }
+    /** Visualizer 采集器：只采样本播放器声明的 audio session，未授权或未开开关时不采集。 */
+    val audioSpectrum = com.veacon.veilmusic.media.SongAudioSpectrum(context) { cachedAudioSessionId }
+
+    private val _backgroundStyle = MutableStateFlow(
+        com.veacon.veilmusic.data.BackgroundStylePreferences.get(context))
+    val backgroundStyle: StateFlow<String> = _backgroundStyle.asStateFlow()
+    fun setBackgroundStyle(value: String) {
+        _backgroundStyle.value = value
+        com.veacon.veilmusic.data.BackgroundStylePreferences.set(context, value)
+    }
+
+    private val _pulseSpeedIndex = MutableStateFlow(
+        context.getSharedPreferences("player_state", Context.MODE_PRIVATE)
+            .getInt("pulse_speed_index", 2).coerceIn(0, 5))
+    val pulseSpeedIndex: StateFlow<Int> = _pulseSpeedIndex.asStateFlow()
+    fun stepPulseSpeed(delta: Int) {
+        val next = (_pulseSpeedIndex.value + delta).coerceIn(0, 5)
+        _pulseSpeedIndex.value = next
+        prefs.edit().putInt("pulse_speed_index", next).apply()
+    }
+
+    /** 背景帧预算档（P0-7）：30 / 60 双档，改动立即作用于两条背景渲染线程。 */
+    private val _backgroundFps = MutableStateFlow(com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps)
+    val backgroundFps: StateFlow<Int> = _backgroundFps.asStateFlow()
+    fun setBackgroundFps(value: Int) {
+        val v = com.veacon.veilmusic.ui.background.BackgroundFrameRate.sanitize(value)
+        com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps = v
+        prefs.edit().putInt(com.veacon.veilmusic.ui.background.BackgroundFrameRate.KEY, v).apply()
+        _backgroundFps.value = v
+    }
+
+    fun spectrumEnabled(): Boolean = spectrumPrefs.enabled()
+    fun setSpectrumEnabled(on: Boolean) {
+        spectrumPrefs.setEnabled(on)
+        audioSpectrum.setActive(on)
+    }
+
     /**
      * 硬解 / 软解. Read once here (before any player is built) and owned by [setDecoderMode] after
      * that, so every rebuild — start, crossfade, radio, switch — agrees on one decoder path.
      */
-    private var decoderMode = com.veacon.veilmusic.data.DecoderMode.fromKey(prefs.getString("decoder_mode", null))
+    private var decoderMode = com.veacon.veilmusic.data.DecoderPreference.read(context, prefs)
 
     /**
      * P2 输出策略，和 [decoderMode] 一样在构造期读一次、之后只由 setter 改：
@@ -394,7 +453,16 @@ class PlayerViewModel @Inject constructor(
     private var systemCacheRetryFor: String? = null
     private var api23SoftwareFallbackSong: String? = null
 
+    /** P0-8：内存压力下第一个让路的是预建播放器（多一套解码器 + DRM 会话）。 */
+    private val memorySink = object : com.veacon.veilmusic.util.MemoryPressure.Sink {
+        override fun onTrim(level: Int) {
+            clearPreparedNext()
+            webServer.addLog("MEM", "trim level=$level → 释放预建下一首")
+        }
+    }
+
     init {
+        com.veacon.veilmusic.util.MemoryPressure.register(memorySink)
         viewModelScope.launch { lyricsFailureNotice.status.collect { notice ->
             _state.update { current ->
                 if (notice.songId != current.currentSong?.id || notice.generation < current.lyricsNoticeGeneration) current
@@ -412,18 +480,8 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    // Integrated queue: the queue may hold music videos. When the current item is a video,
-    // the audio engine idles and this emits the video so the UI hands it to the video player.
-    // Null means the current item is a normal song (any active video should be dismissed).
-    // autoOpen=true only when the user EXPLICITLY picked the video (tapped it in a list) — that
-    // jumps to Now Playing. Auto-advance / skip keep it false so the video plays without yanking
-    // the user off whatever page they're browsing; they just see it when they visit Now Playing.
-    data class VideoRequest(val song: Song, val autoOpen: Boolean, val startPaused: Boolean = false)
-    private val _videoRequest = MutableStateFlow<VideoRequest?>(null)
-    val videoRequest: StateFlow<VideoRequest?> = _videoRequest
     private val _userPlaybackRequests = MutableStateFlow(0L)
     val userPlaybackRequests: StateFlow<Long> = _userPlaybackRequests
-    fun clearVideoRequest() { _videoRequest.value = null }
 
     /**
      * One-off user-facing messages. extraBufferCapacity so an emit from the polling
@@ -708,10 +766,8 @@ class PlayerViewModel @Inject constructor(
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setRenderersFactory(
-                // offload 时整条处理器链让路，律动分析拿不到 PCM，就别再挂一个空转的处理器。
-                BeatAwareRenderersFactory(context, beatAnalyzer.newProcessor().also { p ->
-                    mainProc = p; if (!offloadEnabled) beatAnalyzer.activate(p)
-                }, com.veacon.veilmusic.media.GapConcealProcessor(),
+                // 波次1：节拍 DSP 整链路已删，这里只剩 gap 修补 + 响度均衡 + 采样率统一。
+                AudioRenderersFactory(context, com.veacon.veilmusic.media.GapConcealProcessor(),
                     targetSampleRate = outputTargetSampleRate(),
                     offload = offloadEnabled)
                     .setExtensionRendererMode(extensionRendererMode())
@@ -732,12 +788,8 @@ class PlayerViewModel @Inject constructor(
             }
     }
 
-    /** Processor feeding the beat bus for [player]; [cfProc] for the crossfade player. */
-    private var mainProc: com.veacon.veilmusic.media.BeatProcessor? = null
-    private var cfProc: com.veacon.veilmusic.media.BeatProcessor? = null
-
     private data class PreparedNext(val songId:String,val generation:Int,val exo:ExoPlayer,
-        val processor:com.veacon.veilmusic.media.BeatProcessor?,val listener:Player.Listener)
+        val listener:Player.Listener)
     private var preparedNext:PreparedNext?=null
     private var preparedNextJob:kotlinx.coroutines.Job?=null
 
@@ -754,18 +806,17 @@ class PlayerViewModel @Inject constructor(
         else clearPreparedNext()
         return usable
     }
-    /** Check live settings both before and after the asynchronous source preparation. */
+    /**
+     * P1-4：策略反转 —— 默认就为「下一首」预建播放器，换「切歌零停顿」；
+     * 内存压力由 [memorySink] 在 onTrimMemory 时统一 clearPreparedNext()。
+     * 仍然只预建真正的下一首（用户插队优先），单曲循环与 MV 不预建。
+     */
     private fun canPrepareNextWithoutFade(song:Song,generation:Int):Boolean {
         val st=_state.value
-        val current=st.currentSong ?: return false
+        if (st.currentSong == null) return false
         val next=st.userQueue.firstOrNull() ?: st.queue.getOrNull(st.queueIndex+1)
             ?: st.queue.firstOrNull().takeIf {st.repeatMode==RepeatMode.All && st.queue.size>1}
-        val sameAlbum=if(current.albumId!=null && song.albumId!=null) current.albumId==song.albumId
-            else current.albumName.isNotBlank() && current.albumName==song.albumName
-        val consecutive=current.trackNumber!=null && song.trackNumber==current.trackNumber+1
-        val noFade=com.veacon.veilmusic.data.CrossfadePreferences.needsPreparedNext(
-            st.crossfadeEnabled,crossfadeDurationMs,sameAlbum && consecutive && st.userQueue.isEmpty())
-        return generation==playGen && next?.id==song.id && noFade && !song.isMusicVideo && st.repeatMode!=RepeatMode.One
+        return generation==playGen && next?.id==song.id && !song.isMusicVideo && st.repeatMode!=RepeatMode.One
     }
 
     /** Same-album/no-fade transitions still need a prepared decoder and DRM session before the boundary. */
@@ -775,9 +826,7 @@ class PlayerViewModel @Inject constructor(
         preparedNextJob=viewModelScope.launch {
             val source=buildStandaloneSource(song) ?: return@launch
             if(!canPrepareNextWithoutFade(song,generation)) return@launch
-            val previousProc=cfProc
             val exo=buildCrossfadeExo()
-            val proc=cfProc;cfProc=previousProc
             val listener=object:Player.Listener {
                 override fun onPlaybackStateChanged(state:Int) {
                     if(state==Player.STATE_READY) webServer.addLog("PRE","player ready song=${song.id}")
@@ -787,19 +836,13 @@ class PlayerViewModel @Inject constructor(
                     if(preparedNext?.exo===exo) clearPreparedNext()
                 }
             }
-            preparedNext=PreparedNext(song.id,generation,exo,proc,listener)
+            preparedNext=PreparedNext(song.id,generation,exo,listener)
             exo.addListener(listener);exo.volume=1f;exo.playWhenReady=false
             exo.setMediaSource(source);exo.prepare()
         }
     }
 
-    /** Hand the beat bus over to the crossfade player once it becomes the one we hear. */
-    private fun promoteCrossfadeBeat() {
-        cfProc?.let { beatAnalyzer.activate(it); mainProc = it }
-        cfProc = null
-    }
-
-    /** Crossfade-only player. Own BeatProcessor so it can drive the visuals after the swap. */
+    /** Crossfade-only player. */
     @OptIn(UnstableApi::class)
     private fun buildCrossfadeExo(): ExoPlayer {
         val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
@@ -816,7 +859,7 @@ class PlayerViewModel @Inject constructor(
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory))
             .setLoadControl(loadControl)
             .setRenderersFactory(
-                BeatAwareRenderersFactory(context, beatAnalyzer.newProcessor().also { cfProc = it }, com.veacon.veilmusic.media.GapConcealProcessor(),
+                AudioRenderersFactory(context, com.veacon.veilmusic.media.GapConcealProcessor(),
                     targetSampleRate = outputTargetSampleRate())
                     .setExtensionRendererMode(extensionRendererMode())
                     .setEnableDecoderFallback(true)
@@ -856,8 +899,8 @@ class PlayerViewModel @Inject constructor(
             }
             androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
             androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED -> {
-                if (com.veacon.veilmusic.media.BeatAwareRenderersFactory.floatOutputAllowed) {
-                    com.veacon.veilmusic.media.BeatAwareRenderersFactory.floatOutputAllowed = false
+                if (com.veacon.veilmusic.media.AudioRenderersFactory.floatOutputAllowed) {
+                    com.veacon.veilmusic.media.AudioRenderersFactory.floatOutputAllowed = false
                     webServer.addLog("DEC", "audio track failed (${error.errorCodeName}) — 后续播放器退回 16bit 输出")
                 }
             }
@@ -910,6 +953,7 @@ class PlayerViewModel @Inject constructor(
         val oldP = player
         try { oldP.removeListener(playerListener); oldP.stop(); oldP.release() } catch (_: Exception) {}
         player = factory().also { it.addListener(playerListener) }
+        refreshCachedAudioSessionId()
         mediaSession?.release(); mediaSession = buildMediaSession(player)
     }
 
@@ -918,6 +962,7 @@ class PlayerViewModel @Inject constructor(
         private set
 
     init {
+        refreshCachedAudioSessionId()
         webServer.addLog(
             "DEC",
             "pipeline ${com.veacon.veilmusic.media.PlaybackTuning.summary()} | " +
@@ -936,7 +981,7 @@ class PlayerViewModel @Inject constructor(
             )
         }
         val renderCompatNow = com.veacon.veilmusic.util.RenderCompat.isActive(context)
-        val motionPref = prefs.getBoolean("motion_art", false)
+        val motionPref = prefs.getBoolean("motion_art", true)
         webServer.addLog(
             "RENDER",
             "compat=${com.veacon.veilmusic.util.RenderCompat.describe(context)} " +
@@ -1001,12 +1046,6 @@ class PlayerViewModel @Inject constructor(
     }
 
 
-    fun setAvSyncAuto(auto: Boolean) {
-        prefs.edit().putBoolean("av_auto", auto).apply()
-        _state.update { it.copy(avSyncAuto = auto) }
-        updateOutputLatency()
-    }
-
     /**
      * Recompute the single output-latency figure that drives BOTH the beat visuals and the lyric clock:
      * the embedded [AV_BASELINE_MS] baseline, plus [AV_BT_ESTIMATE_MS] when a Bluetooth output is live
@@ -1024,13 +1063,8 @@ class PlayerViewModel @Inject constructor(
         }.getOrNull()
         val onBt = btDev != null
         val extra = _state.value.lyricsOffsetMs
-        val auto = _state.value.avSyncAuto
-        val btDelta = if (onBt && auto) BT_DELTA_MS else 0L
-        // Beat has NO HDMI baseline (it's aligned already), it only gains the Bluetooth delta.
-        val beatMs = btDelta + extra
-        // Lyrics carry the hidden 200 ms display baseline on every output, plus the same BT delta.
-        val lyricsMs = LYRICS_BASELINE_MS + btDelta + extra
-        beatAnalyzer.latencyMs = beatMs
+        // 自动音画同步已移除：歌词时钟固定为内置基线 + 用户手动偏移。
+        val lyricsMs = LYRICS_BASELINE_MS + extra
         val label = if (onBt) tr(R.string.msg_017) + (btDev?.productName?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
                     else tr(R.string.msg_015)
         _state.update { it.copy(avOnBluetooth = onBt, avLyricsMs = lyricsMs, avOutputLabel = label) }
@@ -1038,6 +1072,7 @@ class PlayerViewModel @Inject constructor(
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            refreshCachedAudioSessionId()
             val pos = player.currentPosition
             val song = _state.value.currentSong?.title ?: "?"
             webServer.addLog("EXO", "isPlaying=$isPlaying pos=${pos}ms song=$song source=${player.currentMediaItem?.mediaId} gen=$attachedSourceGeneration/$playGen preparing=${sourcePreparation.isPending} cfade=$crossfadeInProgress")
@@ -1045,6 +1080,7 @@ class PlayerViewModel @Inject constructor(
             _state.update { it.copy(isPlaying = isPlaying) }
         }
         override fun onPlaybackStateChanged(state: Int) {
+            refreshCachedAudioSessionId()
             val name = when (state) {
                 Player.STATE_IDLE -> "IDLE"
                 Player.STATE_BUFFERING -> "BUFFERING"
@@ -1119,7 +1155,7 @@ class PlayerViewModel @Inject constructor(
                     if (cfExo != null && (cfExo.playbackState == Player.STATE_READY || cfExo.playbackState == Player.STATE_BUFFERING)) {
                         cfExo.volume = 1f
                         player = cfExo
-                        promoteCrossfadeBeat()
+                        refreshCachedAudioSessionId()
                         cfExoErrListener?.let { cfExo.removeListener(it) }; cfExoErrListener = null
                         cfExo.addListener(this)
                         webServer.addLog("CFXO", "snap done cfExo.isPlaying=${cfExo.isPlaying} state=${cfExo.playbackState}")
@@ -1141,6 +1177,7 @@ class PlayerViewModel @Inject constructor(
                         webServer.addLog("CFXO", "snap: cfExo unusable (state=${cfExo?.playbackState}) — rebuilding player and advancing")
                         try { cfExo?.stop(); cfExo?.release() } catch (_: Exception) {}
                         player = buildExoPlayer().also { it.addListener(this) }
+                        refreshCachedAudioSessionId()
                         mediaSession?.release()
                         mediaSession = buildMediaSession(player)
                         advanceQueue()
@@ -1383,7 +1420,10 @@ class PlayerViewModel @Inject constructor(
         }
         if(!prefs.getBoolean("unified_fluid_controls_v9",false)) {
             val quality=FluidQuality.fromName(prefs.getString("fluid_quality",null))
-            val migrated=unifiedFluidQuality(quality,prefs.getBoolean("reduce_motion",false),prefs.getBoolean("low_power",false))
+            val migrated=unifiedFluidQuality(quality,prefs.getBoolean("reduce_motion",false))
+            com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps =
+                com.veacon.veilmusic.ui.background.BackgroundFrameRate.sanitize(
+                    prefs.getInt(com.veacon.veilmusic.ui.background.BackgroundFrameRate.KEY, 60))
             prefs.edit {
                 putString("fluid_quality",migrated.name)
                 remove("reduce_motion");remove("low_power")
@@ -1392,12 +1432,12 @@ class PlayerViewModel @Inject constructor(
         }
         _state.update { it.copy(
             lyricsOffsetMs = lyricsOffsetPrefs.getOffset(),
-            avSyncAuto = prefs.getBoolean("av_auto", false),
             nowPlayingBackground = initBg,
-            fluidQuality = FluidQuality.fromName(prefs.getString("fluid_quality", null)),
+            // 流体背景已删除：画质固定高，只保留熔岩背景。
+            fluidQuality = FluidQuality.HIGH_QUALITY,
             screensaverKeepBackground = prefs.getBoolean("screensaver_keep_bg", false),
             showNowPlayingInfo = prefs.getBoolean("np_info", true),
-            motionArtworkEnabled = prefs.getBoolean("motion_art", false),
+            motionArtworkEnabled = prefs.getBoolean("motion_art", true),
             lyricsScript = lyricsScriptPrefs.current(),
             renderCompat = com.veacon.veilmusic.util.RenderCompat.isActive(context),
             renderCompatManual = com.veacon.veilmusic.util.RenderCompat.hasOverride(context),
@@ -1421,13 +1461,6 @@ class PlayerViewModel @Inject constructor(
         // prefers it over MediaCodec (EXTENSION_RENDERER_MODE_PREFER) and HE-AAC
         // decodes like the proxy, killing the standalone chop.
         webServer.addLog("FFMPEG", "FfmpegLibrary.isAvailable=${androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()}")
-        // DIAGNOSTIC: capture ~25s of decoded PCM (44100Hz stereo s16le) from the
-        // active player to inspect the standalone chop offline. Remove after repair.
-        if (CAPTURE_PCM) try {
-            val f = java.io.File(context.cacheDir, "pcmcap.raw")
-            beatAnalyzer.startCapture(f.outputStream().buffered(), 44_100 * 2 * 2 * 25)
-            webServer.addLog("CAP", "capturing PCM to ${f.absolutePath}")
-        } catch (e: Exception) { webServer.addLog("CAP", "capture start failed: ${e.message}") }
         // EventLogger formats a string on every playback event for the life of the
         // player — pure debug overhead on an underpowered Fire TV. Gate it behind the
         // same probe flag the init-segment dump uses.
@@ -1600,19 +1633,12 @@ class PlayerViewModel @Inject constructor(
             val beat      = prefs.getFloat(intensityKey(npBg), 1.0f)
             val keepBg = prefs.getBoolean("screensaver_keep_bg", false)
             val npInfo = prefs.getBoolean("np_info", true)
-            val motionArt = prefs.getBoolean("motion_art", false)
+            val motionArt = prefs.getBoolean("motion_art", true)
             com.veacon.veilmusic.media.GainProcessor.enabled = prefs.getBoolean("volume_leveling", false)
             _state.update { it.copy(currentSong = song, song = song, queue = queue, queueIndex = idx, isFullStream = full, beatIntensity = beat, crossfadeEnabled = crossfade, screensaverTimeoutMin = screensaverMin, nowPlayingBackground = npBg, screensaverKeepBackground = keepBg, showNowPlayingInfo = npInfo, motionArtworkEnabled = motionArt,
                 orbSpeed = prefs.getFloat("orb_speed", 1.0f), lyricsScale = prefs.getFloat("lyrics_scale", 1.0f), artworkRounded = prefs.getBoolean("artwork_rounded", true), reduceMotion = false, lowPowerMode = false, volumeLeveling = prefs.getBoolean("volume_leveling", false), progressMs = posMs) }
             if (song == null) return@launch
-            // A restored music video must go to the video player, NOT the audio stream — otherwise
-            // it hits /api/stream, 404s ("No playable asset"), and gets skipped as if unavailable.
-            if (song.isMusicVideo) {
-                webServer.addLog("PLR", "restoreState idx=$idx VIDEO ${song.title}")
-                player.pause()
-                _videoRequest.value = VideoRequest(song, autoOpen = false, startPaused = true)
-                return@launch
-            }
+            // 纯音乐应用：MV 已整链路删除，恢复书签时若命中旧版本留下的 MV 条目，直接跳过。
             // 续播：上次退出时正在播放就直接从断点接着放；退出时是暂停的，就只恢复出来、等按下播放。
             // （以前这里一律延后加载，是为了躲开 Android 媒体恢复的自动开播；现在自动续播是明确需求，
             //   开播与否改由书签里的 was_playing 决定。）
@@ -1862,7 +1888,6 @@ class PlayerViewModel @Inject constructor(
         if (needsSource) player.clearMediaItems()
         _state.update { it.copy(isPlaying = false, isLoading = false, progressMs = position.coerceAtLeast(0L)) }
         saveState()
-        beatAnalyzer.resetBeat()
     }
 
     /** Cycle the Now Playing backdrop: Dynamic → Projector → Black → Dynamic (dir = +1 / -1). */
@@ -1894,6 +1919,21 @@ class PlayerViewModel @Inject constructor(
         val next = steps[(cur + dir).coerceIn(0, steps.lastIndex)]
         _state.update { it.copy(orbSpeed = next) }
         prefs.edit { putFloat("orb_speed", next) }
+    }
+
+    /** 弹框选择用：直接落到指定档位。 */
+    fun setLyricsScale(value: Float) {
+        val steps = floatArrayOf(0.8f, 1.0f, 1.25f, 1.6f, 2.0f)
+        val next = steps.minByOrNull { kotlin.math.abs(it - value) } ?: 1.0f
+        _state.update { it.copy(lyricsScale = next) }
+        prefs.edit { putFloat("lyrics_scale", next) }
+    }
+
+    /** 弹框选择用：直接落到指定脉动档位。 */
+    fun setPulseSpeedIndex(index: Int) {
+        val next = index.coerceIn(0, com.veacon.veilmusic.ui.background.LavaPulseSpeed.STEPS.lastIndex)
+        _pulseSpeedIndex.value = next
+        prefs.edit().putInt("pulse_speed_index", next).apply()
     }
 
     fun stepLyricsScale(dir: Int) {
@@ -2007,7 +2047,7 @@ class PlayerViewModel @Inject constructor(
     fun setDecoderMode(mode: com.veacon.veilmusic.data.DecoderMode) {
         if (mode == decoderMode) return
         decoderMode = mode
-        prefs.edit { putString("decoder_mode", mode.key) }
+        com.veacon.veilmusic.data.DecoderPreference.write(context, prefs, mode)
         _state.update { it.copy(decoderMode = mode) }
         webServer.addLog("DEC", "decoder=${mode.key} (${if (mode == com.veacon.veilmusic.data.DecoderMode.HARDWARE) "硬解/MediaCodec" else "软解/FFmpeg"})")
         rebuildPlayerKeepingPosition("decoder=${mode.key}")
@@ -2124,7 +2164,6 @@ class PlayerViewModel @Inject constructor(
         attachedSourceGeneration = -1
         prefetchJob?.cancel()
         relatedQueueJob?.cancel(); relatedQueueJob = null
-        beatAnalyzer.resetBeat(); mainProc?.resetBeat()
         crossfadeSkipSongId = null
         systemCacheRetryFor = null
         api23SoftwareFallbackSong = null
@@ -2147,18 +2186,13 @@ class PlayerViewModel @Inject constructor(
             if (idx + 1 < q.size) playQueueItem(idx + 1, skipFadeIn) 
             return
         }
-        // Music video in the queue → hand it to the video player; the audio engine idles.
+        // 纯音乐应用（边界②）：队列里万一还有旧 MV 条目，直接跳过，不再交给视频播放器。
         if (song.isMusicVideo) {
             prepared?.exo?.release()
-            webServer.addLog("PLR", "playQueueItem idx=$idx VIDEO ${song.title}")
-            player.stop(); player.clearMediaItems()
-            awaitingSongStart = null
-            _state.update { it.copy(currentSong = song, song = song, queueIndex = idx, lyrics = emptyList(), motionUrl = null, progressMs = 0L) }
-            saveState()
-            _videoRequest.value = VideoRequest(song, autoOpen = userOpened)
+            webServer.addLog("PLR", "skipping music video ${song.title} (MV 链路已删除)")
+            if (idx + 1 < q.size) playQueueItem(idx + 1, skipFadeIn)
             return
         }
-        _videoRequest.value = null   // audio item → dismiss any active video
 
         val full = _state.value.isFullStream
         // 落雪优先：只要命中就用直链播放，Apple DRM/代理只作兜底。
@@ -2194,8 +2228,8 @@ class PlayerViewModel @Inject constructor(
             mediaSession?.release();mediaSession=null
             old.release()
             player=prepared.exo
-            prepared.processor?.let {mainProc=it;beatAnalyzer.activate(it)}
             player.addListener(playerListener)
+            refreshCachedAudioSessionId()
             val shouldPlay=sourcePreparation.finish(myGen) ?: false
             attachedSourceGeneration=myGen;awaitingSongStart=null;usingStandalone=true
             mediaSession=buildMediaSession(player)
@@ -2317,12 +2351,6 @@ class PlayerViewModel @Inject constructor(
         hasPlayedSomething = true
         _state.update { it.copy(currentSong = song, song = song, queue = listOf(song), queueIndex = 0, lyrics = emptyList(), isFullStream = useFullStream, motionUrl = null) }
         playQueueItem(0, userOpened = true)
-    }
-
-    /** Play a shelf of video DTOs (music-videos / interviews) in the video player. */
-    fun playVideos(dtos: List<com.veacon.veilmusic.data.network.SongDto>, startIndex: Int = 0) {
-        if (!VideoPlaybackPolicy.ENABLED) return
-        playAlbum(dtos.map(repo::songFromDto), startIndex)
     }
 
     fun playAlbum(inputSongs: List<Song>, startIndex: Int = 0, useFullStream: Boolean = true, shuffle: Boolean = false, openPlayer: Boolean = true) {
@@ -3172,18 +3200,11 @@ class PlayerViewModel @Inject constructor(
                             val steps = 50
                             val stepMs = fadeDurationMs / steps
                             val startVol = oldPlayer.volume
-                            // Hand the beat bus to the incoming song once it's the louder
-                            // one. Otherwise the visuals pulse to the outgoing song's tail
-                            // (often a quiet outro) for the whole crossfade and read as dead.
-                            var beatPromoted = false
                             for (i in 1..steps) {
                                 awaitFadePlayback()
                                 val frac = i.toFloat() / steps
                                 oldPlayer.volume = (startVol * (1f - frac)).coerceAtLeast(0f)
                                 cfExo.volume = frac.coerceAtMost(1f)
-                                if (!beatPromoted && frac >= 0.5f && cfExo.playbackState == Player.STATE_READY) {
-                                    promoteCrossfadeBeat(); beatPromoted = true
-                                }
                                 delay(stepMs)
                             }
                             if (!crossfadeInProgress || crossfadeExo == null) {
@@ -3225,7 +3246,7 @@ class PlayerViewModel @Inject constructor(
                                 cfExo.removeListener(errListener); cfExoErrListener = null
                                 cfExo.addListener(playerListener)
                                 player = cfExo; crossfadeExo = null; crossfadeInProgress = false
-                                promoteCrossfadeBeat()
+                                refreshCachedAudioSessionId()
                                 webServer.addLog("CFXO", "fade complete → cfExo isPlaying=${cfExo.isPlaying}")
                                 mediaSession?.release(); mediaSession = buildMediaSession(cfExo)
                                 _state.update { it.copy(isPlaying = cfExo.isPlaying) }
@@ -3314,6 +3335,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        com.veacon.veilmusic.util.MemoryPressure.unregister(memorySink)
         cancelOtherDecrypts(null)
         audioDeviceCallback?.let {
             runCatching { context.getSystemService(AudioManager::class.java)?.unregisterAudioDeviceCallback(it) }
@@ -3332,6 +3354,7 @@ class PlayerViewModel @Inject constructor(
         player.stop()
         player.clearMediaItems()
         player.release()
+        runCatching { audioSpectrum.release() }
         diskCache.unprotect("audio")
         super.onCleared()
     }

@@ -8,8 +8,6 @@ import androidx.lifecycle.ViewModelStore
 import androidx.media3.exoplayer.ExoPlayer
 import com.veacon.veilmusic.data.di.NetworkModule
 import com.veacon.veilmusic.data.model.Song
-import com.veacon.veilmusic.ui.viewmodel.MusicVideoViewModel
-import com.veacon.veilmusic.ui.viewmodel.MvUiState
 import com.veacon.veilmusic.ui.viewmodel.PlaybackStateWriter
 import com.veacon.veilmusic.ui.viewmodel.PlayerState
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
@@ -61,7 +59,6 @@ class MainActivityPlaybackLifecycleTest {
     private inner class Fixture(allowed: Boolean = true, playing: Boolean = false) {
         val main = Engine()
         val crossfade = Engine()
-        val video = Engine()
         val preparation = SourcePreparation()
         val song = Song("a", "A", "Artist", "Album", 240000, null, null, null)
         val prefs = RuntimeEnvironment.getApplication()
@@ -75,17 +72,12 @@ class MainActivityPlaybackLifecycleTest {
             field(it, "prefs", prefs)
             field(it, "bookmarkWriterDelegate", lazy { writer })
         }
-        val videoVm = allocate(MusicVideoViewModel::class.java).also {
-            field(it, "player", video.player)
-            field(it, "_state", MutableStateFlow(MvUiState(playing = true)))
-        }
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
         val store = ViewModelStore()
         val factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T = modelClass.cast(
                 when (modelClass) {
                     PlayerViewModel::class.java -> audioVm
-                    MusicVideoViewModel::class.java -> videoVm
                     else -> throw AssertionError("Unexpected ViewModel $modelClass")
                 }
             )
@@ -93,16 +85,12 @@ class MainActivityPlaybackLifecycleTest {
         // Like hiltViewModel() in AppShell, populate the shared store without touching
         // either Activity delegate. Use the real ViewModelLazy / ViewModelProvider APIs.
         val audioLazy = ViewModelLazy(PlayerViewModel::class, { store }, { factory })
-        val videoLazy = ViewModelLazy(MusicVideoViewModel::class, { store }, { factory })
         init {
             val uiProvider = ViewModelProvider(store, factory)
             assertSame(audioVm, uiProvider[PlayerViewModel::class.java])
-            assertSame(videoVm, uiProvider[MusicVideoViewModel::class.java])
             field(activity, "playerVmLazy", audioLazy)
-            field(activity, "mvVmLazy", videoLazy)
             field(activity, "appWindowAllowed", allowed)
             assertFalse(audioLazy.isInitialized())
-            assertFalse(videoLazy.isInitialized())
         }
         fun stop() {
             MainActivity::class.java.getDeclaredMethod("onStop").apply { isAccessible = true }.invoke(activity)
@@ -116,9 +104,7 @@ class MainActivityPlaybackLifecycleTest {
         f.stop()
         assertEquals(1, f.main.pauseCalls)
         assertEquals(1, f.crossfade.pauseCalls)
-        assertEquals(1, f.video.pauseCalls)
         assertSame(f.audioVm, f.audioLazy.value)
-        assertSame(f.videoVm, f.videoLazy.value)
         f.drain()
     }
 
@@ -126,7 +112,6 @@ class MainActivityPlaybackLifecycleTest {
         val f = Fixture(allowed = false)
         f.stop()
         assertFalse(f.audioLazy.isInitialized())
-        assertFalse(f.videoLazy.isInitialized())
         assertEquals(0, f.main.pauseCalls)
         f.drain()
     }
@@ -134,12 +119,10 @@ class MainActivityPlaybackLifecycleTest {
     @Test fun initializedActivityAndRepeatedStopRemainPaused() {
         val f = Fixture()
         f.audioLazy.value
-        f.videoLazy.value
         f.stop()
         f.stop()
         assertFalse(f.main.playing)
         assertFalse(f.crossfade.playing)
-        assertEquals(2, f.video.pauseCalls)
         f.drain()
     }
 

@@ -11,7 +11,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import com.veacon.veilmusic.ui.AppShell
-import com.veacon.veilmusic.ui.viewmodel.MusicVideoViewModel
 import com.veacon.veilmusic.ui.viewmodel.NavigationViewModel
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -22,8 +21,6 @@ class MainActivity : ComponentActivity() {
     private val navVm: NavigationViewModel by viewModels()
     private val playerVmLazy = viewModels<PlayerViewModel>()
     private val playerVm: PlayerViewModel by playerVmLazy
-    private val mvVmLazy = viewModels<MusicVideoViewModel>()
-    private val mvVm: MusicVideoViewModel by mvVmLazy
     private var appWindowAllowed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,22 +48,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             com.veacon.veilmusic.ui.components.LargeScreenGate(onAccessChanged = ::updateWindowAccess) {
                 com.veacon.veilmusic.ui.components.StartupHost { ready ->
-                    // TV 焦点外圈系统：overlay 画在所有内容之上；卡片/控件把焦点
-                    // 位置报告给同一个 controller，一整条 spring 跟随绘制渐变色外圈。
-                    val focusFrameController = androidx.compose.runtime.remember {
-                        com.veacon.veilmusic.ui.components.FocusFrameController()
-                    }
-                    androidx.compose.foundation.layout.Box(
-                        Modifier.fillMaxSize()
-                    ) {
-                        androidx.compose.runtime.CompositionLocalProvider(
-                            com.veacon.veilmusic.ui.components.LocalFocusFrameController provides focusFrameController
-                        ) {
-                            com.veacon.veilmusic.ui.theme.ProvideTvFontWeights { AppShell(onStartupReady = ready) }
-                        }
-                        // 焦点外圈 overlay 已下沉到 AppShell 内部（内容之上、音乐胶囊之下），
-                        // 保证音乐胶囊始终悬浮在最前，不被外圈覆盖。见 AppShell.kt。
-                    }
+                    com.veacon.veilmusic.ui.theme.ProvideTvFontWeights { AppShell(onStartupReady = ready) }
                 }
             }
         }
@@ -78,7 +60,6 @@ class MainActivity : ComponentActivity() {
         val app = application as AppleMusicApp
         if (!allowed) {
             if (playerVmLazy.isInitialized()) playerVm.stopPlayback()
-            if (mvVmLazy.isInitialized()) mvVm.pause()
             app.webServer.stop()
             return
         }
@@ -98,6 +79,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 回到前台 = 内存压力解除：让背景帧率等恢复用户设定（P0-8）。
+        com.veacon.veilmusic.util.MemoryPressure.relaxed()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) applyImmersiveWindow()
@@ -111,7 +98,6 @@ class MainActivity : ComponentActivity() {
         if (appWindowAllowed) {
             // 离开应用：暂停播放，但书签保留「本来在播」，下次打开自动接着播。
             playerVm.pause(byUser = false)
-            mvVm.pause()
         }
     }
 
@@ -120,24 +106,9 @@ class MainActivity : ComponentActivity() {
         if (navVm.consumePlayerWakeKey(event)) return true
         if (event.action == KeyEvent.ACTION_DOWN && navVm.isOnNowPlaying) navVm.notePlayerInteraction()
         if (com.veacon.veilmusic.ui.navigation.dispatchRemoteMenu(event, { super.dispatchKeyEvent(it) }) {
-            if (navVm.isOnMusicVideo && navVm.isOnNowPlaying) mvVm.toggleQueue()
-            else if (navVm.isOnNowPlaying) navVm.toggleQueuePanel()
+            if (navVm.isOnNowPlaying) navVm.toggleQueuePanel()
             else navVm.navigateToNowPlaying()
         }) return true
-        // While a video is active, media keys drive the VIDEO — never the (paused) audio
-        // player. D-pad keys still fall through so the fullscreen video screen (or the UI
-        // behind an in-app PiP) can handle them.
-        if (navVm.isOnMusicVideo) {
-            if (event.action == KeyEvent.ACTION_DOWN) when (event.keyCode) {
-                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { mvVm.next(); return true }
-                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_REWIND -> { mvVm.prev(); return true }
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { mvVm.togglePlayPause(); return true }
-                KeyEvent.KEYCODE_MEDIA_PLAY -> { mvVm.resume(); return true }
-                KeyEvent.KEYCODE_MEDIA_PAUSE -> { mvVm.pause(); return true }
-
-            }
-            return super.dispatchKeyEvent(event)
-        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { playerVm.togglePlayPause(); return true }

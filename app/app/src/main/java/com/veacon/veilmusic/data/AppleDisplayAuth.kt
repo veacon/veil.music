@@ -90,6 +90,8 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
         /** 资料库云端歌单（id + 名称 + 封面图），供「资料库」页展示与打开详情；id 不是播放地址。 */
         val playlists: List<AppleLibraryPlaylist> = emptyList(),
         val checking: Boolean = false,
+        /** 扫码后异步加载云端歌单中，设置页据此提示。 */
+        val loadingLibrary: Boolean = false,
         /** disabled | idle | ready | invalid | unavailable | signed_out */
         val status: String = "disabled",
     )
@@ -174,6 +176,28 @@ class AppleDisplayAuth private constructor(private val appContext: Context) {
             }
             verifyAndLoad(token, dev)
         }
+    }
+
+    /**
+     * 手机扫码登录：开一个临时配对服务，把授权页交给手机浏览器，电视只等回传的 MUT。
+     * 凭证始终留在手机端；这里拿到的 token 只交给 [signIn] 做展示数据校验与落盘。
+     * 与扫码相关的类型见 [com.veacon.veilmusic.data.auth.PhoneMusicAuthorization]。
+     */
+    internal fun createPhoneSession(languageTag: String = "zh-CN"): com.veacon.veilmusic.data.auth.PhoneMusicAuthorization {
+        if (!isEnabled()) error("Apple Music display is disabled")
+        // 配对页的 MusicKit.configure 必须用真正的开发者令牌（ES256 JWT）。
+        // 抓取的匿名 Bearer 不是合法开发者令牌，会让 configure 失败、授权框弹不出来；
+        // 这里改用与上游 am_atv 发布包相同的内置令牌，确保手机端 Apple 授权正常。
+        val dev = com.veacon.veilmusic.data.auth.MusicKitDeveloperToken.VALUE
+        if (dev.isBlank()) error("Developer token unavailable")
+        val build = try {
+            com.veacon.veilmusic.BuildConfig.VERSION_NAME
+        } catch (_: Throwable) { "2.3" }
+        return com.veacon.veilmusic.data.auth.PhoneMusicAuthorization(
+            developerToken = dev,
+            appBuild = build,
+            languageTag = languageTag,
+        )
     }
 
     /**

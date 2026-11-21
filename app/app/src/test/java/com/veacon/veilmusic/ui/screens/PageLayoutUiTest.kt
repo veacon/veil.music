@@ -134,10 +134,11 @@ class PageLayoutUiTest {
         }
         save("search-results-portrait",600,960)
     }
-    @Test fun categoryAlbumAndVideoRailsExtendToScreenEdgesWithoutParentClipping() {
+    /** 纯音乐应用（波次1 删掉 MV 货架）：分类页只剩专辑货架，仍要贴边、不被父容器裁切。 */
+    @Test fun categoryAlbumRailsExtendToScreenEdgesWithoutParentClipping() {
         val state=CategoryUiState(isLoading=false,title="Editorial",sections=listOf(
             HomeSection(title="Albums",albums=(0..7).map {AlbumDto(id="a$it",title="Album $it",artistName="Artist",artworkUrl=null,artworkBgColor=null,releaseDate=null)}),
-            HomeSection(title="Videos",albums=emptyList(),videos=(0..7).map {SongDto(id="v$it",title="Video $it",artistName="Artist",albumName="",durationMs=1000,artworkUrl=null,artworkBgColor=null,previewUrl=null,previewHlsUrl=null)})
+            HomeSection(title="More Albums",albums=(0..7).map {AlbumDto(id="b$it",title="Album B$it",artistName="Artist",artworkUrl=null,artworkBgColor=null,releaseDate=null)})
         ))
         mount(600,960) {CategoryContent(state,playerVm=player())}
         assertRailsWidth(600)

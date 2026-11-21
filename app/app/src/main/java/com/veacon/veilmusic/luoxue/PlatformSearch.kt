@@ -29,7 +29,10 @@ class PlatformSearch(private val http: OkHttpClient) {
             val wy = async(Dispatchers.IO) { runCatching { netease(q) }.getOrDefault(emptyList()) }
             val tx = async(Dispatchers.IO) { runCatching { qq(q) }.getOrDefault(emptyList()) }
             val kg = async(Dispatchers.IO) { runCatching { kugou(q) }.getOrDefault(emptyList()) }
-            wy.await() + tx.await() + kg.await()
+            val kw = async(Dispatchers.IO) { runCatching { kuwo(q) }.getOrDefault(emptyList()) }
+            // 酷我排最前：新专辑（如周杰伦《太阳之子》）它首条即正版且带准确时长，
+            // 与 QQ 同分时也必须让它先被 resolver 尝试，避免落到低码率的 QQ 转码链。
+            kw.await() + wy.await() + tx.await() + kg.await()
         }
     }
 
@@ -41,7 +44,8 @@ class PlatformSearch(private val http: OkHttpClient) {
             val wy = async(Dispatchers.IO) { runCatching { netease(q, limit) }.getOrDefault(emptyList()) }
             val tx = async(Dispatchers.IO) { runCatching { qq(q, limit) }.getOrDefault(emptyList()) }
             val kg = async(Dispatchers.IO) { runCatching { kugou(q, limit) }.getOrDefault(emptyList()) }
-            wy.await() + tx.await() + kg.await()
+            val kw = async(Dispatchers.IO) { runCatching { kuwo(q, limit) }.getOrDefault(emptyList()) }
+            kw.await() + wy.await() + tx.await() + kg.await()
         }
     }
 
@@ -141,6 +145,50 @@ class PlatformSearch(private val http: OkHttpClient) {
                     "hash" to s.optString("FileHash"),
                     "album_id" to s.optString("AlbumID"),
                     "album_audio_id" to s.optString("AlbumAudioID"),
+                ),
+            )
+        }
+    }
+
+    // ── 酷我 ────────────────────────────────────────────────────────────────
+    /**
+     * 酷我搜索：新专辑（如周杰伦《太阳之子》）命中率与音质都最好，必须纳入。
+     * 接口返回的是单引号、&nbsp; 的非标准 JSON，先归一化再解析。
+     * id 用 MUSIC_xxx（脚本的 kw 分支认 rid/musicId），数字 id 一并放 extra。
+     */
+    fun kuwo(q: String, limit: Int = 8): List<Candidate> {
+        val url = "https://search.kuwo.cn/r.s".toHttpUrl().newBuilder()
+            .addQueryParameter("all", q)
+            .addQueryParameter("ft", "music")
+            .addQueryParameter("rformat", "json")
+            .addQueryParameter("encoding", "utf8")
+            .addQueryParameter("rn", limit.toString())
+            .addQueryParameter("vipver", "MUSIC_8.7.7.0")
+            .addQueryParameter("plat", "pc")
+            .build().toString()
+        val normalized = get(url, "https://www.kuwo.cn/")
+            .replace("&nbsp;", " ")
+            .replace('\'', '"')
+        val root = JSONObject(normalized)
+        val list = root.optJSONArray("abslist") ?: return emptyList()
+        return (0 until list.length()).mapNotNull { i ->
+            val s = list.optJSONObject(i) ?: return@mapNotNull null
+            val rid = s.optString("MUSICRID")
+            if (rid.isBlank()) return@mapNotNull null
+            val numericId = s.optString("MUSIC_ID").ifBlank { rid.removePrefix("MUSIC_") }
+            Candidate(
+                source = "kw",
+                id = rid,
+                title = s.optString("NAME").trim(),
+                artist = s.optString("ARTIST").trim(),
+                album = s.optString("ALBUM").trim(),
+                durationSec = s.optInt("DURATION"),
+                extra = mapOf(
+                    "rid" to rid,
+                    "musicId" to numericId,
+                    "songid" to numericId,
+                    "songId" to numericId,
+                    "albumId" to s.optString("ALBUMID"),
                 ),
             )
         }

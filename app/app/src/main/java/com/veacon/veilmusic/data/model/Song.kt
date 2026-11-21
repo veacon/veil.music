@@ -1,5 +1,12 @@
 package com.veacon.veilmusic.data.model
 
+import androidx.compose.runtime.Immutable
+
+/**
+ * 列表/队列里到处传的领域对象：标成 @Immutable，Compose 才能跳过它没变的子树
+ * （波次2 P0-6：Song 全字段 final + 不可变列表，编译器可安全跳过重组）。
+ */
+@Immutable
 data class Song(
     val id:             String,
     val title:          String,

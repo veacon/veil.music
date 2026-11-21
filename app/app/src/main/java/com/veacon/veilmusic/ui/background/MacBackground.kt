@@ -84,7 +84,6 @@ fun MacBackground(
     }
     val effectiveQuality = when {
         reduceMotion -> FluidQuality.STATIC
-        lowPower && quality.animated -> FluidQuality.POWER_SAVE
         else -> quality
     }
     var failed by remember(effectiveQuality) { mutableStateOf(false) }

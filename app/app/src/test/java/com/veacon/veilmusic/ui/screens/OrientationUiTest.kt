@@ -59,6 +59,12 @@ class OrientationUiTest {
         field("_state",state);field("state",state)
         field("artworkCentered", MutableStateFlow(false))
         field("wordByWordLyrics", MutableStateFlow(true))
+        field("lyricElastic", MutableStateFlow(false))
+        // 2.3.7 背景律动/熔岩：NowPlayingScreen 会读这些状态，测试里给默认值避免空引用。
+        field("spectrumPrefs", com.veacon.veilmusic.data.SpectrumPreferences(compose.activity))
+        field("audioSpectrum", com.veacon.veilmusic.media.SongAudioSpectrum(compose.activity) { 0 })
+        field("backgroundStyle", MutableStateFlow(com.veacon.veilmusic.data.BackgroundStylePreferences.FLUID))
+        field("pulseSpeedIndex", MutableStateFlow(2))
         field("albumWallPrefetch", kotlinx.coroutines.CompletableDeferred(emptyList<com.veacon.veilmusic.ui.wall.CachedWallCard>()))
         val player=Proxy.newProxyInstance(ExoPlayer::class.java.classLoader,arrayOf(ExoPlayer::class.java)) { _,m,_ ->
             if (m.name !in listOf("equals", "hashCode", "toString")) playerCalls+=m.name

@@ -44,6 +44,28 @@ internal object PlaybackTuning {
         .setPrioritizeTimeOverSizeThresholds(false)
         .build()
 
+    // ── 动态封面（P0-3）：小循环视频只需要「够循环不断」的极小缓冲 ──
+    /**
+     * 动态封面是一个几百 KB 的无缝循环短片，用音频那套 20s/60s/8MB 完全过剩 ——
+     * 它只要 5–15s、4MB 上限就够，且能显著降低弱设备上的解码/内存压力。
+     */
+    const val VIDEO_MIN_BUFFER_MS = 5_000
+    const val VIDEO_MAX_BUFFER_MS = 15_000
+    const val VIDEO_BUFFER_FOR_PLAYBACK_MS = 500
+    const val VIDEO_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 1_000
+    const val VIDEO_TARGET_BUFFER_BYTES = 4 * 1024 * 1024
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun videoLoopLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            VIDEO_MIN_BUFFER_MS, VIDEO_MAX_BUFFER_MS,
+            VIDEO_BUFFER_FOR_PLAYBACK_MS, VIDEO_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+        )
+        .setBackBuffer(0, false)
+        .setTargetBufferBytes(VIDEO_TARGET_BUFFER_BYTES)
+        .setAllocator(DefaultAllocator(true, ALLOC_CHUNK_BYTES))
+        .build()
+
     // ── AudioTrack 侧：管「交给声卡多少」──
     /**
      * 目标 PCM 缓冲。媒体3 的默认窗口是 250–750ms，电视盒子的音频 HAL 抖动比手机大，

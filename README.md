@@ -118,7 +118,7 @@
 - **界面与素材**：[lavande16/Apple-Music-For-Android-TV](https://github.com/lavande16/Apple-Music-For-Android-TV)（**GPL-3.0**）。本项目基于它改造，**部分代码继承 GPL-3.0**。
 - **解码工具**：落雪（LX Music），脚本用 [QuickJS](https://github.com/quickjs-ng/quickjs) 在电视端解析。
 - **音源脚本**：内置 10 条社区脚本，部分来自 [lx-hunter](https://github.com/zlyon/lx-hunter)；**版权归各自作者**，仅社区内自用。
-- **歌词来源**：网络音乐、QQ 音乐、酷狗、酷我、网易云，[lrclib](https://lrclib.net/) 兜底。
+- **歌词来源**：Apple Music → QQ 音乐 → 酷狗 → 网易云 → 酷我 → 咪咕，[lrclib](https://lrclib.net/) 兜底；严格按此优先级回退与命中。
 - **本程序不含任何音频文件**，不做 DRM 解密，不私下分发内容。
 
 > 💡 仅面向学习交流与自用。若涉及平台或作者异议，及时联系处理。

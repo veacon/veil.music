@@ -17,7 +17,7 @@ class PlaybackUiStateTest {
         val first=PlayerState();val song=Song("a","A","B","C",100,null,null,null)
         for(next in listOf(first.copy(isPlaying=true),first.copy(isInPip=true),first.copy(currentSong=song),
             first.copy(queue=listOf(song)),first.copy(queueIndex=1),first.copy(mutExpired=true),
-            first.copy(motionArtworkEnabled=true),first.copy(lowPowerMode=true))) {
+            first.copy(motionArtworkEnabled=false),first.copy(lowPowerMode=true))) {
             assertNotEquals(first.shellUiState(),next.shellUiState())
         }
         // 免登录模式下 isFullStream 恒为 true（不再有试听降级），因此它不再产生 shell 差异。

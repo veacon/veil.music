@@ -87,8 +87,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
     var selectedTab   by remember { mutableStateOf(TopNavTab.ListenNow) }
     val playerVm: PlayerViewModel  = hiltViewModel()
     val navVm: NavigationViewModel = hiltViewModel()
-    // Hoisted so the video survives navigation: fullscreen on Now Playing, in-app PiP elsewhere.
-    val mvVm: com.veacon.veilmusic.ui.viewmodel.MusicVideoViewModel = hiltViewModel()
     val tabFocus = remember { TopNavTab.entries.associateWith { FocusRequester() } }
     var pendingTabFocus by remember { mutableStateOf<TopNavTab?>(null) }
     var tabFocusRequestId by remember { mutableIntStateOf(0) }
@@ -119,7 +117,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val contentFocus = remember { FocusRequester() }
-    val videoFocus = remember { FocusRequester() }
     // Keep library identity across tabs; its cache/network work starts on Library entry only.
     val libraryVm: LibraryViewModel = hiltViewModel()
     // Hoisted so a server re-check from the Dev menu can refetch both screens —
@@ -247,32 +244,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
             } else navVm.navigateToNowPlaying()
         }
     }
-    val videoActive by mvVm.active.collectAsState()
-    val videoPlaying by remember(mvVm) { mvVm.state.map { it.playing }.distinctUntilChanged() }.collectAsState(false)
-    // Integrated queue: PlayerViewModel owns one queue of songs AND videos. When the current
-    // item is a video it emits it here; we hand it to the video player and jump to Now Playing.
-    // The video's prev/next/auto-advance drive the same queue back through PlayerViewModel.
-    val videoReq by playerVm.videoRequest.collectAsState()
-    LaunchedEffect(Unit) {
-        mvVm.onRequestNext = { playerVm.next() }
-        mvVm.onRequestPrev = { playerVm.prev() }
-    }
-    LaunchedEffect(videoReq?.song?.id) {
-        val v = videoReq
-        if (v != null) {
-            mvVm.show(v.song.id, v.song.title, v.song.artistName, startPaused = v.startPaused)
-            // Only an explicit pick jumps to Now Playing. Auto-advance / skip keep the user
-            // on whatever page they're on — the video keeps playing and shows when they visit.
-            if (v.autoOpen) {
-                selectedTab = TopNavTab.NowPlaying
-                navController.navigate(Screen.NowPlaying.route) { launchSingleTop = true }
-            }
-        } else {
-            mvVm.close()
-        }
-    }
-    // Video plays fullscreen ON the Now Playing tab; anywhere else it's an in-app PiP window.
-    val videoFullscreen = videoActive && isOnNowPlaying
 
     // Keep the nav-bar highlight in sync with the ACTUAL route — otherwise popping back from
     // a pushed screen (e.g. artist opened from the video player) left the white pill stuck on
@@ -289,21 +260,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         }
     }
     LaunchedEffect(isOnNowPlaying) { navVm.isOnNowPlaying = isOnNowPlaying }
-    // Leaving Now Playing keeps the video's AUDIO playing (like a song) but disables the video
-    // track — that frees the secure decoder and its SurfaceFlinger overlay so nothing bleeds onto
-    // Library/Browse. Returning re-enables video and the recomposed PlayerView reattaches the
-    // surface, so the picture comes back at position without ever stopping the audio.
-    //
-    // NOTE: attachVideo()/detachVideo() are driven ONLY from the video-surface AndroidView `update`
-    // lambda below, where the codec-release and surface-teardown steps are ordered deterministically
-    // against the visibility flip. Driving them from here as well raced that ordering (the bleed).
-    // This effect is intentionally left as just a marker of the navigation transition.
-    // Whenever a video is active, media keys must drive it (not the paused audio player) —
-    // MainActivity reads this. Pause audio the moment a video starts.
-    LaunchedEffect(videoActive) {
-        navVm.isOnMusicVideo = videoActive
-        if (videoActive) playerVm.pause()
-    }
 
     // Keep the screen awake ONLY while music is actually playing. When paused, drop the
     // flag so Fire TV's own screensaver / sleep can take over (our ambient screensaver only
@@ -314,20 +270,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         playerVm.state.map { it.shellUiState() }.distinctUntilChanged()
     }
     val playerState by shellState.collectAsStateWithLifecycle(playerVm.state.value.shellUiState())
-    // A regular song starting up takes over — the video player closes immediately so the
-    // song's Now Playing (dynamic/projector) shows instead of a video stuck on top.
-    LaunchedEffect(playerState.isPlaying) {
-        if (playerState.isPlaying && videoActive) mvVm.close()
-    }
-    // Prefetch the next queue item's video metadata whenever it's a video — whether the current
-    // track is a song or a video — so a song→video or video→video advance is fast. This runs in
-    // parallel with PlayerViewModel's audio N+1 prefetch (which skips video items), so the two
-    // prefetch paths cover the whole mixed queue together.
-    LaunchedEffect(playerState.queueIndex, playerState.queue, videoActive) {
-        val next = playerState.queue.getOrNull(playerState.queueIndex + 1) ?: return@LaunchedEffect
-        if (next.isMusicVideo) mvVm.prefetch(next.id)
-        else if (videoActive) playerVm.prefetchAudio(next)   // video playing → warm the next song
-    }
     val keepScreenOn = playerState.isPlaying
     val activity = LocalContext.current as? Activity
     DisposableEffect(keepScreenOn) {
@@ -419,8 +361,7 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
         // 引导页显示期间**不组合底层页面**（方案 A）：整棵 UI 树只存在一份，
         // 既省掉双份组合 / 双份动画的开销，也彻底杜绝光标钻到"看不见的"底层页面里。
         // 代价：退出引导后各页滚动位置会重置一次（ViewModel 是 Activity 级的，数据不受影响）。
-        var showGuide by remember { mutableStateOf(false) }
-        if (!showGuide) {
+        run {
         CompositionLocalProvider(
             LocalMiniCapsuleInset provides miniCapsuleInset,
             LocalMiniCapsuleFocus provides (if (miniCapsuleVisible) capsuleFocus else null),
@@ -593,12 +534,10 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 val playerHandle = remember(entry) { entry.savedStateHandle }
                 val wallPlaybackReturn by playerHandle
                     .getStateFlow(WALL_PLAYBACK_RETURN, false).collectAsState()
-                BackHandler(enabled = !showExitDialog && isOnNowPlaying && !videoActive,
+                BackHandler(enabled = !showExitDialog && isOnNowPlaying,
                     onBack = returnFromPlayer)
-                // When a video is active it fills this tab via the AppShell overlay. Don't
-                // compose the audio screen behind it — its focusable controls would steal the
-                // D-pad (moving the song UI instead of the video).
-                if (!videoActive) {
+                // When a video used to fill this tab it sat over the audio screen. MV 链路已删除，
+                // 这里永远只组合音频播放页。
                         NowPlayingScreen(
                         playerVm = playerVm,
                         navVm = navVm,
@@ -621,7 +560,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                             returnState.selectTab(TopNavTab.Browse)
                         },
                     )
-                }
             }
             returningComposable(Screen.DevMenu.route)    {
                 DevMenuScreen(
@@ -734,124 +672,11 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 com.veacon.veilmusic.ui.components.ExitAppDialog(onDismiss = { showExitDialog = false }) {
                     showExitDialog = false
                     playerVm.stopPlayback()
-                    playerVm.clearVideoRequest(); mvVm.close()
                     if (activity?.moveTaskToBack(true) != true) activity?.finish()
                 }
             }
         }
 
-        // Nav bar on top layer (drawn after content). Hidden entirely on the
-        // fullscreen music-video route so it can't steal D-pad focus.
-        // Single persistent video surface. ONE PlayerView node that resizes between fullscreen
-        // (Now Playing tab) and an in-app PiP corner — never torn down while a video is active,
-        // so the codec never loses its surface (that was the "无法播放此视频" crash).
-        // A secure (HDCP) SurfaceView can't be confined to a Compose corner — it draws across
-        // whatever screen you're on. So the video surface renders ONLY fullscreen on Now Playing.
-        // On other tabs the video KEEPS PLAYING (audio; the picture is simply not drawn) — it is
-        // not closed — and reappears when you return to Now Playing. On-screen PiP over the app
-        // isn't possible for protected video; the OS system PiP is the "picture while browsing".
-        // Secure video surface — the "video in library" bleed, finally understood. A secure (HDCP)
-        // SurfaceView is a whole-screen hardware overlay. The bleed was Compose DISPOSING that
-        // SurfaceView when we left Now Playing (the old `&& isOnNowPlaying` gate): on Fire TV,
-        // destroying a SurfaceView mid-secure-frame ORPHANS its SurfaceFlinger layer, which then
-        // lingers as a frozen top overlay over Library/Browse (the black flash on return is a new
-        // surface replacing it). The fix: keep the PlayerView COMPOSED the entire time a video is
-        // active (gate on videoActive only) and merely toggle VISIBILITY. The view keeps managing
-        // its layer, so GONE reaps it cleanly instead of orphaning it. detachVideo() (via the
-        // LaunchedEffect above) disables the video track off-screen so the secure decoder stops while
-        // audio keeps playing; attachVideo() re-enables it on return.
-        if (videoActive) {
-            val mvPlayer by mvVm.playerFlow.collectAsState()
-            // The library "bleed" is a Fire TV compositor bug: a secure (HDCP) SurfaceView placed on
-            // the media-overlay plane (setZOrderMediaOverlay) keeps its LAST protected frame latched in
-            // that hardware plane. View flags (GONE) and track-disable don't reap it, so it lingers on
-            // top of Library/Browse. The only reliable teardown is to DESTROY the SurfaceView — but that
-            // orphans the plane too if a secure frame is still latched at destroy time. So the sequence
-            // is: (1) detachVideo() rebuilds the player audio-only SYNCHRONOUSLY, releasing the secure
-            // decoder and clearing the surface, THEN (2) unmount the PlayerView so its now content-free
-            // SurfaceView is destroyed cleanly and the plane is freed. Audio never stops.
-            val lowPower = playerState.lowPowerMode
-            // Two strategies, chosen by the Low Power toggle:
-            //  • Low Power ON  → FREE the secure decoder off Now Playing (detach video track + unmount
-            //    the SurfaceView). Lightest on a starved Fire TV, but re-acquiring the codec blips ~0.5s
-            //    on return.
-            //  • Low Power OFF (default) → keep the decoder ALIVE: the PlayerView stays mounted the whole
-            //    time a video is active, just shrunk to 1px BEHIND the window off Now Playing (default
-            //    z-order = behind, so the opaque tab fully covers it — no bleed, no dispose-orphan). The
-            //    surface keeps compositing (no latched stale frame), so returning is instant.
-            var surfaceMounted by remember { mutableStateOf(false) }
-            LaunchedEffect(isOnNowPlaying, lowPower) {
-                if (lowPower) {
-                    if (isOnNowPlaying) surfaceMounted = true
-                    else { mvVm.detachVideo(); surfaceMounted = false }
-                } else {
-                    surfaceMounted = true                       // keep alive; never free the decoder
-                    if (isOnNowPlaying) mvVm.attachVideo()       // re-enable if we came from low-power
-                }
-            }
-            Box(Modifier.fillMaxSize().background(if (isOnNowPlaying) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.Transparent)) {
-                if (surfaceMounted) {
-                    androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { ctx ->
-                            androidx.media3.ui.PlayerView(ctx).apply {
-                                useController = false
-                                setBackgroundColor(android.graphics.Color.BLACK)
-                                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                                setKeepScreenOn(true)
-                                // Quality change rebuilds the player (single-variant master). Without this
-                                // the view blanks to BLACK the instant the old player detaches and only
-                                // repaints when the new decoder emits its first frame — that black flash is
-                                // the "480p→1080p glitch". Keeping the last frame up bridges the reload.
-                                setKeepContentOnPlayerReset(true)
-                                // DO NOT setZOrderMediaOverlay/OnTop(true). That puts the secure SurfaceView
-                                // on a hardware plane ABOVE the window, which bleeds over Library and can't be
-                                // reaped by any View teardown. DEFAULT z-order sits it BEHIND the window,
-                                // punching a hole only where mounted — off Now Playing we either unmount it
-                                // (low power) or shrink it to 1px behind the opaque tab (seamless).
-                                (videoSurfaceView as? android.view.SurfaceView)?.apply {
-                                    setZOrderMediaOverlay(false)
-                                    // Mark the surface SECURE so the compositor grants HDCP-protected HD
-                                    // output. Without it the OS lets SD through but blocks HD with
-                                    // "Required output protections are not active" (Netflix marks its
-                                    // surface secure — that's why it does 1080p here and we were stuck at
-                                    // 480p). A secure surface also reads back BLACK in screenshots.
-                                    setSecure(true)
-                                }
-                                player = mvPlayer
-                            }
-                        },
-                        update = { pv ->
-                            pv.player = mvPlayer
-                            pv.visibility = android.view.View.VISIBLE
-                            if (lowPower && isOnNowPlaying) mvVm.attachVideo()
-                        },
-                        onRelease = { it.player = null },
-                        // Seamless mode off Now Playing: 1px behind the window (decoder keeps running,
-                        // invisible). Everywhere else: fullscreen.
-                        modifier = if (!isOnNowPlaying && !lowPower) Modifier.size(1.dp)
-                                   else Modifier.fillMaxSize(),
-                    )
-                }
-                if (isOnNowPlaying) {
-                    CompositionLocalProvider(com.veacon.veilmusic.ui.navigation.LocalReturnPage provides returnState.pages[currentEntry?.id]) {
-                    MusicVideoScreen(
-                        vm = mvVm,
-                        // Audio and video share the exact source entry on fullscreen exit.
-                        onExit = returnFromPlayer,
-                        onFocusUp = { /* The full-screen player has no navigation overlay. */ },
-                        onArtistClick = { returnState.openDetail(Screen.ArtistDetail.route(it)) },
-                        // Google TV remotes lack media keys → draw prev/play/next on screen.
-                        showOnScreenControls = com.veacon.veilmusic.util.TvDevice.needsOnScreenMenuToggle(appContext, playerVm.remoteOverride()),
-                        queue = playerState.queue,
-                        queueIndex = playerState.queueIndex,
-                        onPickQueueItem = { playerVm.playFromQueue(it) },
-                        focusRequester = videoFocus,
-                        navVm = navVm,
-                    )
-                    }
-                }
-            }
-        }
         }
 
         // Keep pixels for the short exit, but disable focus/touch as soon as the player opens.
@@ -892,9 +717,8 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                     if (focused && !isOnNowPlaying) focusedTopTab = tab else if (focusedTopTab == tab) focusedTopTab = null
                 },
                 contentFocusRequester = if (currentRoute == Screen.Library.route) libraryContentFocus else contentFocus,
-                // Restore the original V12 beat-reactive marker for music and video.
-                isPlaying = playerState.isPlaying || (videoActive && videoPlaying),
-                beatAnalyzer = playerVm.beatAnalyzer,
+                // 顶栏的「正在播放」律动小条：波次1 删掉节拍 DSP 后只按播放状态显示。
+                isPlaying = playerState.isPlaying,
                 // 实验室开关：开启后用当前歌名替换顶栏的「正在播放」。
                 nowPlayingTitle = if (playerState.navTitleAsSong) playerState.currentSong?.title else null,
                 onSelect = { tab ->
@@ -914,13 +738,6 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
 
         // 版本行已改为各页滚动内容的最末尾（ReturnLazyColumn/ReturnLazyVerticalGrid 的
         // versionFooter 开关），不再是固定底部的浮层——不滑到最底部看不见。
-
-        // 焦点外圈 overlay：放在内容/顶栏之上、音乐胶囊之下。
-        // 这样外圈包住所有卡片，但音乐胶囊始终悬浮在最上层不被外圈覆盖。
-        // Canvas 用 positionInRoot() 取坐标；本 Box 铺满且原点即屏幕 (0,0)，坐标系一致。
-        com.veacon.veilmusic.ui.components.LocalFocusFrameController.current?.let { controller ->
-            com.veacon.veilmusic.ui.components.FocusFrameOverlay(controller)
-        }
 
         // 实验室：底部迷你播放胶囊（移植自 v1.1.2）。播放页不显示（页内已有完整控件）。
         if (miniCapsuleVisible) {
@@ -946,34 +763,12 @@ fun AppShell(modifier: Modifier = Modifier, onStartupReady: () -> Unit = {}) {
                 )
             }
         }
-
-        // 新手引导：首次安装 / 版本升级后的第一次启动自动弹出，盖在最上层。
-        // 若用户正在「重播设置」流程（语言等），等它结束再进引导 —— 先语言后引导。
-        // 完成后写入 guide_prefs 的版本号，之后不再自动弹出。
-          val guideVm: com.veacon.veilmusic.ui.viewmodel.DevMenuViewModel = hiltViewModel()
-          LaunchedEffect(showOnboarding) {
-              if (!showOnboarding && !com.veacon.veilmusic.ui.guide.GuideState.completed(appContext)) showGuide = true
-          }
-          // 开发者选项点「重新观看新手引导」时立刻重新弹出（同进程内）。
-          val guideReplay by com.veacon.veilmusic.ui.guide.GuideState.replayRequests.collectAsState()
-          // 定时切换深浅色：每分钟检查一次（纯 prefs 读取，开销可忽略），到点自动切。
           LaunchedEffect(Unit) {
               while (true) {
                   runCatching { com.veacon.veilmusic.data.AppearanceSchedule.apply(appContext) }
                   kotlinx.coroutines.delay(60_000)
               }
           }
-          LaunchedEffect(guideReplay) {
-              if (guideReplay > 0L) showGuide = true
-          }
-        if (showGuide) {
-              com.veacon.veilmusic.ui.guide.GuideScreen(
-                  playerVm = playerVm,
-                  settingsVm = guideVm,
-                  onDone = { showGuide = false },
-                  modifier = Modifier.fillMaxSize(),
-              )
-        }
 
     }
     } // CompositionLocalProvider(LocalMotionArtworkEnabled)

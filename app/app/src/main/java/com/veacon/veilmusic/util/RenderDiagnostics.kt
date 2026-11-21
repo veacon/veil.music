@@ -93,6 +93,7 @@ object RenderDiagnostics {
             add("SoC/board: soc=${f.socModel.ifBlank { "?" }} board=${f.board.ifBlank { "?" }} hw=${f.hardware.ifBlank { "?" }}")
             add("CPU: ${runtimeCores()} cores · max ${maxCpuKhz() / 1000}MHz")
             add("Process: ${if (f.is64BitProcess) "64-bit" else "32-bit"} · abis=${f.supportedAbis.joinToString(",")}")
+            add("DeviceTuning: ${com.veacon.veilmusic.util.DeviceTuning.describe(context)}")
             add("Memory: total=${f.totalRamMb}MB avail=${mem?.availMem?.div(1 shl 20) ?: -1}MB lowRam=${f.isLowRamDevice} " +
                 "heapMax=${Runtime.getRuntime().maxMemory() / (1 shl 20)}MB")
             add("GPU: vendor=${gpu?.vendor.orEmpty().ifBlank { "?" }} renderer=${gpu?.renderer.orEmpty().ifBlank { "?" }} " +

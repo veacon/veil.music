@@ -98,7 +98,8 @@ object RenderCompat {
     fun isActive(context: Context): Boolean = when (mode(context)) {
         Mode.ALWAYS -> true
         Mode.OFF -> false
-        Mode.AUTO -> riskReasons(RenderDiagnostics.facts(context)).isNotEmpty()
+        // 马赛克修复默认关闭：只有手动打开才生效（AUTO 不再自动命中）。
+        Mode.AUTO -> false
     }
 
     /**

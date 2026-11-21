@@ -59,7 +59,7 @@ fun AddToDialog(playerVm: PlayerViewModel, song: Song, onDismiss: () -> Unit) {
                 pls.isEmpty() -> Text(tr(R.string.msg_136), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), fontSize = 13.sp,
                     modifier = Modifier.padding(16.dp))
                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    items(pls) { pl ->
+                    items(pls, key = { it.id }) { pl ->
                         AddRow(Glyph.QUEUE, pl.name, { playerVm.addToPlaylist(pl.id, pl.name, song); onDismiss() })
                     }
                 }

@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[23],application=Application::class)
 class LyricsCancellationTest {
-    /** 歌词只走第三方平台（网易云→QQ→酷狗→酷我→咪咕）后，取消 getLyrics 应中断正在进行的
+    /** 歌词走第三方平台（QQ→酷狗→网易云→酷我→咪咕）时，取消 getLyrics 应中断正在进行的
      *  搜索 HTTP 调用，且不会因为取消而误触发下一个平台。 */
     @Test fun windowCancellationCancelsActualHttpCallWithoutStartingFallback()=runBlocking {
         val entered=CompletableDeferred<Unit>();val finish=CountDownLatch(1);val held=AtomicReference<Call>();var requests=0

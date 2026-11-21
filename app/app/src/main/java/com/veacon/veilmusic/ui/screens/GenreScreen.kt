@@ -75,7 +75,7 @@ class GenreViewModel @Inject constructor(private val repo: MusicRepository) : Vi
                                 albums = s.albums.map(repo::albumFromDto),
                                 videos = s.videos.map(repo::songFromDto),
                             )
-                        }.filter { it.albums.isNotEmpty() || it.videos.isNotEmpty() },
+                        }.filter { it.albums.isNotEmpty() },
                     )
                 }
                 .onFailure { _state.value = GenreUiState(isLoading = false, error = it.message) }
@@ -121,8 +121,7 @@ fun GenreScreen(
                 ) {
                     itemsIndexed(state.sections, key = { index, section -> "$index:${section.title}" }) { index, section ->
                         Box(Modifier.returnToTabOnUp(if (index == 0) onReturnToTab else null)) {
-                            if (section.videos.isNotEmpty()) VideoRow(section, playerVm)
-                            else AlbumRow(section, onAlbumClick, onPlaylistClick)
+                            AlbumRow(section, onAlbumClick, onPlaylistClick)
                         }
                     }
                 }
@@ -152,39 +151,3 @@ private fun AlbumRow(
         }
     }
 }
-
-/** Music-video shelf: wide 16:9 thumbnails. Tapping plays the whole shelf as a mixed
- *  queue — playAlbum routes each video into the fullscreen video player. */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun VideoRow(section: GenreSection, playerVm: PlayerViewModel) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(section.title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = com.veacon.veilmusic.ui.theme.AppPalette.primary,
-            modifier = Modifier.padding(start = pageHorizontalInset, end = pageHorizontalInset, bottom = 14.dp))
-        LazyRow(contentPadding = PaddingValues(horizontal = pageHorizontalInset), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(section.videos.size) { idx ->
-                val v = section.videos[idx]
-                Surface(
-                    onClick = { playerVm.playAlbum(section.videos, idx) },
-                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
-                    colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
-                ) {
-                    Column(Modifier.width(240.dp)) {
-                        Box(Modifier.width(240.dp).height(135.dp).focusedArtworkBorder(RoundedCornerShape(10.dp)).clip(RoundedCornerShape(10.dp)).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFE8E8ED), Color(0xFF38383D)))) {
-                            if (v.artworkUrl != null)
-                                AsyncImage(model = v.artworkUrl(500), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                            Box(Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFFFA233B)).padding(horizontal = 5.dp, vertical = 1.dp)) {
-                                Text("MV", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(v.title, fontSize = 13.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary, maxLines = 1, fontWeight = FontWeight.Medium)
-                        Text(v.artistName, fontSize = 11.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), maxLines = 1)
-                    }
-                }
-            }
-        }
-    }
-}
-
-

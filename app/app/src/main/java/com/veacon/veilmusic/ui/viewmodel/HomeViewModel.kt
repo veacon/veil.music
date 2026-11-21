@@ -64,6 +64,10 @@ class HomeViewModel @Inject constructor(
     }
 
     init {
+        // 设置页「刷新同步歌单及推荐页」→ 重取首页推荐
+        viewModelScope.launch {
+            com.veacon.veilmusic.data.AppRefresh.recommendations.collect { load() }
+        }
         // Read + parse the cached feed OFF the main thread — the JSON is large (all shelves × albums)
         // and doing it in init on the UI thread froze startup (hundreds of ms / multi-second stalls).
         viewModelScope.launch {

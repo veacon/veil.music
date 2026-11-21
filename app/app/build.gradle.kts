@@ -21,10 +21,15 @@ val releaseVersion = Properties().apply {
 // Short git commit the build was cut from — shown next to the version and used by the beta updater to
 // tell whether the rolling "dev" prerelease is a different build than the one running. Configuration-cache
 // safe via providers.exec; falls back to "unknown" outside a git checkout (e.g. a source tarball).
-val gitSha: String = providers.exec {
-    commandLine("git", "rev-parse", "--short", "HEAD")
-    isIgnoreExitValue = true
-}.standardOutput.asText.map { it.trim() }.orElse("unknown").get().ifBlank { "unknown" }
+val gitSha: String = try {
+    providers.exec {
+        commandLine("git", "rev-parse", "--short", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }.orElse("unknown").get().ifBlank { "unknown" }
+} catch (_: Exception) {
+    // git 不在 PATH 上（如临时诊断构建环境）：git 可执行文件缺失会抛进程启动异常，回退 unknown。
+    "unknown"
+}
 
 android {
     namespace = "com.veacon.veilmusic"
@@ -65,14 +70,28 @@ android {
         disable += "NullSafeMutableLiveData"
     }
 
+    // Robolectric 默认走 Maven 解析，每次都会抢 ~/.robolectric-download-lock；
+    // 并行 fork 时多个 JVM 同时创建这个锁文件，Windows 上会直接抛
+    // "Couldn't create lock file" 让随机几个测试挂掉。改成离线模式指向本地扁平目录
+    // （.robolectric-deps），完全不碰那把锁，也不再联网解析。可在配置阶段求值。
+    val robolectricOfflineDir = System.getenv("ROBOLECTRIC_DEPENDENCY_DIR")
+        ?: rootProject.layout.projectDirectory.dir(".robolectric-deps").asFile.absolutePath
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // 680 个 Robolectric 单测默认挤在 1 个测试 JVM 里串行跑，是构建耗时的大头
+            // （串行 ~163s，4 个并行 fork 后 ~81s）。每个 fork 的 Robolectric 约需 1.2G，
+            // 再往上加会和 Gradle/Kotlin 守护进程抢内存反而变慢。
+            it.maxParallelForks = 4
+            it.maxHeapSize = "1536m"
+            // 固定中文环境：界面文案走 tr()，AppLanguage 未初始化时按 JVM 默认 Locale 解析。
+            // 不固定的话，并行 fork / 单独跑某个测试类时会随机落到英文分支，标签断言就挂了。
+            it.systemProperty("user.language", "zh")
+            it.systemProperty("user.country", "CN")
             it.systemProperty("amtv.test.artifacts", project.layout.buildDirectory.dir("test-artifacts").get().asFile.absolutePath)
-            System.getenv("ROBOLECTRIC_DEPENDENCY_DIR")?.let { dir ->
-                it.systemProperty("robolectric.offline", "true")
-                it.systemProperty("robolectric.dependency.dir", dir)
-            }
+            it.systemProperty("robolectric.offline", "true")
+            it.systemProperty("robolectric.dependency.dir", robolectricOfflineDir)
         }
     }
 

@@ -69,6 +69,19 @@ class LxPlayback @Inject constructor(
     private val engines = mutableListOf<LxScriptEngine>()
     @Volatile private var resolver: AudioResolver? = null
 
+    /** P0-8：内存压力时清掉音源解析缓存（脚本引擎本身保留，重建代价高）。 */
+    private val memorySink = object : com.veacon.veilmusic.util.MemoryPressure.Sink {
+        override fun onTrim(level: Int) {
+            synchronized(cache) { cache.clear() }
+            synchronized(inflight) { inflight.clear() }
+            log("内存压力 level=$level：清空音源解析缓存")
+        }
+    }
+
+    init {
+        com.veacon.veilmusic.util.MemoryPressure.register(memorySink)
+    }
+
     private val initLock = Any()
     @Volatile private var initState = 0          // 0=未初始化 1=就绪 2=失败
     @Volatile private var lastInitAttempt = 0L
@@ -216,22 +229,36 @@ class LxPlayback @Inject constructor(
                 return false
             }
             val t0 = System.currentTimeMillis()
-            // 每个脚本有自己独立的单线程 QuickJS dispatcher，彼此不共享 runtime。
-            // 以前串行 start()，10 个脚本里只要有一个卡到 8s 求值超时，第一首歌就得等
-            // 全部脚本跑完（最坏几十秒）。分批并发后总耗时从「求和」降到「最慢的一批」。
-            for (batch in files.chunked(ENGINE_INIT_PARALLELISM)) {
-                val started = runBlocking(Dispatchers.IO) {
-                    batch.map { f -> async { startEngine(f) } }.awaitAll()
-                }
-                started.filterNotNull().forEach { engines += it }
+            // P0-9：先只启动「上次用过的音源」1-2 个，保证首解成功；
+            // 其余脚本后台懒加载，不再在启动/首播时把 10 个引擎全起一遍。
+            val preferred = preferredScripts(files)
+            val firstBatch = preferred.ifEmpty { files.take(1) }
+            val started = runBlocking(Dispatchers.IO) {
+                firstBatch.map { f -> async { startEngine(f) } }.awaitAll()
             }
-            log("音源初始化完成：${engines.size}/${files.size} 个脚本，耗时 ${System.currentTimeMillis() - t0}ms")
+            started.filterNotNull().forEach { engines += it }
+            val rest = files.filterNot { it in firstBatch }
+            if (rest.isNotEmpty()) {
+                Thread({
+                    rest.chunked(ENGINE_INIT_PARALLELISM).forEach { batch ->
+                        runCatching {
+                            runBlocking(Dispatchers.IO) {
+                                batch.map { f -> async { startEngine(f) } }.awaitAll()
+                            }.filterNotNull().forEach { e ->
+                                synchronized(engines) { engines += e }
+                            }
+                        }
+                    }
+                    log("音源懒加载完成：${synchronized(engines) { engines.size }}/${files.size} 个脚本")
+                }, "lx-js-lazy").apply { isDaemon = true }.start()
+            }
+            log("音源初始化完成：${engines.size}/${files.size} 个脚本（优先 ${firstBatch.size} 个），耗时 ${System.currentTimeMillis() - t0}ms")
             if (engines.isEmpty()) {
                 initState = 2
                 lastError = "所有脚本初始化失败"
                 return false
             }
-            resolver = AudioResolver(search, verifier, engines.toList()) { line -> log(line) }
+            resolver = AudioResolver(search, verifier, { synchronized(engines) { engines.toList() } }) { line -> log(line) }
             initState = 1
             lastError = null
             return true
@@ -239,6 +266,16 @@ class LxPlayback @Inject constructor(
     }
 
     /** 单个脚本的构造 + 启动；可被并发调用，结果按文件名顺序回灌到 [engines]。 */
+    /**
+     * P0-9：优先预热哪些脚本 —— 上次解析成功用过的那个（仍存在时），否则取目录第一个。
+     * 其余脚本在后台线程里按批懒加载，不挡首解。
+     */
+    private fun preferredScripts(files: List<File>): List<File> {
+        val last = prefs.getString("last_script", null)
+        val hit = files.firstOrNull { it.name == last }
+        return listOfNotNull(hit ?: files.firstOrNull())
+    }
+
     private fun startEngine(f: File): LxScriptEngine? {
         if (isDisabled(f.name)) {
             log("脚本已停用，跳过 ${f.name}")

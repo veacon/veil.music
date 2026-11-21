@@ -1,4 +1,4 @@
-﻿package com.veacon.veilmusic.ui.screens
+package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
@@ -154,7 +154,7 @@ fun PlaylistDetailScreen(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                state.motionUrl?.let { MotionCover(url = it, modifier = Modifier.fillMaxSize()) }
+                state.motionUrl?.let { com.veacon.veilmusic.ui.components.MotionArtwork(it, play = true, modifier = Modifier.fillMaxSize(), gateOnPreference = false) }
             }
             Spacer(Modifier.height(20.dp))
             Text(playlistName, fontSize = 20.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.primary, fontWeight = FontWeight.Bold,

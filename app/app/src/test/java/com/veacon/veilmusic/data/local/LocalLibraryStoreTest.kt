@@ -87,6 +87,19 @@ class LocalLibraryStoreTest {
         assertTrue(s.playlists.value.single().isImported)
     }
 
+    /** 写入是异步排队的：新建实例读盘可能刚好读到上一版快照。
+     *  这里按"最终一致"轮询，断言强度不变，只是容忍落盘延迟（并行跑测试时更明显）。 */
+    private fun awaitPlaylistIds(playlistId: String, expected: List<String>) {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        var actual: List<String>? = null
+        while (System.nanoTime() < deadline) {
+            actual = store().playlist(playlistId)?.songs?.map { it.id }
+            if (actual == expected) return
+            Thread.sleep(10)
+        }
+        fail("歌单 $playlistId 落盘后仍是 $actual，期望 $expected")
+    }
+
     @Test fun playlistEditsAndDeletionPersist() {
         val s = store()
         val playlist = s.saveImported(
@@ -99,7 +112,7 @@ class LocalLibraryStoreTest {
 
         // 移除 song("a") 后，文件里不应再有 id "a"（等待最后一次删除写入落盘）
         awaitFile(expectMissing = "\"id\":\"a\"")
-        assertEquals(listOf("b"), store().playlist(playlist.id)!!.songs.map { it.id })
+        awaitPlaylistIds(playlist.id, listOf("b"))
 
         s.deletePlaylist(playlist.id)
         assertNull(s.playlist(playlist.id))

@@ -18,7 +18,6 @@ import com.veacon.veilmusic.data.StandalonePreferences
 import com.veacon.veilmusic.data.updates.DownloadSource
 import com.veacon.veilmusic.data.updates.UpdateDownloadPreferences
 import com.veacon.veilmusic.data.repository.MusicRepository
-import com.veacon.veilmusic.media.BeatAnalyzer
 import com.veacon.veilmusic.data.NetworkLog
 import com.veacon.veilmusic.i18n.AppLanguage
 import com.veacon.veilmusic.media.InAppWebServer
@@ -66,7 +65,6 @@ data class DevMenuState(
     val standaloneOn:   Boolean        = false,
     val lyricsOffsetMs: Long           = 0L,
     val crossfadeMs:    Long           = 7_000L,
-    val beatLatencyMs:  Long           = 0L,
     val cacheCapacityGb: Int = 1,
     val cacheUsedBytes: Long = 0,
     val cacheBusy: Boolean = false,
@@ -86,7 +84,6 @@ class DevMenuViewModel @Inject constructor(
     private val lyricsMotionPrefs: com.veacon.veilmusic.data.LyricsMotionPreferences,
     private val crossfadePrefs: CrossfadePreferences,
     private val standalonePrefs: StandalonePreferences,
-    private val beatAnalyzer: BeatAnalyzer,
     private val lxPlayback: com.veacon.veilmusic.luoxue.LxPlayback,
     private val audioQualityPrefs: com.veacon.veilmusic.data.AudioQualityPreferences,
     private val downloadPrefs: UpdateDownloadPreferences,
@@ -95,7 +92,12 @@ class DevMenuViewModel @Inject constructor(
     /** 歌词逐字播放开关：与播放页共享同一份偏好，改完立即生效。 */
     val wordByWordLyrics: kotlinx.coroutines.flow.StateFlow<Boolean> = lyricsMotionPrefs.wordByWord
 
+    /** 歌词动效开关：遮罩扫过 + 长音字符弹起 + 当前行挤压（对齐 am_atv / Apple Music）。 */
+    val lyricElastic: kotlinx.coroutines.flow.StateFlow<Boolean> = lyricsMotionPrefs.elastic
+
     fun setWordByWordLyrics(enabled: Boolean) = lyricsMotionPrefs.setWordByWord(enabled)
+
+    fun setLyricElastic(enabled: Boolean) = lyricsMotionPrefs.setElastic(enabled)
 
     data class UpdateState(val phase: String = "idle", val info: com.veacon.veilmusic.data.updates.UpdateInfo? = null,
         val progress: Int = 0, val manualResult: Boolean = false, val ready: java.io.File? = null,
@@ -178,7 +180,6 @@ class DevMenuViewModel @Inject constructor(
         pcServerIp     = serverPrefs.getPcServerIp(),
         lyricsOffsetMs = lyricsOffsetPrefs.getOffset(),
         crossfadeMs    = crossfadePrefs.getDuration(),
-        beatLatencyMs  = beatAnalyzer.latencyMs,
         standaloneOn   = standalonePrefs.isEnabled(),
         audioQuality   = audioQualityPrefs.get(),
     ))
@@ -193,6 +194,8 @@ class DevMenuViewModel @Inject constructor(
     fun stepAudioQuality(direction: Int) = setAudioQuality(audioQualityPrefs.get().next(direction))
 
     init {
+        // P0-5：设置页是「手机配置 / 扫码登录」的唯一入口，进入时启服、离开即停（按需启停）。
+        webServer.acquire(viewModelScope, "settings")
         viewModelScope.launch {
             webServer.endpoint.collect { _state.update { it.copy(webServerUrl = webServer.serverUrl()) } }
         }
@@ -309,13 +312,6 @@ class DevMenuViewModel @Inject constructor(
     }
 
 
-    fun setBeatLatency(ms: Long) {
-        val v = ms.coerceIn(0L, 500L)
-        beatAnalyzer.latencyMs = v
-        beatAnalyzer.resetBeat()
-        _state.update { it.copy(beatLatencyMs = v) }
-    }
-
     fun toggleStandalone() {
         if (!serverPrefs.hasPcServer()) return
         val on = !standalonePrefs.isEnabled()
@@ -352,5 +348,18 @@ class DevMenuViewModel @Inject constructor(
     private fun log(level: String, message: String) {
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         _state.update { it.copy(logs = it.logs + LogEntry(level, "[$time] $message")) }
+    }
+
+    /** 账号区「刷新同步歌单及推荐页」：重拉云端歌单，并让首页重取推荐。 */
+    fun refreshSyncedContent() {
+        runCatching { com.veacon.veilmusic.data.AppleDisplayAuth.get(context).refresh() }
+        com.veacon.veilmusic.data.AppRefresh.requestRecommendations()
+        webServer.addLog("AUTH", "refresh synced playlists + home recommendations")
+    }
+
+    /** 离开设置页：释放手机页引用，按需模式下会立刻停服（P0-5）。 */
+    override fun onCleared() {
+        webServer.release("settings")
+        super.onCleared()
     }
 }

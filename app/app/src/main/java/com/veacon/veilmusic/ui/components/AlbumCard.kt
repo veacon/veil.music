@@ -45,10 +45,6 @@ fun AlbumCard(album: Album, size: Int = 130, onClick: () -> Unit, onLongClick: (
         modifier = modifier.width(size.dp)
             .focusProperties { canFocus = focusable }
             .onFocusChanged { focused = it.isFocused || it.hasFocus },
-        // 外圈已由 TouchCard 统一挂载，这里只透传本卡片原有的精确参数。
-        focusRadius = 12.dp,
-        focusScale = 1.088f,
-        // Use the original 8% focus enlargement plus 10% of that enlargement; no outline or shadow.
         scale = CardDefaults.scale(focusedScale = 1.088f, pressedScale = 0.96f),
         glow  = CardDefaults.glow(
             glow = Glow.None, focusedGlow = Glow.None, pressedGlow = Glow.None

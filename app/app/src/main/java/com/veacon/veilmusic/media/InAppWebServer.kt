@@ -33,7 +33,6 @@ class InAppWebServer @Inject constructor(
     private val crossfadePrefs: CrossfadePreferences,
     private val standalonePrefs: StandalonePreferences,
     private val serverPrefs: ServerPreferences,
-    private val beatAnalyzer: BeatAnalyzer,
     private val tokenVerifier: com.veacon.veilmusic.data.auth.TokenVerifier,
     private val lx: com.veacon.veilmusic.luoxue.LxPlayback,
     private val playlistImporter: com.veacon.veilmusic.data.local.PlaylistImporter,
@@ -59,11 +58,31 @@ class InAppWebServer @Inject constructor(
     val eventPort = 8081
 
     private val wsPrefs = context.getSharedPreferences("webserver_prefs", Context.MODE_PRIVATE)
-    /** User toggle (Dev → Web Server). Default ON. */
-    val isEnabled: Boolean get() = wsPrefs.getBoolean("web_enabled", true)
+    /** 常驻开关（默认关闭）。波次2 P0-5：手机 Web 服务改为按需启停，不再默认常驻。 */
+    val isEnabled: Boolean get() = wsPrefs.getBoolean("web_enabled", false)
     val running: Boolean get() = endpoint.value.phase == PhoneServerPhase.READY
 
-    /** Called once at app start: remember the scope and start only if enabled. */
+    /** 当前持有「需要手机页」的界面数量（设置页 / 引导页 / 导入弹窗 / 扫码弹窗）。 */
+    private val holders = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * 按需启停（P0-5）：调用方持有一份引用，第一个引用到来时启服，最后一个释放时立刻停服。
+     * 常驻开关打开时，释放不会停服。
+     */
+    fun acquire(scope: CoroutineScope, reason: String) {
+        appScope = appScope ?: scope
+        val n = holders.incrementAndGet()
+        addLog("WEB", "acquire($reason) holders=$n")
+        if (n == 1) start(appScope ?: scope)
+    }
+
+    fun release(reason: String) {
+        val n = holders.updateAndGet { if (it > 0) it - 1 else 0 }
+        addLog("WEB", "release($reason) holders=$n")
+        if (n == 0 && !isEnabled) stop()
+    }
+
+    /** Called once at app start: remember the scope. 按需模式默认不监听任何端口。 */
     fun boot(scope: CoroutineScope) {
         appScope = scope
         if (isEnabled) start(scope)
@@ -72,7 +91,7 @@ class InAppWebServer @Inject constructor(
     /** Toggle from Settings — starts or stops the phone web server and persists the choice. */
     fun setEnabled(on: Boolean) {
         wsPrefs.edit().putBoolean("web_enabled", on).apply()
-        if (on) appScope?.let { start(it) } else stop()
+        if (on) appScope?.let { start(it) } else if (holders.get() == 0) stop()
     }
 
     @Synchronized fun start(scope: CoroutineScope) {
@@ -437,7 +456,6 @@ class InAppWebServer @Inject constructor(
                 method == "POST" && path == "/set-lyrics-script"   -> { applyLyricsScript(parseField(body, "script")); redirect(out, "/") }
                 method == "POST" && path == "/set-render-compat"   -> { applyRenderCompat(parseField(body, "compat")); redirect(out, "/") }
                 method == "POST" && path == "/set-lyrics-offset"   -> { applyLyricsOffset(parseField(body, "offset")); redirect(out, "/") }
-                method == "POST" && path == "/set-beat-latency"    -> { applyBeatLatency(parseField(body, "latency")); redirect(out, "/") }
                 method == "POST" && path == "/set-crossfade"       -> { applyCrossfade(parseField(body, "crossfade")); redirect(out, "/") }
             method == "POST" && path == "/set-standalone"      -> { applyStandalone(parseField(body, "standalone")); redirect(out, "/") }
             method == "POST" && path == "/set-server-ip"       -> { applyServerIp(parseField(body, "serverip")); redirect(out, "/") }
@@ -452,14 +470,6 @@ class InAppWebServer @Inject constructor(
         } finally {
             runCatching { socket.close() }
         }
-    }
-
-    private fun applyBeatLatency(raw: String) {
-        val ms = raw.trim().toLongOrNull()
-        if (ms == null || ms < 0) { addLog("ERROR", "Invalid beat latency: $raw"); return }
-        beatAnalyzer.latencyMs = ms
-        beatAnalyzer.resetBeat()
-        addLog("OK", "Beat latency set to ${ms}ms — buffer reset")
     }
 
     /** Player settings live in the "player_state" prefs the ViewModel owns. */
@@ -676,7 +686,6 @@ class InAppWebServer @Inject constructor(
 
     internal fun html(tokenSaved: Boolean = false, tokenError: Boolean = false, tokenUnavailable: Boolean = false, language: String = "zh"): String {
         val currentOffset = lyricsOffsetPrefs.getOffset()
-        val currentBeatLatency = beatAnalyzer.latencyMs
         val standaloneOn = !serverPrefs.hasPcServer() || standalonePrefs.isEnabled()
         val serverIp = serverPrefs.getPcServerIp()
         val pp = context.getSharedPreferences("player_state", Context.MODE_PRIVATE)
@@ -859,17 +868,6 @@ function legacyCopy(text,done,b){
 <button class="btn btn-p" type=submit style=margin-top:8px>设置偏移（毫秒）</button>
 </form>
 <div style="font-size:10px;color:#555;margin-top:8px">正数提前显示歌词，负数延后；歌词偏慢时可尝试 +200。</div>
-</div>
-
-<div class=card>
-<h2>节拍延迟</h2>
-<div class=row><div class=label>当前延迟</div><div class=sub2 style=color:#6e6e73>${currentBeatLatency}ms</div></div>
-<form method=POST action=/set-beat-latency>
-<input name=latency type=range min=0 max=500 step=10 value="$currentBeatLatency" oninput="document.getElementById('bv').textContent=this.value+'ms'" style="width:100%;accent-color:#fa233b;margin-top:8px">
-<div style="font-size:12px;color:#6e6e73;text-align:center;margin-top:4px"><span id=bv>${currentBeatLatency}ms</span></div>
-<button class="btn btn-p" type=submit style=margin-top:8px>应用并重置</button>
-</form>
-<div style="font-size:10px;color:#555;margin-top:8px">电视扬声器可设为 0，蓝牙通常约 200 毫秒；应用后重置节拍缓冲。</div>
 </div>
 
 <div class=card>

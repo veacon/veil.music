@@ -46,9 +46,6 @@ fun FadingAnchoredPopup(
             CompositionLocalProvider(
                 LocalMotionInteractive provides interactive,
                 LocalMenuOpeningInputMode provides openingMode,
-                // Popup 是独立 window，坐标与 Activity 根上的焦点外圈 overlay 不一致，
-                // 关闭上报避免外圈错位。
-                LocalFocusFrameEnabled provides false,
             ) { content() }
         }
     }

@@ -23,7 +23,12 @@ object AppLanguage {
     private var systemLocale by mutableStateOf(Locale.getDefault())
     var choice by mutableStateOf(LanguageChoice.System)
         private set
-    val code: String get() = resolve(choice, systemLocale)
+    /** 尚未 [initialize]（没有 app context）时无从得知用户语言：此时取文案兜底的
+     *  [MessageCatalog] 主语言（中文），与 [textFor] 里 `pair.first` 的兜底保持一致。
+     *  真机上 Application.onCreate 一定先初始化，所以不影响运行时行为；
+     *  但单测里 AppLanguage 是进程内单例，各测试类的初始化顺序不同，这层兜底能保证
+     *  文案解析稳定（否则同一个用例在不同测试 JVM 里会随机中/英切换）。 */
+    val code: String get() = if (context == null) "zh" else resolve(choice, systemLocale)
     val locale: Locale get() = if (code == "zh") Locale.SIMPLIFIED_CHINESE else Locale.US
     private val _changes = MutableStateFlow(code)
     val changes = _changes.asStateFlow()

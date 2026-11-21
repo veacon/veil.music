@@ -25,7 +25,7 @@ import javax.inject.Singleton
  *  - 两段式（搜索 → 取词）：平台搜索接口返回的候选里有时长和艺人，能有效
  *    避免「同名不同曲」拿到错词。
  *  - 只依赖公开接口（不带 cookie / 不做登录），失败就交给下一个源。
- *  - 顺序即优先级：网易云 → QQ → 酷狗 → 酷我 → 咪咕，第一个命中的即返回。
+ *  - 顺序即优先级：QQ音乐 → 酷狗 → 网易云 → 酷我 → 咪咕，第一个命中的即返回。
  */
 @Singleton
 class ThirdPartyLyrics @Inject constructor() {
@@ -35,11 +35,18 @@ class ThirdPartyLyrics @Inject constructor() {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    private companion object {
-        const val TAG = "ThirdPartyLyrics"
-        const val MIN_SCORE = 42.0
-        const val UA =
+    companion object {
+        private const val TAG = "ThirdPartyLyrics"
+        private const val MIN_SCORE = 42.0
+        private const val UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+        /** 第三方歌词源优先级（高 → 低）。顺序即回退/命中顺序，是唯一事实来源。 */
+        val SOURCE_PRIORITY = listOf("QQ音乐", "酷狗", "网易云", "酷我", "咪咕")
+
+        /** 换源后剩下的源，仍严格保持优先级。 */
+        fun orderedSources(excludeSources: Set<String>): List<String> =
+            SOURCE_PRIORITY.filterNot { it in excludeSources }
     }
 
     private data class Hit(
@@ -57,32 +64,25 @@ class ThirdPartyLyrics @Inject constructor() {
     data class Result(val lines: List<LyricLine>, val source: String)
 
     /**
-     * 按优先级级联：网易云 → QQ → 酷狗 → 酷我 → 咪咕，返回第一条可用歌词；都没有则空。
+     * 按优先级级联：QQ音乐 → 酷狗 → 网易云 → 酷我 → 咪咕，返回第一条可用歌词；都没有则空。
      *
-     * [excludeSources] 是「歌词换源」要跳过的源标签集合（如 {"网易云"}），命中后从下一个源开始试，
+     * 顺序即优先级——列表即唯一事实来源，回退严格按此序列推进，命中后立即返回。
+     *
+     * [excludeSources] 是「歌词换源」要跳过的源标签集合（如 {"QQ音乐"}），命中后从下一个源开始试，
      * 避免换源又落回同一个平台。为空则正常全级联。
      */
     suspend fun fetch(title: String, artist: String, durationSec: Long, excludeSources: Set<String> = emptySet()): Result {
         if (title.isBlank()) return Result(emptyList(), "")
-        if ("网易云" !in excludeSources) {
-            netease(title, artist, durationSec).takeIf { it.isNotEmpty() }
-                ?.let { return Result(it, "网易云") }
-        }
-        if ("QQ音乐" !in excludeSources) {
-            qq(title, artist, durationSec).takeIf { it.isNotEmpty() }
-                ?.let { return Result(it, "QQ音乐") }
-        }
-        if ("酷狗" !in excludeSources) {
-            kugou(title, artist, durationSec).takeIf { it.isNotEmpty() }
-                ?.let { return Result(it, "酷狗") }
-        }
-        if ("酷我" !in excludeSources) {
-            kuwo(title, artist, durationSec).takeIf { it.isNotEmpty() }
-                ?.let { return Result(it, "酷我") }
-        }
-        if ("咪咕" !in excludeSources) {
-            migu(title, artist, durationSec).takeIf { it.isNotEmpty() }
-                ?.let { return Result(it, "咪咕") }
+        val fetchers: Map<String, suspend () -> List<LyricLine>> = mapOf(
+            "QQ音乐" to { qq(title, artist, durationSec) },
+            "酷狗" to { kugou(title, artist, durationSec) },
+            "网易云" to { netease(title, artist, durationSec) },
+            "酷我" to { kuwo(title, artist, durationSec) },
+            "咪咕" to { migu(title, artist, durationSec) },
+        )
+        for (label in orderedSources(excludeSources)) {
+            val lines = fetchers.getValue(label)().takeIf { it.isNotEmpty() } ?: continue
+            return Result(lines, label)
         }
         return Result(emptyList(), "")
     }

@@ -16,5 +16,6 @@ internal fun IdlePlayerBackground(quality: FluidQuality, reduceMotion: Boolean, 
     LaunchedEffect(loaded) {if(chosen==null && loaded.isNotEmpty()) chosen=loaded.random()}
     // The existing app artwork gives a palette even before the first shelf image finishes.
     val fallback="android.resource://${LocalContext.current.packageName}/${R.mipmap.ic_launcher}"
-    MacBackground(artworkUrl=chosen?:fallback,quality=quality,playing=true,reduceMotion=reduceMotion,lowPower=lowPower)
+    // 空闲页没有播放时钟：交给渲染器只画一帧静态背景（P0-7）。
+    MacBackground(artworkUrl=chosen?:fallback,quality=quality,playing=false,reduceMotion=reduceMotion,lowPower=lowPower)
 }

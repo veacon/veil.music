@@ -29,7 +29,7 @@ class PhoneLoginTest {
         val importer = com.veacon.veilmusic.data.local.PlaylistImporter(okhttp3.OkHttpClient(),
             com.veacon.veilmusic.data.local.LocalLibraryStore(context, com.veacon.veilmusic.data.di.NetworkModule.provideMoshi()))
         return InAppWebServer(context, MutPreferences(context), repo, LyricsOffsetPreferences(context),
-            CrossfadePreferences(context), StandalonePreferences(context), ServerPreferences(context), BeatAnalyzer(), com.veacon.veilmusic.data.auth.TokenVerifier { token ->
+            CrossfadePreferences(context), StandalonePreferences(context), ServerPreferences(context), com.veacon.veilmusic.data.auth.TokenVerifier { token ->
                 when {
                     token.startsWith("unavailable-") -> com.veacon.veilmusic.data.auth.TokenVerification.Unavailable
                     token.startsWith("replacement-") || token.startsWith("phone-") -> com.veacon.veilmusic.data.auth.TokenVerification.Valid
@@ -47,7 +47,7 @@ class PhoneLoginTest {
         assertTrue(html.contains("<details class=more>"))
         assertFalse(html.contains("<details class=more open"))
         val advanced = html.substringAfter("<details class=more>")
-        listOf("歌词偏移", "节拍延迟", "本机模式", "音量均衡", "实验室功能").forEach {
+        listOf("歌词偏移", "本机模式", "音量均衡", "实验室功能").forEach {
             assertTrue("$it should be inside the disclosure", advanced.contains(it))
         }
         // 实验室功能：两个开关与 TV 端写同一份 prefs，表单动作要落在页面上。

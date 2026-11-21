@@ -1,6 +1,8 @@
 package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
+import com.veacon.veilmusic.ui.lyrics.ProgressState
+import com.veacon.veilmusic.ui.lyrics.toKaraokeLyricLine
 import com.veacon.veilmusic.R
 import com.veacon.veilmusic.ui.wall.CachedWallCard
 import com.veacon.veilmusic.ui.wall.WallKind
@@ -72,7 +74,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -116,7 +117,6 @@ import coil.request.ImageRequest
 import com.veacon.veilmusic.data.network.LyricLine
 import com.veacon.veilmusic.data.network.LyricWord
 import com.veacon.veilmusic.ui.viewmodel.NavigationViewModel
-import com.veacon.veilmusic.ui.viewmodel.NowPlayingBackground
 import com.veacon.veilmusic.ui.viewmodel.PlayerViewModel
 import com.veacon.veilmusic.ui.components.Glyph
 import com.veacon.veilmusic.ui.components.TouchSeekBar
@@ -127,7 +127,9 @@ import com.veacon.veilmusic.ui.background.LavaBackground
 import com.veacon.veilmusic.ui.components.touchClick
 import com.veacon.veilmusic.util.TvDevice
 import com.veacon.veilmusic.ui.viewmodel.RepeatMode
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -135,6 +137,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -171,9 +175,19 @@ fun NowPlayingScreen(
     /** 空播放页的出口：没有任何歌曲时页面本身没有可聚焦控件，必须给遥控器留一条路。 */
     onBrowse: () -> Unit = {},
 ) {
-    val playbackState by playerVm.state.collectAsState()
+    // P0-6：进度每秒校验一次，但不该驱动整页重组 —— 投影里把 progressMs 归零后去重，
+    // 只有真正改变界面的字段才会触发重组；进度本身走单独的 Flow，交给叶子节点读取。
+    val uiStateFlow = remember(playerVm) {
+        playerVm.state.map { it.copy(progressMs = 0L) }.distinctUntilChanged()
+    }
+    val progressFlow = remember(playerVm) {
+        playerVm.state.map { it.progressMs }.distinctUntilChanged()
+    }
+    val playbackState by uiStateFlow.collectAsStateWithLifecycle(playerVm.state.value.copy(progressMs = 0L))
     // 逐字歌词开关：关掉后当前行整句直接亮起，其余样式与滚动行为完全不变。
     val wordByWord by playerVm.wordByWordLyrics.collectAsState()
+    // 歌词动效开关：遮罩扫过 + 长音字符弹起 + 当前行挤压（对齐 am_atv / Apple Music）。
+    val lyricElastic by playerVm.lyricElastic.collectAsState()
     val artworkCentered by playerVm.artworkCentered.collectAsState()
     val state = playbackState
     val fontState = com.veacon.veilmusic.ui.theme.LocalAppFontState.current
@@ -181,7 +195,7 @@ fun NowPlayingScreen(
     val toggleCount by navVm.toggleQueue.collectAsState()
     val interaction by navVm.playerInteraction.collectAsState()
     val showQueue = toggleCount % 2 == 1
-    val smoothProgress = rememberSmoothProgressMs(state.progressMs, state.isPlaying && !state.isLoading)
+    val smoothProgress = rememberSmoothProgressMs(progressFlow, state.isPlaying && !state.isLoading)
     // ── 麦克风律动：RECORD_AUDIO 权限流 + 采集联动（进播放页且播放中才采集）──
     val appContext = LocalContext.current.applicationContext
     var spectrumGranted by remember {
@@ -189,16 +203,22 @@ fun NowPlayingScreen(
     }
     val spectrumLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         spectrumGranted = granted
+        // 拒绝时记录并关闭开关，避免开关开着却采不到频谱、也避免反复弹窗。
+        playerVm.spectrumPrefs.recordPermissionResult(granted)
         playerVm.audioSpectrum.setActive(playerVm.spectrumEnabled() && granted && state.isPlaying)
     }
     fun requestSpectrumPermission() {
         playerVm.spectrumPrefs.markPermissionRequested()
         spectrumLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
-    // 进播放页且播放中且开关开且未授权且从未弹过 → 自动弹一次系统权限（之后从设置页管理）
+    // 进播放页且播放中且开关开且未授权且从未弹过 → 自动弹一次系统权限。
+    // 设备不支持、或用户已拒绝过（记录里 permissionRequested=true）都不再自动弹，
+    // 改由设置页明确提示用户去系统设置开启，避免反复骚扰。
     LaunchedEffect(state.isPlaying, spectrumGranted) {
         if (playerVm.spectrumEnabled() && state.isPlaying && !spectrumGranted &&
-            !playerVm.spectrumPrefs.permissionRequested()) requestSpectrumPermission()
+            !playerVm.spectrumPrefs.permissionRequested() &&
+            com.veacon.veilmusic.data.microphonePermissionState(appContext, playerVm.spectrumPrefs) !=
+                com.veacon.veilmusic.data.SpectrumPermissionState.Unavailable) requestSpectrumPermission()
     }
     // 采集联动：暂停/关开关/离开播放页 → 停止采集（无播放时也不做会话探针）
     DisposableEffect(state.isPlaying, spectrumGranted) {
@@ -490,8 +510,6 @@ fun NowPlayingScreen(
                 artworkUrl = song.artworkUrl(500), quality = state.fluidQuality,
                 playing = state.isPlaying, reduceMotion = state.reduceMotion, lowPower = state.lowPowerMode,
                 modifier = Modifier.fillMaxSize(),
-                spectrum = spectrumProvider,
-                pulseSpeedMultiplier = pulseMultiplier,
             )
         }
         // Remount when switching orientation so the old split view cannot flash in portrait.
@@ -523,6 +541,7 @@ fun NowPlayingScreen(
                     hideArtwork = coverMoving,
                     onArtworkPosition = { rect -> if (!albumWall && !coverMoving) coverOrigin = rect.translate(-playerOrigin) },
                     wordByWord = wordByWord,
+                    elastic = lyricElastic,
                     artworkCompat = state.renderCompat,
                 )
             } else {
@@ -617,7 +636,6 @@ fun NowPlayingScreen(
                             }
                         }
                         Spacer(Modifier.height(0.dp))
-                        com.veacon.veilmusic.ui.components.ProvideFocusFrameVisibility(chromeAlpha) {
                         Column(Modifier.fillMaxWidth().graphicsLayer { alpha = chromeAlpha }) {
                             PlayerProgressBar(smoothProgress, song, playFocus, playerVm.player,
                                 visualScale = UnderCoverVisualScale, loading = state.isLoading && !state.isPlaying)
@@ -633,7 +651,6 @@ fun NowPlayingScreen(
                                 PlaybackOrderButton(state.playbackOrder(),visualScale=UnderCoverVisualScale,
                                     onClick=playerVm::cyclePlaybackOrder)
                             }
-                        }
                         }
                     }
                     }, panel={
@@ -659,6 +676,7 @@ fun NowPlayingScreen(
                                     lyrics = state.lyrics, progressState = smoothProgress, offsetMs = state.avLyricsMs,
                                     onSeek = { playerVm.player.seekTo(it) }, playFocus = playFocus,
                                     fontScale = state.lyricsScale, wordByWord = wordByWord,
+                                    elastic = lyricElastic,
                                 )
                                 else if (panel == "empty" && !state.isLoading) EmptyLyrics(song.id, state.lyricsScale, emptyPanelIsCurrent && emptyLyricsNoticeVisible(state,currentLyricsState), centered=centeredControls)
                                 }
@@ -1013,6 +1031,8 @@ internal fun FullScreenLyrics(
     onArtworkPosition: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     /** 逐字播放开关，透传给 [LyricsPanel]。 */
     wordByWord: Boolean = true,
+    /** 歌词弹性开关，透传给 [LyricsPanel]。 */
+    elastic: Boolean = false,
     /** 封面马赛克修复开关（见 [com.veacon.veilmusic.util.RenderCompat]）：开启时封面圆角走画布裁剪。 */
     artworkCompat: Boolean = false,
 ) {
@@ -1048,13 +1068,13 @@ internal fun FullScreenLyrics(
                 fontScale = 1.3f * lyricsScale,
                 autoReturnMs = 5_000L,
                 wordByWord = wordByWord,
+                elastic = elastic,
             )
             else if (!loading) EmptyLyrics(song.id, 1.3f * lyricsScale, showEmptyLyrics)
             }
         }
         }
         if (footerVisible || footerAlpha > 0f) {
-        com.veacon.veilmusic.ui.components.ProvideFocusFrameVisibility(ctlAlpha.coerceAtMost(footerAlpha)) {
         CompositionLocalProvider(com.veacon.veilmusic.ui.components.LocalMotionInteractive provides
             (com.veacon.veilmusic.ui.components.LocalMotionInteractive.current && footerVisible)) {
         if (portrait) {
@@ -1132,12 +1152,10 @@ internal fun FullScreenLyrics(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            TransportButton(TransportIcon.Prev,        ) {
             TransportButton(TransportIcon.Prev, onClick = onPrev)
             TransportButton(if (isPlaying) TransportIcon.Pause else TransportIcon.Play, onClick = onPlayPause,
                 loading = loading, active = isPlaying, modifier = Modifier.focusRequester(playFocus))
             TransportButton(TransportIcon.Next, onClick = onNext)
-        }
         }
         }
         }
@@ -1150,18 +1168,20 @@ internal fun FullScreenLyrics(
  * polling ticks, so word-by-word lyric animation doesn't stutter.
  */
 @Composable
-private fun rememberSmoothProgressMs(reportedMs: Long, isPlaying: Boolean): androidx.compose.runtime.State<Long> {
+private fun rememberSmoothProgressMs(reported: kotlinx.coroutines.flow.Flow<Long>, isPlaying: Boolean): androidx.compose.runtime.State<Long> {
     val anchorRealMs = remember { mutableLongStateOf(System.currentTimeMillis()) }
-    val anchorPosMs  = remember { mutableLongStateOf(reportedMs) }
+    val anchorPosMs  = remember { mutableLongStateOf(0L) }
     // Returned as State so callers can defer the read to leaf composables — only the
     // one thing that reads .value (the seek bar, the active word wipe) recomposes per
     // frame, instead of the whole Now Playing tree.
-    val smoothMs = remember { mutableLongStateOf(reportedMs) }
+    val smoothMs = remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(reportedMs) {
-        anchorPosMs.longValue  = reportedMs
-        anchorRealMs.longValue = System.currentTimeMillis()
-        smoothMs.longValue = reportedMs
+    LaunchedEffect(reported) {
+        reported.collect { ms ->
+            anchorPosMs.longValue  = ms
+            anchorRealMs.longValue = System.currentTimeMillis()
+            smoothMs.longValue = ms
+        }
     }
 
     LaunchedEffect(isPlaying) {
@@ -1304,86 +1324,6 @@ internal fun SongInfoFocusSurface(chromeAlpha: Float, onClick: () -> Unit,
     }
 }
 
-/** Looping, muted motion album-art video layered over the static cover. */
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@Composable
-internal fun MotionCover(url: String, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var ready by remember(url) { mutableStateOf(false) }
-
-    val exo = remember(url) {
-        // Apple's motion-art master offers variants up to ~6 Mbps 1080p HEVC. That's absurd for a
-        // small square loop and it choked this MediaTek Fire TV (sustained 4-6 Mbps HEVC → visibly
-        // choppy). Cap the ladder to a small, low-bitrate rung — the cover is only ~300dp.
-        val selector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(context).apply {
-            parameters = buildUponParameters()
-                .setMaxVideoSize(640, 640)
-                .setMaxVideoBitrate(1_500_000)
-                .build()
-        }
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).setTrackSelector(selector).build().apply {
-            setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
-            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-            volume = 0f
-            playWhenReady = true
-            addListener(object : androidx.media3.common.Player.Listener {
-                // ready tracks an ACTUAL rendered frame, not buffer state. A buffered-but-not-yet-
-                // drawn surface is exactly when the green YUV frame shows, so gating the fade on
-                // onRenderedFirstFrame (not STATE_READY) means alpha never reveals a green surface.
-                override fun onRenderedFirstFrame() { ready = true }
-            })
-            prepare()
-        }
-    }
-
-    // On resume from background the surface reattaches and briefly shows a green
-    // YUV frame. Reset ready=false on pause so the shutter hides it until the
-    // first decoded frame arrives.
-    DisposableEffect(lifecycleOwner, exo) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> { ready = false; exo.pause() }
-                Lifecycle.Event.ON_RESUME -> {
-                    // Keep the shutter up (ready=false) until the decoder redraws a real frame —
-                    // onRenderedFirstFrame flips it. Never optimistically reveal the surface.
-                    ready = false
-                    exo.play()
-                }
-                else -> {}
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            exo.release()
-        }
-    }
-
-    val alpha by animateFloatAsState(
-        if (ready) 1f else 0f,
-        tween(825, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-        label = "motionFade",
-    )
-
-    // PlayerView → SurfaceView: the video gets its OWN hardware overlay plane, so the GPU
-    // barely touches it. A TextureView composites the 1080p HEVC frame through the shared
-    // GPU layer every frame, fighting the DynamicBackground Screen-blend passes — that made
-    // the cover choppy on Fire TV. RESIZE_MODE_ZOOM fills the box; the black shutter + alpha
-    // fade hide the green-frame handoff instead.
-    androidx.compose.ui.viewinterop.AndroidView(
-        factory = { ctx ->
-            androidx.media3.ui.PlayerView(ctx).apply {
-                useController = false
-                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                player = exo
-            }
-        },
-        update = { view -> view.player = exo },
-        modifier = modifier.graphicsLayer { this.alpha = alpha },
-    )
-}
 
 private fun Color.hsvHue(): Float {
     val r = red; val g = green; val b = blue
@@ -1570,217 +1510,6 @@ private fun rememberArtworkPalette(artworkUrl: String?, seed: String = ""): List
     return colors
 }
 
-/**
- * Full-screen backdrop: blurred album artwork (loaded tiny → upscaled) with
- * 4 radial color blobs drifting in quadrants, Screen-blended on top.
- * Beat energy pulses blob radius and alpha.
- */
-@Composable
-private fun DynamicBackground(artworkUrlTemplate: String?, songKey: String, beatAnalyzer: com.veacon.veilmusic.media.BeatAnalyzer, beatMultiplier: Float = 1f, mode: NowPlayingBackground = NowPlayingBackground.DYNAMIC, playing: Boolean = true, orbSpeed: Float = 1f, reduceMotion: Boolean = false, lowPower: Boolean = false) {
-    // BLACK: plain black, no blobs, no beat. Nothing else to compute.
-    if (mode == NowPlayingBackground.BLACK) {
-        Box(Modifier.fillMaxSize().background(Color.Black))
-        return
-    }
-    val projector = mode == NowPlayingBackground.PROJECTOR
-
-    // Intensity (Calm 0.55 … Crazy 3.5) is applied as a render AMPLITUDE below, NOT by multiplying the
-    // level and clipping to 1 — that just pinned everything at max, so Strong and Crazy looked the same
-    // and the vocal orb sat maxed. Levels stay 0..1; the multiplier drives how big/bright they swell.
-    val amp = beatMultiplier
-    // PERF: everything animated below is kept as State and read INSIDE drawBehind, never with `by` at
-    // composable scope. Reading them here made DynamicBackground recompose ~60×/sec — rebuilding colour
-    // lists and brushes every frame, which was the app's main GC-churn source. Read in the draw lambda,
-    // only the draw phase re-runs each frame; the composable recomposes only on song/palette change.
-    val rawEnergy by beatAnalyzer.energy.collectAsState()
-    // Critically damped (dampingRatio 1.0), not the old 0.5: an underdamped spring overshoots and
-    // rings after every hit, which read as the punch "bouncing all over the place". 1.0 gives a snappy
-    // attack that settles cleanly with no wobble, so each beat lands once and decays.
-    val energyState = animateFloatAsState(rawEnergy.coerceIn(0f, 1f), androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow), label = "beat")
-
-    val rawBands by beatAnalyzer.bands.collectAsState()
-    val bandSpring = androidx.compose.animation.core.spring<Float>(dampingRatio = 0.6f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
-    val band0State = animateFloatAsState(rawBands.getOrElse(0) { 0f }.coerceIn(0f, 1f), bandSpring, label = "bass")
-    val band1State = animateFloatAsState(rawBands.getOrElse(1) { 0f }.coerceIn(0f, 1f), bandSpring, label = "vocal")
-    val band2State = animateFloatAsState(rawBands.getOrElse(2) { 0f }.coerceIn(0f, 1f), bandSpring, label = "treble")
-
-    val paletteUrl = artworkUrlTemplate?.replace("{w}", "300")?.replace("{h}", "300")?.replace("{f}", "jpg")
-    val palette = rememberArtworkPalette(paletteUrl, seed = songKey)
-    val animatedStates = palette.mapIndexed { i, c ->
-        animateColorAsState(c, tween(1500), label = "blob$i")
-    }
-
-    // Orb speed scales the drift periods (faster speed → shorter tween).
-    val sp = orbSpeed.coerceIn(0.4f, 2.0f)
-    val infinite = rememberInfiniteTransition(label = "pool")
-    val t1s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((20_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t1")
-    val t2s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((27_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t2")
-    val t3s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((34_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t3")
-    val t4s = infinite.animateFloat(0f, 1f, infiniteRepeatable(tween((15_000 / sp).toInt(), easing = LinearEasing), AnimRepeatMode.Reverse), label = "t4")
-
-    // PERF + accessibility: freeze the perpetual drift while paused OR when Reduce Motion is on. We
-    // snapshot the drift phase and read that in the draw instead of the live State, so the draw phase
-    // isn't invalidated 60×/sec. Beat energy/bands settle to 0 on their own (and Reduce Motion zeroes
-    // them below, so the orbs hold completely still).
-    val moving = playing && !reduceMotion
-    val frozen = remember { floatArrayOf(0f, 0f, 0f, 0f) }
-    LaunchedEffect(moving) {
-        if (!moving) { frozen[0] = t1s.value; frozen[1] = t2s.value; frozen[2] = t3s.value; frozen[3] = t4s.value }
-    }
-
-    // PROJECTOR uses TRUE black; a projector throws light on a wall, so the near-black #050505 lift
-    // that stops a panel crushing shadows becomes a visible grey rectangle instead.
-    Box(Modifier.fillMaxSize().background(if (projector) Color.Black else Color(0xFF050505))) {
-        Box(Modifier.fillMaxSize().drawBehind {
-            val w = size.width; val h = size.height
-            // Deferred reads — this is the draw phase, so these re-run per frame without recomposing.
-            // While paused we read the frozen snapshot (not the live State) so the draw stops updating.
-            val t1 = if (moving) t1s.value else frozen[0]
-            val t2 = if (moving) t2s.value else frozen[1]
-            val t3 = if (moving) t3s.value else frozen[2]
-            val t4 = if (moving) t4s.value else frozen[3]
-            val n = animatedStates.size
-            val motionAmp = if (reduceMotion) 0f else 1f   // Reduce Motion → orbs hold at base, no pulse
-
-            if (projector) {
-                // THREE ORBS, ONE PER BAND — bass (slow, low), vocal (centre-panned, mid), treble
-                // (fast, high). Each rides an ellipse on its own animator+phase so the composition
-                // never repeats, swells on its band, and glows from a palette colour.
-                // Small drift toward the next accent so colour evolves but each orb keeps its identity.
-                val orbColors = List(3) { i -> lerp(animatedStates[i % n].value, animatedStates[(i + 1) % n].value, 0.05f + 0.10f * floatArrayOf(t1, t2, t3)[i]) }
-                val orbLevels = floatArrayOf(band0State.value * motionAmp, band1State.value * motionAmp, band2State.value * motionAmp)
-                // Pushed right of the album art (which sits in the left column) so no orb hides behind it.
-                val anchorX = floatArrayOf(0.52f, 0.62f, 0.72f)
-                val anchorY = floatArrayOf(0.44f, 0.56f, 0.46f)
-                val phase   = floatArrayOf(0f, 2.1f, 4.2f)
-                val drift   = floatArrayOf(t1, t2, t3)
-                val twoPi = (2.0 * Math.PI).toFloat()
-                // Smaller orbs than the full-screen blobs — a projector glow is a light source, not a
-                // wash. Wider drift so they still roam the frame at the smaller size.
-                // Per-band character so the three read as three: bass is the big slow one, treble the
-                // small snappy one, vocal in between. Each is DIM at rest and swells hard on its band,
-                // so the beat is the difference you see — not a constant wash.
-                val bandBaseR = floatArrayOf(minOf(w, h) * 0.26f, minOf(w, h) * 0.21f, minOf(w, h) * 0.16f)
-                val sizeRide  = floatArrayOf(0.75f, 0.85f, 1.05f)   // treble punches biggest relative to size
-                for (i in 0 until 3) {
-                    val lvl = orbLevels[i]
-                    // Gentler drift so the orbs roam slowly instead of swimming around the frame.
-                    val cx = anchorX[i] * w + cos(drift[i] * twoPi + phase[i]) * 0.08f * w
-                    val cy = anchorY[i] * h + sin(drift[i] * twoPi + phase[i]) * 0.045f * h
-                    val c = Offset(cx, cy)
-                    val col = orbColors[i]
-                    // Halo alpha now RIDES the beat: dim at rest (won't wash the lyrics), bright on the
-                    // hit. On true black under Screen blend that's exactly the expressive pulse we want.
-                    // Intensity (amp) scales the SWELL, not the base: Calm barely moves, Crazy swings big
-                    // and bright. Generous caps so higher tiers stay visibly punchier instead of clipping.
-                    val r = bandBaseR[i] * (1f + (lvl * sizeRide[i] * amp).coerceAtMost(2.2f))
-                    val haloA = (0.24f + lvl * 0.42f * amp).coerceAtMost(0.9f)
-                    drawCircle(
-                        brush = Brush.radialGradient(listOf(col.copy(alpha = haloA), col.copy(alpha = 0f)), center = c, radius = r),
-                        radius = r, center = c, blendMode = BlendMode.Screen,
-                    )
-                    // Core: small, whitened (a real glow's hottest point desaturates), punches hard on
-                    // the band — a tiny fraction of the area, so it can flare without lifting the black.
-                    // Low Power skips the core (a second gradient per orb per frame) — the halo carries it.
-                    if (!lowPower) {
-                        val cr = r * 0.34f
-                        val core = lerp(col, Color.White, 0.6f)
-                        drawCircle(
-                            brush = Brush.radialGradient(listOf(core.copy(alpha = (0.12f + lvl * 0.62f * amp).coerceAtMost(0.92f)), core.copy(alpha = 0f)), center = c, radius = cr),
-                            radius = cr, center = c, blendMode = BlendMode.Screen,
-                        )
-                    }
-                }
-                // A LIGHT edge fade only — just enough to guarantee no lit rectangle at the frame edge.
-                // The orbs are small and pulled inward, so they never reach the edge anyway; a heavy
-                // vignette here was painting black back over the glow and killing it.
-                val ev = h * 0.10f; val eh = w * 0.10f
-                drawRect(Brush.verticalGradient(listOf(Color.Black, Color(0x00000000)), startY = 0f, endY = ev))
-                drawRect(Brush.verticalGradient(listOf(Color(0x00000000), Color.Black), startY = h - ev, endY = h))
-                drawRect(Brush.horizontalGradient(listOf(Color.Black, Color(0x00000000)), startX = 0f, endX = eh))
-                drawRect(Brush.horizontalGradient(listOf(Color(0x00000000), Color.Black), startX = w - eh, endX = w))
-                // Right-side darkening for lyrics readability (a gradient, not an edge). Stronger now —
-                // a bright orb drifting under the lyric column was washing out the dim inactive lines.
-                drawRect(Brush.horizontalGradient(listOf(Color(0x00000000), Color(0x9E000000)), startX = w * 0.30f, endX = w))
-                return@drawBehind
-            }
-
-            // DYNAMIC — four drifting album-colour blobs. Intensity (amp) scales the beat swing;
-            // Reduce Motion (motionAmp=0) holds them still.
-            val energy = energyState.value * motionAmp
-            // 3 blobs, not 4: each BlendMode.Screen blob forces a full-screen offscreen compositing
-            // pass recorded every frame, and on Fire TV that draw-command recording (behind the
-            // per-word lyric text) was the measured jank on this screen. 3 colour pools still read as
-            // Apple's oil-painting spread; the 4th blob was mostly overlap.
-            val blobCount = if (lowPower) 2 else 3
-            // Each blob is PINNED to its own distinct palette colour — no pair-crossfade. The old
-            // lerp blended two colours per blob and, with big overlapping blobs under Screen, merged
-            // the whole thing into one moving gradient wash. One colour per blob + smaller radius
-            // (below) lets the separate colours read as distinct pools, like Apple's oil-painting
-            // patches, instead of averaging into a single tint.
-            val colors4 = List(4) { i -> animatedStates[i % n].value }
-            val eAmp = (energy * amp).coerceIn(0f, 2.2f)
-            // Per-corner band ride (projector-mode flavour): each corner breathes on its own
-            // frequency band on top of the shared beat, so bass thumps two corners and treble
-            // shimmers the other two — the palette pools now read the spectrum, not one pulse.
-            val bandRide = floatArrayOf(
-                band0State.value,   // top-left  → bass
-                band2State.value,   // top-right → treble
-                band1State.value,   // bot-left  → vocal/mid
-                band0State.value,   // bot-right → bass
-            )
-            val beatScale = 1f + eAmp * 0.25f
-            val beatAlpha = (0.60f + eAmp * 0.20f).coerceAtMost(0.95f)
-            // Smaller than the old 0.62 so blobs overlap less and stay recognisably separate colours.
-            val r = maxOf(w, h) * 0.42f * beatScale
-            val nudge = eAmp * maxOf(w, h) * 0.02f
-            val nudgeOffsets = listOf(
-                Offset( nudge,  nudge * 0.5f),
-                Offset(-nudge, -nudge * 0.7f),
-                Offset( nudge * 0.6f, -nudge),
-                Offset(-nudge * 0.4f,  nudge * 0.8f),
-            )
-            val centers = listOf(
-                Offset(lerp(0.02f, 0.28f, t1) * w, lerp(0.05f, 0.32f, t2) * h),
-                Offset(lerp(0.72f, 0.98f, t2) * w, lerp(0.05f, 0.35f, t3) * h),
-                Offset(lerp(0.05f, 0.30f, t3) * w, lerp(0.68f, 0.95f, t1) * h),
-                Offset(lerp(0.70f, 0.98f, t1) * w, lerp(0.65f, 0.95f, t3) * h),
-            ).mapIndexed { i, c -> c + nudgeOffsets[i] }
-            colors4.take(blobCount).forEachIndexed { i, color ->
-                val ride = (bandRide[i] * amp).coerceIn(0f, 1.6f)
-                val rr = r * (1f + ride * 0.30f)
-                val aa = (beatAlpha + ride * 0.18f).coerceAtMost(0.98f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(color.copy(alpha = aa), color.copy(alpha = 0f)),
-                        center = centers[i], radius = rr,
-                    ),
-                    radius = rr, center = centers[i],
-                    blendMode = BlendMode.Screen,
-                )
-            }
-            // Center darkening
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(Color(0x77000000), Color(0x00000000)),
-                    center = Offset(w * 0.5f, h * 0.5f), radius = maxOf(w, h) * 0.55f,
-                ),
-                radius = maxOf(w, h) * 0.55f, center = Offset(w * 0.5f, h * 0.5f),
-            )
-            // Right-side darkening for lyrics readability
-            drawRect(
-                brush = Brush.horizontalGradient(
-                    listOf(Color(0x00000000), Color(0x7A000000)),
-                    startX = w * 0.35f, endX = w,
-                ),
-            )
-            // Kept low: the flat veil mutes every hue equally, so readability comes
-            // from the right-side gradient above instead.
-            drawRect(Color(0x22000000))
-        })
-    }
-}
-
 /** Secondary player chrome blends with the fluid backdrop rather than painting opaque grey. */
 private val PlayerControlInactiveColor = Color.White.copy(alpha = 0.50f)
 private val PlayerSecondaryColor = Color.White.copy(alpha = 0.70f)
@@ -1816,6 +1545,8 @@ internal fun LyricsPanel(
     autoReturnMs: Long = 7000L,
     /** 逐字播放开关：关闭时当前行整句亮起，不做逐字渐变。 */
     wordByWord: Boolean = true,
+    /** 歌词弹性开关：逐字命中时弹一下并上浮。 */
+    elastic: Boolean = false,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -1831,17 +1562,24 @@ internal fun LyricsPanel(
     val liveProgress = { progressState.value + offsetMs }
 
     val passedIndex = lyrics.indexOfLast { it.startMs <= progressMs }
+
+    // 高亮与滚动统一用实时进度派生（derivedStateOf 只在"切行"那一刻通知重组，不每帧重组）：
+    // 之前高亮走 200ms 量化、滚动锚点也慢半拍，导致"滚动已到下一行、上一行却还亮着"的割裂。
+    val livePassed by remember(lyrics, offsetMs) {
+        derivedStateOf { lyrics.indexOfLast { it.startMs <= progressState.value + offsetMs } }
+    }
     // Keep a line lit until its background vocals finish too — the lead line shouldn't
     // dim out while its (call-and-response) background part is still being sung.
-    val activeIndex = if (passedIndex >= 0) {
-        val ln = lyrics[passedIndex]
+    val activeIndex = if (livePassed >= 0) {
+        val ln = lyrics[livePassed]
         val activeUntil = maxOf(ln.endMs, ln.background?.endMs ?: Long.MIN_VALUE) + LINE_END_GRACE_MS
-        if (progressMs <= activeUntil) passedIndex else -1
+        if (progressState.value + offsetMs <= activeUntil) livePassed else -1
     } else -1
 
-    val scrollAnchor = passedIndex.coerceAtLeast(0)
+    val scrollAnchor = livePassed.coerceAtLeast(0)
     val firstLoad = remember(lyrics) { mutableStateOf(true) }
-    val lyricScrollMotion = remember { LyricScrollMotion() }
+    // 行切换弹性开关：开启后自动滚动改用 am_atv 的 staggered FLIP 弹性曲线。
+    val lyricScrollMotion = remember(elastic) { LyricScrollMotion(elastic = elastic) }
 
     // Track user-initiated scrolls so auto-scroll doesn't fight them. Auto-scroll
     // resumes the way Apple Music does: not on a timer, but when you bring the
@@ -1884,7 +1622,7 @@ internal fun LyricsPanel(
             val backInView = listState.layoutInfo.visibleItemsInfo.any { it.index == scrollAnchor }
             if (!backInView || listState.isScrollInProgress) return@LaunchedEffect
             userScrolled = false
-            listState.animateScrollToItem(target)
+            lyricScrollMotion.scrollToIndex(listState, target)
             return@LaunchedEffect
         }
 
@@ -1893,14 +1631,19 @@ internal fun LyricsPanel(
         val info = listState.layoutInfo
         val activeItem = info.visibleItemsInfo.firstOrNull { it.index == scrollAnchor }
         if (activeItem == null) {
-            lyricScrollMotion.reset()
-            listState.animateScrollToItem(target)
+            // 目标行还没露头：用弹性曲线滚过去，不再用默认 spring 的大跨度瞬跳。
+            lyricScrollMotion.scrollToIndex(listState, target)
         } else {
             val viewportH = info.viewportEndOffset - info.viewportStartOffset
             val itemCentre = activeItem.offset + activeItem.size / 2
             // Sit the active line high — around the album-art midline (~30% down), not centre.
             val delta = (itemCentre - viewportH * 0.30f)
-            if (kotlin.math.abs(delta) > 8f) lyricScrollMotion.scrollBy(listState, delta)
+            if (kotlin.math.abs(delta) > 8f) {
+                // 当前行已经掉到下半屏：直接落位。回弹动画 750ms，切行间隔短时会追不上，
+                // 越追越靠下、最后贴到最下一行（用户实测现象），所以这里给硬锚点。
+                if (itemCentre > viewportH * 0.55f) listState.scrollBy(delta)
+                else lyricScrollMotion.scrollBy(listState, delta)
+            }
         }
     }
 
@@ -2018,6 +1761,7 @@ internal fun LyricsPanel(
                     isPast = isPast,
                     progress = progressProvider,
                     wordByWord = wordByWord,
+                    elastic = elastic,
                     fontScale = fontScale,
                     focusRequester = if (isActive) activeLineFocus else null,
                     onSeek = { onSeek(line.startMs) },
@@ -2064,6 +1808,11 @@ private fun WordWipeLine(
     unsungColor: Color = Color.White.copy(alpha = 0.40f),
 ) {
     val activeIdx = spans.indexOfLast { it.startMs <= progressMs }
+    val textStyle = TextStyle(
+        fontFamily = LocalTextStyle.current.fontFamily,
+        fontSize = fontSize, fontWeight = weight, lineHeight = lineHeight,
+        color = sungColor, letterSpacing = (-0.25).sp,
+    )
     val paragraph = buildAnnotatedString {
         append(text)
         var cursor = 0
@@ -2082,10 +1831,7 @@ private fun WordWipeLine(
             }
         }
     }
-    Text(paragraph, style = TextStyle(fontFamily = LocalTextStyle.current.fontFamily, 
-                fontSize = fontSize, fontWeight = FontWeight.Bold, lineHeight = lineHeight,
-        color = sungColor, letterSpacing = (-0.25).sp,
-    ), modifier = Modifier.fillMaxWidth())
+    Text(paragraph, style = textStyle, modifier = Modifier.fillMaxWidth())
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -2098,6 +1844,8 @@ internal fun LyricLineRow(
     onSeek: () -> Unit,
     /** 关闭时当前行整句直接亮起（不做逐字渐变），其余表现不变。 */
     wordByWord: Boolean = true,
+    /** 行切换弹性：当前行放大、上下行缩小，spring 挤压过渡（Apple Music / AMLL 风格），默认关。 */
+    elastic: Boolean = false,
     fontScale: Float = 1f,
     focusRequester: FocusRequester? = null,
     /** 预览等只读场景设为 false：整行不可聚焦，遥控器光标不会停上来。 */
@@ -2105,6 +1853,17 @@ internal fun LyricLineRow(
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusScale by animateFloatAsState(if (focused) 1.06f else 1f, tween(180), label = "lyricFocusScale")
+    // 行切换「挤压」弹性：Apple Music / AMLL 的 enableScale 做法——原位缩放而非位移，
+    // 当前行 1.0、上下行 0.97，用 spring（damping 0.88 / stiffness 100）自然减速，无生硬起停。
+    val lineScale by animateFloatAsState(
+        // 走 am_atv 渲染时行缩放由它内部负责（0.98 ↔ 1.0 + LineScaleEasing）。
+        targetValue = if (elastic) 1f else LyricElastic.lineScaleTarget(isActive, false),
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = LyricElastic.LINE_SCALE_DAMPING_RATIO,
+            stiffness = LyricElastic.LINE_SCALE_STIFFNESS,
+        ),
+        label = "lyricLineScale",
+    )
     // Reading the provider here subscribes only this row: the active row (live clock)
     // recomposes per frame; inactive rows read a constant and never re-run on tick.
     val progressMs = progress()
@@ -2113,20 +1872,28 @@ internal fun LyricLineRow(
         if (line.words.isNotEmpty()) lyricCharSpans(line.words)
         else estimateCharSpans(line.text, line.startMs, line.endMs)
     }
-    val targetOpacity = when {
-        isActive -> 1f
-        isPast   -> 0.35f
-        else     -> 0.40f
-    }
-    // Keep paragraph metrics stable; time changes brightness without resizing the sentence.
+    // 透明度：走 am_atv 渲染时，明暗完全由移植过来的 KaraokeLyricLine 负责
+    // （未唱 0.18 / 已唱 0.94，含它自己的渐变时序），这里必须保持不额外压暗，
+    // 否则会二次相乘。关闭时保持旧的 1.0 / 0.35 / 0.40。
+    val targetOpacity = if (elastic) 1f else LyricElastic.lineAlphaTarget(isActive, isPast, false)
     val opacity by animateFloatAsState(targetOpacity, tween(300), label = "lineOpacity")
+
+    // am_atv 歌词渲染的数据适配：整行文本 + 时间 → 它的 LyricLine。
+    // LRC 没有逐词时间时会被标成 Line，走「整行渐变 + 行缩放」分支（不会逐字放大）。
+    val karaokeLine = remember(line) { line.toKaraokeLyricLine() }
+    // 进度用固定的 State 对象包一层：如果每帧新建实例，移植代码里以它作
+    // remember key 的派生状态会被重置，导致渐变反复从头开始。
+    val progressHolder = remember { arrayOfNulls<() -> Long>(1) }
+    progressHolder[0] = progress
+    val positionState = remember { ProgressState { progressHolder[0]?.invoke() ?: 0L } }
+    val noRetainedPresence = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
 
     Box(
         Modifier.fillMaxWidth().graphicsLayer {
             alpha = opacity
             compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
-            scaleX = focusScale
-            scaleY = focusScale
+            scaleX = focusScale * lineScale
+            scaleY = focusScale * lineScale
             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
             clip = false
         }
@@ -2146,10 +1913,34 @@ internal fun LyricLineRow(
             glow = ClickableSurfaceDefaults.glow(glow = Glow.None, focusedGlow = Glow.None, pressedGlow = Glow.None),
             border = ClickableSurfaceDefaults.border(border = Border.None, focusedBorder = Border.None),
         ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+            if (elastic) {
+                // am_atv 原版歌词渲染（整段搬入 ui/lyrics）：
+                // 行同步歌词 = 整行 alpha 渐变（0.18 ↔ 0.94）+ 行缩放（0.98 ↔ 1.0，
+                // LineScaleEasing 800ms）；逐词歌词才会额外出现遮罩扫过与字符上浮。
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.veacon.veilmusic.ui.lyrics.LocalKaraokeTextScale provides fontScale
+                ) {
+                    com.veacon.veilmusic.ui.lyrics.KaraokeLyricLine(
+                        line = karaokeLine,
+                        isActive = isActive,
+                        retainedPresence = noRetainedPresence,
+                        retainedBackgroundPresence = noRetainedPresence,
+                        isFocused = focused,
+                        isStaticMode = false,
+                        positionState = positionState,
+                        pronunciationLarger = false,
+                    )
+                }
+            } else Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
                 if (isActive && wordByWord && wipeSpans.isNotEmpty()) {
-                    // 逐字高亮：有逐字时间就用它，只有行级时间就按字均分合成，都在同一段里完成。
-                    WordWipeLine(text = line.text, spans = wipeSpans, progressMs = progressMs, fontSize = (32f * fontScale).sp, lineHeight = (44f * fontScale).sp)
+                    // 关闭动效：保持升级前的逐字颜色渐变，观感完全不变。
+                    WordWipeLine(
+                        text = line.text,
+                        spans = wipeSpans,
+                        progressMs = progressMs,
+                        fontSize = (32f * fontScale).sp,
+                        lineHeight = (44f * fontScale).sp,
+                    )
                 } else {
                     // Inactive sentences are pure white; only the animated row alpha dims them.
                     val style = when {

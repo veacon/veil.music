@@ -1,4 +1,4 @@
-﻿package com.veacon.veilmusic.ui.screens
+package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.ui.components.menuInitialFocus
@@ -101,7 +101,7 @@ fun AlbumDetailScreen(
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                    state.motionUrl?.let { MotionCover(url = it, modifier = Modifier.fillMaxSize()) }
+                    state.motionUrl?.let { com.veacon.veilmusic.ui.components.MotionArtwork(it, play = true, modifier = Modifier.fillMaxSize(), gateOnPreference = false) }
                 }
                 Spacer(Modifier.height(20.dp))
                 Text(album.title, fontSize = 20.sp, fontWeight = FontWeight.Bold,

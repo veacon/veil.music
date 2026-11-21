@@ -14,38 +14,39 @@ import kotlinx.coroutines.withContext
 class AudioResolver(
     private val search: PlatformSearch,
     private val verifier: StreamVerifier,
-    private val engines: List<LxScriptEngine>,
+    private val engines: () -> List<LxScriptEngine>,
     private val log: (String) -> Unit = {},
 ) {
 
     companion object {
         /**
-         * 按源指定脚本优先级（2026-11 实测，3 首歌 × wy/tx/kg）。
+         * 按源指定脚本优先级——2026-11 用周杰伦 2026 新专辑《太阳之子》4 首
+         * （那天下雨了 / 太阳之子 / 西西里 / 七月的极光）跑真实 search → musicUrl → 字节校验后的排序。
+         * 顺序原则：先「有效命中（flac 或码率≥96k，排除 JSON 垃圾）」，再同命中下取更快、码率更高者。
          *
-         * 10 条内置脚本按命中率排序（2026-11 复测，lx-hunter 收录仓库 + 端内 QuickJS 实测）：
-         *  - lx-01-kulao（裤佬SVIP）：8/9，wy 322k / kg 320k / tx 偏低
-         *  - lx-02-hyw（HYW公益版）：7/9，最快（250–400ms），tx 有 319k 样本
-         *  - lx-03-fish（fish_music）：5/9，wy 稳定 322k，kg 124–201k
-         *  - lx-09-ciallo（Ciallo～）：3/3，wy 稳定 319–322k（新增，wx 专项高分）
-         *  - lx-10-qdy（星海GD精简 qdy-mini）：3/9，wy 319–322k（新增）
-         *  - lx-04-xinghai（星海）：kg 兜底最快（320ms）
-         *  - lx-05-quandou（全豆要）：wy 127–128k 兜底
-         *  - lx-06-molan（墨澜聚合）：kg 128–320k
-         *  - lx-07-hubhui（回避聚合）：kg 310–320k（替换星澜）
-         *  - lx-08-jiexiang（杰翔聚合）：kg 320k
-         * 后六个命中率/码率偏低，只作主力全挂时的兜底。
+         * 关键结论：
+         *  - kw（酷我）才是新专辑最快最稳的入口：首条即正版、带准确时长；
+         *    lx-11-kulao-full（原版裤佬）4/4 全 321kbps、均 ~531ms，是唯一可靠的 kw 解析器
+         *    （二改版 lx-01 与其余脚本在 kw 全军覆没）。
+         *  - wy 最快：lx-08-jiexiang 106ms / 𝖧౿ 140ms / 新星澜 158ms；lx-12-yuningxi 429ms 且 992kbps。
+         *  - tx 最快且高码率：lx-12-yuningxi 1373ms/992kbps；lx-02-hyw 旧样本 319k 但新专辑偏慢。
+         *  - kg 兜底：lx-01-kulao 仍是主力。
+         *  - fish_music（lx-03）不再前置：它正是「那天下雨了」最终才命中的慢源，降到末位兜底。
          */
         private val PREF = mapOf(
+            "kw" to listOf(
+                "lx-11-kulao-full.js", "lx-12-yuningxi.js", "lx-01-kulao.js", "lx-02-hyw.js",
+            ),
             "wy" to listOf(
-                "lx-01-kulao.js", "lx-02-hyw.js", "lx-03-fish.js", "lx-09-ciallo.js",
-                "lx-10-qdy.js", "lx-05-quandou.js",
+                "lx-12-yuningxi.js", "lx-08-jiexiang.js", "lx-01-kulao.js", "lx-07-hubhui.js",
+                "lx-09-ciallo.js", "lx-10-qdy.js", "lx-03-fish.js", "lx-05-quandou.js",
             ),
             "tx" to listOf(
-                "lx-01-kulao.js", "lx-02-hyw.js", "lx-03-fish.js",
+                "lx-12-yuningxi.js", "lx-01-kulao.js", "lx-02-hyw.js", "lx-03-fish.js",
             ),
             "kg" to listOf(
-                "lx-01-kulao.js", "lx-04-xinghai.js", "lx-02-hyw.js", "lx-03-fish.js",
-                "lx-06-molan.js", "lx-07-hubhui.js", "lx-08-jiexiang.js",
+                "lx-01-kulao.js", "lx-04-xinghai.js", "lx-02-hyw.js", "lx-06-molan.js",
+                "lx-07-hubhui.js", "lx-08-jiexiang.js", "lx-03-fish.js",
             ),
         )
 
@@ -101,7 +102,7 @@ class AudioResolver(
 
         for (cand in shortlist) {
             val scriptOrder = PREF[cand.source] ?: emptyList()
-            val ordered = engines.sortedBy { e ->
+            val ordered = engines().sortedBy { e ->
                 scriptOrder.indexOf(e.fileName).let { if (it < 0) 99 else it }
             }
             if (System.currentTimeMillis() - t0 > TOTAL_BUDGET_MS) {

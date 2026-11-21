@@ -16,7 +16,15 @@ import androidx.media3.exoplayer.ExoPlayer
 
 val LocalMotionArtworkEnabled = staticCompositionLocalOf { false }
 
-/** A bounded, muted texture loop over a static cover; never creates an audio output. */
+/**
+ * 动态封面：**与上游 lavande16/Apple-Music-For-Android-TV 完全一致的做法** ——
+ * 裸 ExoPlayer + TextureView，默认渲染器（走系统硬解），只关音轨、限分辨率/码率。
+ *
+ * 波次3 曾试过「MediaCodec 只放行软件解码器」，在 Z6X 上直接导致封面彻底失效
+ * （该机没有 AOSP 软解实现，解码器列表为空）。这里按用户要求退回上游实现。
+ *
+ * [gateOnPreference] 仅用于详情页：2.4 的详情页封面不看「动态封面」开关，保持原行为。
+ */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun MotionArtwork(
@@ -25,6 +33,7 @@ fun MotionArtwork(
     modifier: Modifier = Modifier,
     startDelayMs: Long = 1000L,
     maxVideoSize: Int = 480,
+    gateOnPreference: Boolean = true,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -38,7 +47,7 @@ fun MotionArtwork(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val requested = play && foreground && LocalMotionArtworkEnabled.current
+    val requested = play && foreground && (!gateOnPreference || LocalMotionArtworkEnabled.current)
     var settled by remember(url) { mutableStateOf(false) }
     LaunchedEffect(url, requested, startDelayMs) {
         if (requested) { kotlinx.coroutines.delay(startDelayMs); settled = true }
@@ -72,11 +81,13 @@ fun MotionArtwork(
     if (exo == null) return
     key(exo) {
         androidx.compose.ui.viewinterop.AndroidView(
-            factory = { ctx -> android.view.TextureView(ctx).apply {
-                layoutParams = android.view.ViewGroup.LayoutParams(-1, -1)
-                isOpaque = false
-                exo.setVideoTextureView(this)
-            } },
+            factory = { ctx ->
+                android.view.TextureView(ctx).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(-1, -1)
+                    isOpaque = false
+                    exo.setVideoTextureView(this)
+                }
+            },
             update = { view -> exo.setVideoTextureView(view) },
             modifier = modifier.graphicsLayer { this.alpha = alpha },
         )

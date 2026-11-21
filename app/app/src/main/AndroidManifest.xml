@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 背景律动：Visualizer 只读本应用播放会话的频谱，需要 RECORD_AUDIO 权限。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- androidx.core RECEIVER_NOT_EXPORTED 动态广播注册所需（频谱采集监听 AudioEffect 会话）。 -->
+    <uses-permission android:name="android.permission.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -57,14 +61,6 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- 音源诊断页：不再挂在桌面上（2.0 只有一个 Veil Music 图标），
-             需要时用 adb shell am start -n com.veacon.veilmusic/com.veacon.veilmusic.luoxue.LxPocActivity 打开。 -->
-        <activity
-            android:name=".luoxue.LxPocActivity"
-            android:exported="true"
-            android:label="Veil Music 音源诊断"
-            android:banner="@drawable/banner"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize" />
 
 
 

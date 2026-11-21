@@ -20,10 +20,10 @@ class V9PreferencesTest {
         assertEquals(9000L,CrossfadePreferences(context).getDuration())
     }
     @Test fun oldBackgroundConstraintsConsolidateWithoutOverridingOffOrStatic() {
-        assertEquals(FluidQuality.STATIC,unifiedFluidQuality(FluidQuality.STANDARD,true,true))
-        assertEquals(FluidQuality.POWER_SAVE,unifiedFluidQuality(FluidQuality.STANDARD,false,true))
-        assertEquals(FluidQuality.OFF,unifiedFluidQuality(FluidQuality.OFF,true,true))
-        assertEquals(FluidQuality.STATIC,unifiedFluidQuality(FluidQuality.STATIC,false,true))
-        assertEquals(FluidQuality.STANDARD,unifiedFluidQuality(FluidQuality.STANDARD,false,false))
+        // P0-7：低电量档已废弃，不再自动降到 POWER_SAVE。
+        assertEquals(FluidQuality.STATIC,unifiedFluidQuality(FluidQuality.STANDARD,true))
+        assertEquals(FluidQuality.STANDARD,unifiedFluidQuality(FluidQuality.STANDARD,false))
+        assertEquals(FluidQuality.OFF,unifiedFluidQuality(FluidQuality.OFF,true))
+        assertEquals(FluidQuality.STATIC,unifiedFluidQuality(FluidQuality.STATIC,false))
     }
 }

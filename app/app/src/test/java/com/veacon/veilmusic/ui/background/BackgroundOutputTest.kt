@@ -31,11 +31,17 @@ class BackgroundOutputTest {
   assertEquals(FluidQuality.STANDARD,FluidQuality.fromName("STANDARD"))
   assertEquals(FluidQuality.STANDARD,FluidQuality.fromName("HIGH"))
   assertEquals(FluidQuality.HIGH_QUALITY,FluidQuality.fromName("HIGH_QUALITY"))
-  assertEquals(FluidQuality.POWER_SAVE,unifiedFluidQuality(FluidQuality.HIGH_QUALITY,false,true))
-  assertEquals(FluidQuality.STATIC,unifiedFluidQuality(FluidQuality.HIGH_QUALITY,true,true))
-  assertEquals(FluidQuality.OFF,unifiedFluidQuality(FluidQuality.OFF,true,true))
+  // 波次2 P0-7：低电量语义废弃 —— 只剩 reduceMotion 会把档位压到 STATIC。
+  assertEquals(FluidQuality.HIGH_QUALITY,unifiedFluidQuality(FluidQuality.HIGH_QUALITY,false))
+  assertEquals(FluidQuality.STATIC,unifiedFluidQuality(FluidQuality.HIGH_QUALITY,true))
+  assertEquals(FluidQuality.OFF,unifiedFluidQuality(FluidQuality.OFF,true))
   assertEquals(listOf("OFF","STATIC","POWER_SAVE","STANDARD","HIGH_QUALITY"),FluidQuality.entries.map { it.name })
+  // 帧预算改为 30/60 双档：跟随 BackgroundFrameRate，而不是写死 60。
+  com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps = 60
   assertTrue(FluidQuality.entries.filter { it.animated }.all { it.fps==60 })
+  com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps = 30
+  assertTrue(FluidQuality.entries.filter { it.animated }.all { it.fps==30 })
+  com.veacon.veilmusic.ui.background.BackgroundFrameRate.fps = 60
  }
  @Test fun vsyncCapsHighRefreshAndFollowsLowerRefresh() {
   fun count(hz:Int):Int {

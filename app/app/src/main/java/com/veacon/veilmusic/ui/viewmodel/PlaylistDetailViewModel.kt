@@ -31,20 +31,10 @@ class PlaylistDetailViewModel @Inject constructor(
     private val repo: MusicRepository,
     private val moshi: Moshi,
     @ApplicationContext private val context: Context,
-    private val videoQueue: com.veacon.veilmusic.media.VideoQueue,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistDetailState())
     val state: StateFlow<PlaylistDetailState> = _state
-
-    /** Seed the shared video queue with every music video in this playlist, positioned at
-     *  [current], so the video player's prev/next walk the list like the audio queue. */
-    fun seedVideoQueue(current: Song) {
-        val vids = _state.value.tracks.filter { it.isMusicVideo }
-            .map { com.veacon.veilmusic.media.VideoItem(it.id, it.title, it.artistName) }
-        val idx = vids.indexOfFirst { it.id == current.id }.coerceAtLeast(0)
-        videoQueue.set(vids, idx)
-    }
 
     private var loadedId: String? = null
     private val prefs = AppDiskCache.get(context).content("playlist_detail_cache")

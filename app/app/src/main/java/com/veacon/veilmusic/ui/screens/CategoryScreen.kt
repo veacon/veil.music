@@ -1,4 +1,4 @@
-﻿package com.veacon.veilmusic.ui.screens
+package com.veacon.veilmusic.ui.screens
 
 import com.veacon.veilmusic.i18n.tr
 import com.veacon.veilmusic.R
@@ -46,7 +46,7 @@ fun CategoryScreen(
     /** A nested curator/category tile (a genre/mood room lists apple-curators) opens another page. */
     onCuratorClick: (id: String) -> Unit = {},
     onArtistClick: (id: String) -> Unit = {},
-    /** Present for grouping pages (Music Videos) so video shelves can play in the video player. */
+    /** 分类页里的单曲卡片直接开播用（纯音乐应用，已无视频货架）。 */
     playerVm: com.veacon.veilmusic.ui.viewmodel.PlayerViewModel? = null,
     modifier: Modifier = Modifier,
     onReturnToTab: (() -> Unit)? = null,
@@ -76,7 +76,7 @@ internal fun CategoryContent(
     // 其余详情页进入即聚焦「播放全部」，分类页没有播放键，导致遥控器第一次进页面时
     // 焦点仍停在顶部导航条、必须多按一次「下」。这里让第一张可点卡片接管首次焦点。
     val firstPlayableIndex = state.sections.indexOfFirst {
-        it.albums.isNotEmpty() || (it.videos.isNotEmpty() && playerVm != null)
+        it.albums.isNotEmpty()
     }
     val entryFocus = com.veacon.veilmusic.ui.navigation.rememberDetailPlayEntryFocus(
         ready = !state.isLoading && state.error == null && firstPlayableIndex >= 0,
@@ -92,7 +92,7 @@ internal fun CategoryContent(
                 state.error != null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Text(tr(R.string.msg_166), color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), fontSize = 15.sp)
                 }
-                state.sections.all {it.albums.isEmpty() && it.videos.isEmpty()} -> Box(Modifier.fillMaxSize(),Alignment.Center) {
+                state.sections.all { it.albums.isEmpty() } -> Box(Modifier.fillMaxSize(),Alignment.Center) {
                     Text(tr(R.string.msg_167),color=com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)),fontSize=15.sp)
                 }
                 // contentPadding (not Modifier.padding) so a focused card's scaled border and
@@ -109,7 +109,7 @@ internal fun CategoryContent(
                     }
                     fun norm(s: String) = s.filter { it.isLetterOrDigit() }.lowercase().removePrefix("applemusic").removePrefix("apple")
                     val pageTitleNorm = norm(state.title)
-                    val firstContent = state.sections.indexOfFirst { it.albums.isNotEmpty() || (it.videos.isNotEmpty() && playerVm != null) }
+                    val firstContent = state.sections.indexOfFirst { it.albums.isNotEmpty() }
                     itemsIndexed(state.sections, key = { index, section -> "$index:${section.title}" }) { index, section ->
                         Column(Modifier.fillMaxWidth()
                             .returnToTabOnUp(if (index == firstContent) onReturnToTab else null)) {
@@ -119,36 +119,6 @@ internal fun CategoryContent(
                             if (norm(section.title) != pageTitleNorm) {
                                 Text(section.title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                                     color = com.veacon.veilmusic.ui.theme.AppPalette.primary, modifier = Modifier.padding(bottom = 10.dp, start = pageHorizontalInset, end = pageHorizontalInset))
-                            }
-                            if (section.videos.isNotEmpty() && playerVm != null) {
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    contentPadding = PaddingValues(horizontal = pageHorizontalInset, vertical = 12.dp),
-                                ) {
-                                    items(section.videos.size) { idx ->
-                                        val v = section.videos[idx]
-                                        val art = (v.artworkUrl ?: "").replace("{w}", "480").replace("{h}", "270").replace("{f}", "jpg")
-                                        Surface(
-                                            onClick = { playerVm.playVideos(section.videos, idx) },
-                                            modifier = if (index == firstPlayableIndex && idx == 0) entryFocus else Modifier,
-                                            // RectangleShape so the surface never clips the title/artist
-                                            // text below the thumbnail (a rounded surface rounded them off).
-                                            shape = ClickableSurfaceDefaults.shape(androidx.compose.ui.graphics.RectangleShape),
-                                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-                                            colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
-                                        ) {
-                                            Column(Modifier.width(230.dp).padding(bottom = 8.dp)) {
-                                                Box(Modifier.width(230.dp).height(129.dp).clip(RoundedCornerShape(10.dp)).background(com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFFF5F5F7), Color(0xFF222225)))) {
-                                                    if (v.artworkUrl != null) AsyncImage(model = art, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                                }
-                                                Spacer(Modifier.height(6.dp))
-                                                Text(v.title, fontSize = 12.5.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF1D1D1F), Color(0xFFF5F5F7)), maxLines = 1, fontWeight = FontWeight.SemiBold)
-                                                Text(v.artistName, fontSize = 10.5.sp, color = com.veacon.veilmusic.ui.theme.AppPalette.adaptive(Color(0xFF6E6E73), Color(0xFFB1B1B8)), maxLines = 1)
-                                            }
-                                        }
-                                    }
-                                }
-                                return@Column
                             }
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),

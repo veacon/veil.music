@@ -152,7 +152,9 @@ internal class KawarpTextureView(context: Context, private val onFailure: () -> 
                         createEgl()
                     } else error("EGL swap failed: 0x${eglError.toString(16)}")
                 }
-                val fps = if (renderState.playing) renderState.quality.fps else min(15, renderState.quality.fps)
+                // P0-7：暂停时画完最后一帧就停（保留末帧），不再 15fps 空转。
+                if (!renderState.playing) return
+                val fps = renderState.quality.fps
                 val delay = max(1L, 1000L / fps.coerceAtLeast(1) - (SystemClock.uptimeMillis() - started))
                 if (!stopping.get() && !closed && active) handler.postDelayed(frame, delay)
             } catch (e: Exception) { fail(e) }

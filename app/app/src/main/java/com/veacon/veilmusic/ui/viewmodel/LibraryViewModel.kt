@@ -53,6 +53,11 @@ class LibraryViewModel @Inject constructor(
     /** 手机配置网页地址，用于导入歌单弹窗的二维码。 */
     fun serverUrl(): String = webServer.serverUrl()
 
+    /** P0-5：导入歌单弹窗打开期间持有手机页，关闭即释放。 */
+    fun acquirePhoneServer() = webServer.acquire(viewModelScope, "library-import")
+    /** 手机页端点：按需启停后地址是异步就绪的，二维码要跟着它刷新。 */
+    fun releasePhoneServer() = webServer.release("library-import")
+
     // 必须在 _state 之前初始化：loadSavedSort() 会读它。
     private val cachePrefs = context.getSharedPreferences("library_cache", Context.MODE_PRIVATE)
 

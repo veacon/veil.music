@@ -59,6 +59,27 @@ export async function searchKugou(q, limit = 8) {
   }))
 }
 
+// 酷我：新专辑（周杰伦《太阳之子》）在此源首条即正版且带准确时长/id，命中最快最稳。
+// 接口返回单引号 + &nbsp; 的非标准 JSON，先归一化。
+export async function searchKuwo(q, limit = 8) {
+  const url = `https://search.kuwo.cn/r.s?all=${encodeURIComponent(q)}&ft=music&rformat=json&encoding=utf8&rn=${limit}&vipver=MUSIC_8.7.7.0&plat=pc`
+  const r = await fetch(url, { headers: { 'User-Agent': UA, Referer: 'https://www.kuwo.cn/' } })
+  const j = JSON.parse((await r.text()).replace(/&nbsp;/g, ' ').replace(/'/g, '"'))
+  return (j.abslist || []).map((s) => {
+    const rid = s.MUSICRID || ''
+    const numeric = s.MUSIC_ID || rid.replace('MUSIC_', '')
+    return {
+      source: 'kw',
+      id: rid,
+      extra: { rid, musicId: numeric, songid: numeric, songId: numeric, albumId: s.ALBUMID || '' },
+      title: s.NAME || '',
+      artist: s.ARTIST || '',
+      album: s.ALBUM || '',
+      durationSec: Number(s.DURATION) || 0,
+    }
+  })
+}
+
 export function score(cand, target) {
   const nt = norm(target.title)
   const nc = norm(cand.title)
@@ -99,7 +120,8 @@ export function score(cand, target) {
 export async function searchAll(song) {
   const q = `${song.title} ${pickArtist(song.artist)}`
   const out = []
-  for (const fn of [search163, searchQQ, searchKugou]) {
+  // 酷我排最前：与 QQ 同分时让它先被 resolver 尝试（新专辑首条即正版高码率）。
+  for (const fn of [searchKuwo, search163, searchQQ, searchKugou]) {
     try {
       const r = await fn(q)
       out.push(...r.map((c) => ({ ...c, score: score(c, song) })))

@@ -1,0 +1,833 @@
+file,name,src,q,song,ok,ms,kind,kbps,err
+1010🎵音源.js,1010🎵音源,wy,flac,那天下雨了,1,1604,mp3,320,
+Hei Music聚合源.js,Hei Music聚合源,tx,flac,那天下雨了,1,2775,flac,901,
+Hei Music聚合源.js,Hei Music聚合源,wy,flac,那天下雨了,0,1150,,0,所有API源均失败: 星海音乐源: fetch failed gdstudio: fetch failed 念心wy: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,wy,320k,那天下雨了,0,238,,0,所有API源均失败: 星海音乐源: fetch failed gdstudio: fetch failed 念心wy: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,wy,128k,那天下雨了,0,243,,0,所有API源均失败: 星海音乐源: fetch failed gdstudio: fetch failed 念心wy: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,kg,flac,那天下雨了,0,119,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,320k,那天下雨了,0,114,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,128k,那天下雨了,0,62,unknown:3c68746d6c3e0d0a,0,
+1010🎵音源.js,1010🎵音源,kg,flac,那天下雨了,0,8002,,0,全部链路失败 → HYW:请求失败:This operation was aborted | 海棠备用:未取到直链 | 念心备用:HTTP 404
+1010🎵音源.js,1010🎵音源,tx,flac,那天下雨了,1,8012,flac,5346,
+HYWmusic_公益版.js,HYWmusic_公益版,tx,flac,那天下雨了,0,8007,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,wy,flac,那天下雨了,0,8008,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,kg,flac,那天下雨了,0,8009,,0,This operation was aborted
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,tx,flac,那天下雨了,1,2071,flac,901,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,wy,flac,那天下雨了,1,431,flac,968,
+monster🐱‍🐉.js,monster🐱‍🐉,tx,flac,那天下雨了,0,492,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,320k,那天下雨了,0,253,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,128k,那天下雨了,0,102,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,wy,flac,那天下雨了,0,1,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,320k,那天下雨了,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,128k,那天下雨了,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,kg,128k,那天下雨了,0,104,,0,Error
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,flac,那天下雨了,0,1735,,0,酷狗所有接口未获取到有效播放链接
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,320k,那天下雨了,0,1095,,0,酷狗所有接口未获取到有效播放链接
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,128k,那天下雨了,0,1371,,0,酷狗所有接口未获取到有效播放链接
+全豆要.js,全豆要,tx,flac,那天下雨了,0,3206,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,tx,320k,那天下雨了,0,98,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,wy,flac,那天下雨了,1,721,flac,968,
+全豆要.js,全豆要,kg,flac,那天下雨了,0,55,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,kg,320k,那天下雨了,0,77,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,kg,128k,那天下雨了,0,936,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,tx,128k,那天下雨了,0,2090,unknown:3c68746d6c3e0d0a,0,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,flac,那天下雨了,0,1155,unknown,0,
+1010🎵音源.js,1010🎵音源,kg,320k,那天下雨了,0,8001,,0,全部链路失败 → HYW:请求失败:This operation was aborted | 海棠备用:未取到直链 | 念心备用:HTTP 404
+HYWmusic_公益版.js,HYWmusic_公益版,tx,320k,那天下雨了,0,8001,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,wy,320k,那天下雨了,0,8002,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,kg,320k,那天下雨了,0,8003,,0,This operation was aborted
+全豆要[聚合音源].js,全豆要[聚合音源],wy,flac,那天下雨了,1,1463,flac,968,
+全豆要[聚合音源].js,全豆要[聚合音源],kg,flac,那天下雨了,1,600,unknown:7b0a202020202263,0,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,320k,那天下雨了,0,1461,unknown,0,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,128k,那天下雨了,0,739,unknown,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),tx,flac,那天下雨了,1,1357,flac,1739,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),wy,flac,那天下雨了,1,562,flac,968,
+墨澜聚合音源.js,墨澜聚合音源,tx,flac,那天下雨了,1,620,mp3,34,
+墨澜聚合音源.js,墨澜聚合音源,wy,flac,那天下雨了,1,3054,flac,968,
+墨澜聚合音源.js,墨澜聚合音源,kg,flac,那天下雨了,0,1918,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+1010🎵音源.js,1010🎵音源,kg,128k,那天下雨了,0,8000,,0,全部链路失败 → HYW:请求失败:This operation was aborted | 海棠备用:未取到直链 | 念心备用:HTTP 404
+HYWmusic_公益版.js,HYWmusic_公益版,tx,128k,那天下雨了,0,8000,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,wy,128k,那天下雨了,0,8000,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,kg,128k,那天下雨了,0,8000,,0,This operation was aborted
+安妮独家音源.js,安妮独家音源,tx,flac,那天下雨了,0,84,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,flac,那天下雨了,0,73,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,wy,flac,那天下雨了,0,113,,0,unknow error
+安妮独家音源.js,安妮独家音源,kg,320k,那天下雨了,0,41,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,320k,那天下雨了,0,53,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,128k,那天下雨了,0,39,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,128k,那天下雨了,0,42,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,wy,320k,那天下雨了,0,109,,0,unknow error
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),tx,flac,那天下雨了,1,301,mp4/aac,98,
+安妮独家音源.js,安妮独家音源,wy,128k,那天下雨了,0,136,,0,unknow error
+新星澜音乐源.js,新星澜音乐源,wy,flac,那天下雨了,1,130,mp3,128,
+星海音乐源.js,星海音乐源,tx,flac,那天下雨了,0,3,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,320k,那天下雨了,0,3,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,128k,那天下雨了,0,2,,0,fetch failed
+新星澜音乐源.js,新星澜音乐源,tx,flac,那天下雨了,1,281,mp3,34,
+星海音乐源.js,星海音乐源,kg,flac,那天下雨了,0,3,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,320k,那天下雨了,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,128k,那天下雨了,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,wy,flac,那天下雨了,1,830,flac,968,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),tx,flac,那天下雨了,1,840,mp3,34,
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,flac,那天下雨了,0,1426,,0,获取播放链接失败
+墨澜聚合音源.js,墨澜聚合音源,kg,320k,那天下雨了,0,2155,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,320k,那天下雨了,0,690,,0,获取播放链接失败
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,128k,那天下雨了,0,655,,0,获取播放链接失败
+月落音源.js,月落音源,tx,flac,那天下雨了,1,122,mp3,34,
+杰翔聚合音源.js,杰翔聚合音源,tx,flac,那天下雨了,1,191,mp3,34,
+杰翔聚合音源.js,杰翔聚合音源,wy,flac,那天下雨了,1,118,flac,968,
+墨澜聚合音源.js,墨澜聚合音源,kg,128k,那天下雨了,0,1887,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,flac,那天下雨了,0,10506,,0,timeout kg
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,flac,那天下雨了,0,1981,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,320k,那天下雨了,0,98,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,128k,那天下雨了,0,862,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,wy,flac,那天下雨了,1,640,flac,968,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,flac,那天下雨了,0,83,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,320k,那天下雨了,0,58,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,128k,那天下雨了,0,866,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,flac,那天下雨了,0,1010,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,320k,那天下雨了,0,1084,unknown,0,
+新星澜音乐源.js,新星澜音乐源,kg,flac,那天下雨了,0,10502,,0,timeout kg
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,flac,那天下雨了,1,10057,flac,968,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,128k,那天下雨了,0,1172,unknown,0,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,flac,那天下雨了,0,10501,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],wy,flac,那天下雨了,1,887,flac,968,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],kg,flac,那天下雨了,1,689,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],wy,flac,那天下雨了,1,595,flac,968,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,flac,那天下雨了,0,968,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],kg,flac,那天下雨了,1,622,unknown:7b0a202020202263,0,
+杰翔聚合音源.js,杰翔聚合音源,kg,flac,那天下雨了,0,10504,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,320k,那天下雨了,0,709,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,flac,那天下雨了,0,719,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,128k,那天下雨了,0,713,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,320k,那天下雨了,0,711,unknown,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,320k,那天下雨了,0,10502,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],wy,flac,那天下雨了,1,1233,flac,968,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,128k,那天下雨了,0,1138,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],kg,flac,那天下雨了,1,608,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,flac,那天下雨了,0,39,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,320k,那天下雨了,0,32,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,flac,那天下雨了,0,314,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,128k,那天下雨了,0,42,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],kg,flac,那天下雨了,1,262,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,320k,那天下雨了,0,315,unknown,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,flac,那天下雨了,0,82,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,320k,那天下雨了,0,221,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,128k,那天下雨了,0,288,unknown,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,128k,那天下雨了,0,81,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,flac,那天下雨了,0,89,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,320k,那天下雨了,0,85,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,128k,那天下雨了,0,90,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,wy,flac,那天下雨了,1,587,flac,968,
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,flac,那天下雨了,1,586,flac,968,
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,flac,那天下雨了,0,583,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,320k,那天下雨了,0,168,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,128k,那天下雨了,0,170,,0,无可用音源
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,wy,flac,那天下雨了,1,153,flac,968,
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,tx,flac,那天下雨了,1,1411,mp3,34,
+疑似早期版本\非常刀 (v4).js,非常刀,tx,flac,那天下雨了,0,458,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,tx,320k,那天下雨了,0,459,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,tx,128k,那天下雨了,0,928,,0,所有音源均失败
+新星澜音乐源.js,新星澜音乐源,kg,320k,那天下雨了,0,10501,,0,timeout kg
+疑似早期版本\非常刀 (v4).js,非常刀,wy,flac,那天下雨了,1,600,flac,968,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,320k,那天下雨了,0,10502,,0,timeout kg
+疑似早期版本\非常刀 (v4).js,非常刀,kg,flac,那天下雨了,0,815,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,kg,320k,那天下雨了,0,445,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,kg,128k,那天下雨了,0,390,,0,所有音源均失败
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,flac,那天下雨了,0,227,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,320k,那天下雨了,0,91,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,128k,那天下雨了,0,87,,0,获取链接失败，可能是该歌曲无版权或接口维护
+杰翔聚合音源.js,杰翔聚合音源,kg,320k,那天下雨了,0,10117,,0,所有后端均失败（共18个） 长青海棠: 长青海棠: 无数据 长青SVIP直链: 长青SVIP直链: 无数据 长青POST: 长青POST: 无数据 长青直链: 长青直链: 无数据 星海主后端: fet
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,128k,那天下雨了,0,8826,,0,所有音质尝试失败（从 128k 降至最低）
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,flac,那天下雨了,0,100,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,flac,那天下雨了,0,88,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,320k,那天下雨了,0,91,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,128k,那天下雨了,0,28,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,320k,那天下雨了,0,87,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,flac,那天下雨了,0,32,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,320k,那天下雨了,0,28,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,128k,那天下雨了,0,35,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,128k,那天下雨了,0,107,,0,获取链接失败，可能是该歌曲无版权或接口维护
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,flac,那天下雨了,0,542,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,wy,flac,那天下雨了,1,601,flac,968,
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,320k,那天下雨了,0,474,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,flac,那天下雨了,0,511,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,128k,那天下雨了,0,455,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,320k,那天下雨了,0,461,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,128k,那天下雨了,0,450,,0,bad url: 
+聚合音源·净化版.js,聚合音源·净化版,tx,flac,那天下雨了,0,658,,0,所有链路均失败 [tx/flac]: 星海主: HTTP 400; 溯音QQ失败: HTTP 404
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,kg,flac,那天下雨了,1,7841,mp3,128,
+新星澜音乐源.js,新星澜音乐源,kg,128k,那天下雨了,0,5415,,0,所有后端均失败，已尝试音质：128k  320k  flac  flac24bit 128k 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 128k 长青海棠: 长青海棠: 无数据 
+聚合音源·净化版.js,聚合音源·净化版,wy,flac,那天下雨了,1,505,flac,968,
+聚合音源·净化版.js,聚合音源·净化版,tx,320k,那天下雨了,0,580,,0,所有链路均失败 [tx/320k]: 星海主: HTTP 400; 溯音QQ失败: HTTP 404
+聚合音源·净化版.js,聚合音源·净化版,kg,flac,那天下雨了,0,431,,0,所有链路均失败 [kg/flac]: 星海主: HTTP 400
+聚合音源·净化版.js,聚合音源·净化版,tx,128k,那天下雨了,0,466,,0,所有链路均失败 [tx/128k]: 星海主: HTTP 400; 溯音QQ失败: HTTP 404
+聚合音源·净化版.js,聚合音源·净化版,kg,320k,那天下雨了,0,2229,,0,所有链路均失败 [kg/320k]: 星海主: HTTP 400
+聚合音源·净化版.js,聚合音源·净化版,kg,128k,那天下雨了,0,0,,0,所有链路均失败 [kg/128k]: 
+西瓜聚合源.js,西瓜聚合源,kg,flac,那天下雨了,0,1070,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜聚合源.js,西瓜聚合源,tx,flac,那天下雨了,0,3853,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+西瓜聚合源.js,西瓜聚合源,kg,320k,那天下雨了,0,418,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜糖音乐.js,西瓜糖音乐,tx,flac,那天下雨了,1,4389,flac,901,
+非常刀.js,非常刀,tx,flac,那天下雨了,0,460,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,wy,flac,那天下雨了,0,4614,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+非常刀.js,非常刀,tx,320k,那天下雨了,0,452,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,tx,320k,那天下雨了,0,1580,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+非常刀.js,非常刀,tx,128k,那天下雨了,0,554,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,kg,128k,那天下雨了,0,1945,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,128k,那天下雨了,0,10503,,0,timeout kg
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,flac,那天下雨了,0,179,,0,所有API均失败(flac) [fetch failed] || 所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,320k,那天下雨了,0,114,,0,所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+非常刀.js,非常刀,kg,flac,那天下雨了,0,399,,0,所有音源均失败
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,128k,那天下雨了,0,56,,0,所有API均失败(128k) [fetch failed]
+非常刀.js,非常刀,wy,flac,那天下雨了,1,592,flac,968,
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,wy,flac,那天下雨了,1,144,flac,968,
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,flac,那天下雨了,0,222,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,320k,那天下雨了,0,54,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,128k,那天下雨了,0,28,,0,undefined
+非常刀.js,非常刀,kg,320k,那天下雨了,0,449,,0,所有音源均失败
+非常刀.js,非常刀,kg,128k,那天下雨了,0,517,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,wy,320k,那天下雨了,0,2087,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+西瓜聚合源.js,西瓜聚合源,tx,128k,那天下雨了,0,2011,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,flac,那天下雨了,1,1015,mp3,34,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),wy,flac,那天下雨了,1,839,flac,968,
+杰翔聚合音源.js,杰翔聚合音源,kg,128k,那天下雨了,0,10503,,0,timeout kg
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,flac,那天下雨了,0,729,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,wy,flac,那天下雨了,1,561,flac,968,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,flac,那天下雨了,0,758,unknown,0,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,320k,那天下雨了,0,629,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+1010🎵音源.js,1010🎵音源,wy,flac,太阳之子,1,616,mp3,320,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,kg,flac,那天下雨了,1,1291,unknown:7b0a202020202263,0,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,320k,那天下雨了,0,737,unknown,0,
+1010🎵音源.js,1010🎵音源,tx,flac,太阳之子,1,1902,flac,5866,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,128k,那天下雨了,0,732,unknown,0,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,128k,那天下雨了,0,1331,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+1010🎵音源.js,1010🎵音源,kg,flac,太阳之子,0,2255,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+西瓜聚合源.js,西瓜聚合源,wy,128k,那天下雨了,0,3627,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+HYWmusic_公益版.js,HYWmusic_公益版,wy,flac,太阳之子,1,1603,flac,992,
+Hei Music聚合源.js,Hei Music聚合源,kg,flac,太阳之子,0,71,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,320k,太阳之子,0,61,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,128k,太阳之子,0,59,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,wy,flac,太阳之子,0,719,,0,所有API源均失败: gdstudio: fetch failed 星海音乐源: fetch failed 聆澜: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,tx,flac,太阳之子,1,2522,flac,989,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,tx,flac,太阳之子,1,1230,flac,989,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,wy,flac,太阳之子,1,362,flac,992,
+1010🎵音源.js,1010🎵音源,kg,320k,太阳之子,0,2001,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+monster🐱‍🐉.js,monster🐱‍🐉,tx,flac,太阳之子,0,262,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,320k,太阳之子,0,172,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,128k,太阳之子,0,71,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,wy,flac,太阳之子,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,320k,太阳之子,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,128k,太阳之子,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,kg,128k,太阳之子,0,95,,0,Error
+Hei Music聚合源.js,Hei Music聚合源,wy,320k,太阳之子,0,2247,,0,所有API源均失败: 星海音乐源: fetch failed gdstudio: fetch failed 念心wy: fetch failed (共7个源失败)
+1010🎵音源.js,1010🎵音源,kg,128k,太阳之子,0,1166,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,flac,太阳之子,0,1670,,0,酷狗所有接口未获取到有效播放链接
+Hei Music聚合源.js,Hei Music聚合源,wy,128k,太阳之子,0,927,,0,所有API源均失败: gdstudio: fetch failed 星海音乐源: fetch failed 念心wy: fetch failed (共7个源失败)
+全豆要.js,全豆要,kg,flac,太阳之子,0,57,unknown:3c68746d6c3e0d0a,0,
+HYWmusic_公益版.js,HYWmusic_公益版,kg,flac,太阳之子,1,5245,mp3,643,
+全豆要.js,全豆要,kg,320k,太阳之子,0,78,unknown:3c68746d6c3e0d0a,0,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,320k,太阳之子,0,1137,,0,酷狗所有接口未获取到有效播放链接
+全豆要.js,全豆要,wy,flac,太阳之子,1,1917,flac,992,
+全豆要.js,全豆要,kg,128k,太阳之子,0,1253,unknown:3c68746d6c3e0d0a,0,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,128k,太阳之子,0,1016,,0,酷狗所有接口未获取到有效播放链接
+全豆要.js,全豆要,tx,flac,太阳之子,0,3141,unknown:3c68746d6c3e0d0a,0,
+全豆要[聚合音源].js,全豆要[聚合音源],wy,flac,太阳之子,1,643,flac,992,
+全豆要.js,全豆要,tx,320k,太阳之子,0,56,unknown:3c68746d6c3e0d0a,0,
+HYWmusic_公益版.js,HYWmusic_公益版,tx,flac,太阳之子,0,8001,,0,This operation was aborted
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),wy,flac,太阳之子,1,196,flac,992,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,flac,太阳之子,0,2372,unknown,0,
+全豆要.js,全豆要,tx,128k,太阳之子,0,1030,unknown:3c68746d6c3e0d0a,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),tx,flac,太阳之子,1,1347,flac,1839,
+墨澜聚合音源.js,墨澜聚合音源,tx,flac,太阳之子,1,762,flac,1839,
+全豆要[聚合音源].js,全豆要[聚合音源],kg,flac,太阳之子,1,2225,unknown:7b0a202020202263,0,
+安妮独家音源.js,安妮独家音源,tx,flac,太阳之子,0,40,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,320k,太阳之子,0,54,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,128k,太阳之子,0,40,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,wy,flac,太阳之子,0,54,,0,unknow error
+安妮独家音源.js,安妮独家音源,wy,320k,太阳之子,0,124,,0,unknow error
+安妮独家音源.js,安妮独家音源,wy,128k,太阳之子,0,82,,0,unknow error
+安妮独家音源.js,安妮独家音源,kg,flac,太阳之子,0,38,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,320k,太阳之子,0,39,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,128k,太阳之子,0,34,,0,Cannot read properties of undefined (reading 'code')
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),tx,flac,太阳之子,1,252,mp4/aac,97,
+墨澜聚合音源.js,墨澜聚合音源,kg,flac,太阳之子,0,1753,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+墨澜聚合音源.js,墨澜聚合音源,wy,flac,太阳之子,1,2630,flac,992,
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,flac,太阳之子,0,1711,,0,获取播放链接失败
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,320k,太阳之子,0,734,,0,获取播放链接失败
+墨澜聚合音源.js,墨澜聚合音源,kg,320k,太阳之子,0,2261,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+墨澜聚合音源.js,墨澜聚合音源,kg,128k,太阳之子,0,1726,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+新星澜音乐源.js,新星澜音乐源,wy,flac,太阳之子,1,205,mp3,128,
+HYWmusic_公益版.js,HYWmusic_公益版,tx,320k,太阳之子,0,8000,,0,This operation was aborted
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,128k,太阳之子,0,3489,,0,获取播放链接失败
+星海音乐源.js,星海音乐源,tx,flac,太阳之子,0,6,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,320k,太阳之子,0,4,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,128k,太阳之子,0,3,,0,fetch failed
+全豆要[聚合音源].js,全豆要[聚合音源],tx,320k,太阳之子,0,8214,unknown,0,
+星海音乐源.js,星海音乐源,wy,flac,太阳之子,1,1958,flac,992,
+星海音乐源.js,星海音乐源,kg,flac,太阳之子,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,320k,太阳之子,0,4,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,128k,太阳之子,0,3,,0,fetch failed
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,flac,太阳之子,0,10503,,0,timeout kg
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),tx,flac,太阳之子,1,1432,flac,1839,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,128k,太阳之子,0,3539,unknown,0,
+新星澜音乐源.js,新星澜音乐源,tx,flac,太阳之子,0,10500,,0,timeout tx
+新星澜音乐源.js,新星澜音乐源,kg,flac,太阳之子,0,10502,,0,timeout kg
+新星澜音乐源.js,新星澜音乐源,kg,320k,太阳之子,0,2237,,0,所有后端均失败，已尝试音质：320k  128k  flac  flac24bit 320k 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 320k 长青海棠: 长青海棠: 无数据 
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,320k,太阳之子,0,10505,,0,timeout kg
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,flac,太阳之子,0,10503,,0,timeout wy
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,flac,太阳之子,0,10503,,0,timeout kg
+HYWmusic_公益版.js,HYWmusic_公益版,tx,128k,太阳之子,0,14846,,0,timeout verify
+月落音源.js,月落音源,tx,flac,太阳之子,0,81,,0,获取链接失败
+月落音源.js,月落音源,tx,320k,太阳之子,0,200,,0,获取链接失败
+月落音源.js,月落音源,tx,128k,太阳之子,0,82,,0,获取链接失败
+新星澜音乐源.js,新星澜音乐源,kg,128k,太阳之子,0,3096,,0,所有后端均失败，已尝试音质：128k  320k  flac  flac24bit 128k 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 128k 长青海棠: 长青海棠: 无数据 
+杰翔聚合音源.js,杰翔聚合音源,tx,flac,太阳之子,1,261,flac,1839,
+杰翔聚合音源.js,杰翔聚合音源,wy,flac,太阳之子,1,113,flac,992,
+新星澜音乐源.js,新星澜音乐源,tx,320k,太阳之子,0,10500,,0,timeout tx
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,flac,太阳之子,0,1297,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,320k,太阳之子,0,51,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,128k,太阳之子,0,2110,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,wy,flac,太阳之子,1,704,flac,992,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,flac,太阳之子,0,60,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,320k,太阳之子,0,53,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,128k,太阳之子,0,861,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,flac,太阳之子,0,1247,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,320k,太阳之子,0,1068,unknown,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,128k,太阳之子,0,10505,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,128k,太阳之子,0,1088,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],wy,flac,太阳之子,1,659,flac,992,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,320k,太阳之子,0,10503,,0,timeout wy
+杰翔聚合音源.js,杰翔聚合音源,kg,flac,太阳之子,0,9572,,0,所有后端均失败（共18个） 长青POST: 长青POST: 无数据 长青直链: 长青直链: 无数据 长青海棠: 长青海棠: 无数据 长青SVIP直链: 长青SVIP直链: 无数据 星海主后端: fet
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],kg,flac,太阳之子,1,1171,unknown:7b0a202020202263,0,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,320k,太阳之子,0,10502,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,flac,太阳之子,0,1554,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],wy,flac,太阳之子,1,522,flac,992,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],kg,flac,太阳之子,1,621,unknown:7b0a202020202263,0,
+新星澜音乐源.js,新星澜音乐源,tx,128k,太阳之子,0,10501,,0,timeout tx
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,flac,太阳之子,0,829,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,320k,太阳之子,0,1489,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],wy,flac,太阳之子,1,726,flac,992,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,128k,太阳之子,0,778,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,320k,太阳之子,0,1036,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],kg,flac,太阳之子,1,828,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,flac,太阳之子,0,35,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,flac,太阳之子,0,653,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,320k,太阳之子,0,31,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,128k,太阳之子,0,37,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],kg,flac,太阳之子,1,205,unknown:7b0a202020202263,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,flac,太阳之子,0,88,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,320k,太阳之子,0,351,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,128k,太阳之子,0,344,unknown,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,320k,太阳之子,0,503,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,128k,太阳之子,0,89,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,flac,太阳之子,0,84,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,128k,太阳之子,0,1449,unknown,0,
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,flac,太阳之子,0,1,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,320k,太阳之子,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,128k,太阳之子,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,320k,太阳之子,0,87,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,flac,太阳之子,0,175,,0,无可用音源
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,128k,太阳之子,0,202,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,320k,太阳之子,0,174,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,128k,太阳之子,0,173,,0,无可用音源
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,wy,flac,太阳之子,1,114,flac,992,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,wy,flac,太阳之子,1,1071,flac,992,
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,tx,flac,太阳之子,1,979,mp3,26,
+疑似早期版本\非常刀 (v4).js,非常刀,tx,flac,太阳之子,0,592,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,tx,320k,太阳之子,0,609,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,wy,flac,太阳之子,1,684,flac,992,
+疑似早期版本\非常刀 (v4).js,非常刀,kg,flac,太阳之子,0,446,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,tx,128k,太阳之子,0,607,,0,所有音源均失败
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,flac,太阳之子,0,75,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,320k,太阳之子,0,78,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,128k,太阳之子,0,74,,0,获取链接失败，可能是该歌曲无版权或接口维护
+疑似早期版本\非常刀 (v4).js,非常刀,kg,320k,太阳之子,0,440,,0,所有音源均失败
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,flac,太阳之子,0,126,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,320k,太阳之子,0,92,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,128k,太阳之子,0,30,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,flac,太阳之子,0,78,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,320k,太阳之子,0,75,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,128k,太阳之子,0,91,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,flac,太阳之子,0,31,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,320k,太阳之子,0,28,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,128k,太阳之子,0,30,,0,获取链接失败，可能是该歌曲无版权或接口维护
+疑似早期版本\非常刀 (v4).js,非常刀,kg,128k,太阳之子,0,1041,,0,所有音源均失败
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,flac,太阳之子,0,523,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,320k,太阳之子,0,484,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,wy,flac,太阳之子,1,578,flac,992,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,128k,太阳之子,1,9390,mp3,128,
+聚合音源·净化版.js,聚合音源·净化版,tx,flac,太阳之子,0,0,,0,所有链路均失败 [tx/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,tx,320k,太阳之子,0,0,,0,所有链路均失败 [tx/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,tx,128k,太阳之子,0,0,,0,所有链路均失败 [tx/128k]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,flac,太阳之子,0,40,,0,所有链路均失败 [wy/flac]: 溯音163获取失败
+聚合音源·净化版.js,聚合音源·净化版,wy,320k,太阳之子,0,42,,0,所有链路均失败 [wy/320k]: 溯音163获取失败
+聚合音源·净化版.js,聚合音源·净化版,wy,128k,太阳之子,0,51,,0,所有链路均失败 [wy/128k]: 溯音163获取失败
+聚合音源·净化版.js,聚合音源·净化版,kg,flac,太阳之子,0,0,,0,所有链路均失败 [kg/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,320k,太阳之子,0,0,,0,所有链路均失败 [kg/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,128k,太阳之子,0,0,,0,所有链路均失败 [kg/128k]: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,flac,太阳之子,0,717,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,128k,太阳之子,0,936,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,320k,太阳之子,0,471,,0,bad url: 
+杰翔聚合音源.js,杰翔聚合音源,kg,320k,太阳之子,0,10423,,0,所有后端均失败（共18个） 长青直链: 长青直链: 无数据 长青海棠: 长青海棠: 无数据 长青POST: 长青POST: 无数据 长青SVIP直链: 长青SVIP直链: 无数据 星海主后端: fet
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,128k,太阳之子,0,10502,,0,timeout kg
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,128k,太阳之子,0,463,,0,bad url: 
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,kg,flac,太阳之子,1,7363,mp3,128,
+西瓜聚合源.js,西瓜聚合源,tx,flac,太阳之子,0,2799,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+非常刀.js,非常刀,tx,flac,太阳之子,0,745,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,kg,flac,太阳之子,0,2833,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜聚合源.js,西瓜聚合源,wy,flac,太阳之子,0,3144,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+非常刀.js,非常刀,tx,320k,太阳之子,0,820,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,kg,320k,太阳之子,0,669,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+非常刀.js,非常刀,tx,128k,太阳之子,0,862,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,kg,128k,太阳之子,0,1184,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜聚合源.js,西瓜聚合源,tx,320k,太阳之子,0,2966,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+非常刀.js,非常刀,kg,flac,太阳之子,0,531,,0,所有音源均失败
+非常刀.js,非常刀,wy,flac,太阳之子,1,1339,flac,992,
+非常刀.js,非常刀,kg,320k,太阳之子,0,455,,0,所有音源均失败
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,flac,太阳之子,0,192,,0,所有API均失败(flac) [fetch failed] || 所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,320k,太阳之子,0,115,,0,所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,128k,太阳之子,0,62,,0,所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,wy,flac,太阳之子,1,127,flac,992,
+非常刀.js,非常刀,kg,128k,太阳之子,0,494,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,wy,320k,太阳之子,0,3216,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,flac,太阳之子,0,180,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,320k,太阳之子,0,56,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,128k,太阳之子,0,25,,0,undefined
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,flac,太阳之子,0,305,,0,所有接口均失败: ChKSz QQ: ChKSz未配置apikey; vkeys QQ: 系统运行错误！; 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:und
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,320k,太阳之子,0,177,,0,所有接口均失败: ChKSz QQ: ChKSz未配置apikey; vkeys QQ: 系统运行错误！; 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:und
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,128k,太阳之子,0,208,,0,所有接口均失败: ChKSz QQ: ChKSz未配置apikey; vkeys QQ: 系统运行错误！; 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:und
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),wy,flac,太阳之子,1,527,flac,992,
+西瓜糖音乐.js,西瓜糖音乐,tx,flac,太阳之子,1,8634,flac,989,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,flac,太阳之子,0,619,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+西瓜聚合源.js,西瓜聚合源,tx,128k,太阳之子,0,2525,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,320k,太阳之子,0,327,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,wy,flac,太阳之子,1,863,flac,992,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,flac,太阳之子,0,1136,unknown,0,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,128k,太阳之子,0,629,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,320k,太阳之子,0,759,unknown,0,
+1010🎵音源.js,1010🎵音源,tx,flac,西西里,1,953,mp3,34,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,kg,flac,太阳之子,1,1529,unknown:7b0a202020202263,0,
+西瓜聚合源.js,西瓜聚合源,wy,128k,太阳之子,0,2844,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,128k,太阳之子,0,744,unknown,0,
+1010🎵音源.js,1010🎵音源,wy,flac,西西里,1,1427,mp3,320,
+杰翔聚合音源.js,杰翔聚合音源,kg,128k,太阳之子,0,10501,,0,timeout kg
+Hei Music聚合源.js,Hei Music聚合源,wy,flac,西西里,0,1784,,0,所有API源均失败: 星海音乐源: fetch failed gdstudio: fetch failed 聆澜: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,wy,320k,西西里,0,234,,0,所有API源均失败: gdstudio: fetch failed 星海音乐源: fetch failed 念心wy: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,wy,128k,西西里,0,445,,0,所有API源均失败: gdstudio: fetch failed 星海音乐源: fetch failed 念心wy: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,kg,flac,西西里,0,69,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,320k,西西里,0,54,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,128k,西西里,0,76,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,tx,flac,西西里,1,3482,flac,878,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,wy,flac,西西里,1,503,mp3,320,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,tx,flac,西西里,1,1249,flac,878,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,flac,西西里,0,1055,,0,酷狗所有接口未获取到有效播放链接
+1010🎵音源.js,1010🎵音源,kg,flac,西西里,0,6841,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,320k,西西里,0,1103,,0,酷狗所有接口未获取到有效播放链接
+monster🐱‍🐉.js,monster🐱‍🐉,tx,flac,西西里,0,2679,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,320k,西西里,0,94,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,128k,西西里,0,39,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,wy,flac,西西里,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,320k,西西里,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,128k,西西里,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,kg,128k,西西里,0,104,,0,Error
+HYWmusic_公益版.js,HYWmusic_公益版,wy,flac,西西里,0,8001,,0,This operation was aborted
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,128k,西西里,0,1417,,0,酷狗所有接口未获取到有效播放链接
+HYWmusic_公益版.js,HYWmusic_公益版,kg,flac,西西里,0,8000,,0,This operation was aborted
+全豆要.js,全豆要,tx,flac,西西里,0,3185,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,tx,320k,西西里,0,75,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,wy,flac,西西里,0,3020,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,wy,320k,西西里,0,67,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,wy,128k,西西里,1,697,mp3,128,
+全豆要.js,全豆要,kg,flac,西西里,0,54,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,kg,320k,西西里,0,57,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,kg,128k,西西里,0,894,unknown:3c68746d6c3e0d0a,0,
+HYWmusic_公益版.js,HYWmusic_公益版,wy,320k,西西里,1,5079,mp3,320,
+全豆要.js,全豆要,tx,128k,西西里,0,1982,unknown:3c68746d6c3e0d0a,0,
+全豆要[聚合音源].js,全豆要[聚合音源],wy,flac,西西里,1,563,mp3,320,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,flac,西西里,0,825,unknown,0,
+HYWmusic_公益版.js,HYWmusic_公益版,tx,flac,西西里,0,14463,,0,timeout verify
+1010🎵音源.js,1010🎵音源,kg,320k,西西里,0,8001,,0,全部链路失败 → HYW:请求失败:This operation was aborted | 海棠备用:未取到直链 | 念心备用:HTTP 404
+全豆要[聚合音源].js,全豆要[聚合音源],tx,320k,西西里,0,823,unknown,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),tx,flac,西西里,1,1117,flac,1696,
+全豆要[聚合音源].js,全豆要[聚合音源],kg,flac,西西里,1,2211,unknown:7b0a202020202263,0,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,128k,西西里,0,1359,unknown,0,
+HYWmusic_公益版.js,HYWmusic_公益版,kg,320k,西西里,0,8001,,0,This operation was aborted
+墨澜聚合音源.js,墨澜聚合音源,tx,flac,西西里,1,584,mp3,34,
+墨澜聚合音源.js,墨澜聚合音源,wy,flac,西西里,1,3243,mp3,320,
+墨澜聚合音源.js,墨澜聚合音源,kg,flac,西西里,0,2374,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+HYWmusic_公益版.js,HYWmusic_公益版,tx,320k,西西里,0,8001,,0,This operation was aborted
+1010🎵音源.js,1010🎵音源,kg,128k,西西里,0,8000,,0,全部链路失败 → HYW:请求失败:This operation was aborted | 海棠备用:未取到直链 | 念心备用:HTTP 404
+安妮独家音源.js,安妮独家音源,tx,flac,西西里,0,67,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,320k,西西里,0,57,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,128k,西西里,0,37,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,wy,flac,西西里,0,62,,0,unknow error
+安妮独家音源.js,安妮独家音源,wy,320k,西西里,0,143,,0,unknow error
+安妮独家音源.js,安妮独家音源,wy,128k,西西里,0,86,,0,unknow error
+安妮独家音源.js,安妮独家音源,kg,flac,西西里,0,42,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,320k,西西里,0,131,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,128k,西西里,0,39,,0,Cannot read properties of undefined (reading 'code')
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),tx,flac,西西里,1,232,mp4/aac,97,
+墨澜聚合音源.js,墨澜聚合音源,kg,320k,西西里,0,1723,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+HYWmusic_公益版.js,HYWmusic_公益版,kg,128k,西西里,0,7999,,0,This operation was aborted
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,flac,西西里,0,1404,,0,获取播放链接失败
+新星澜音乐源.js,新星澜音乐源,tx,flac,西西里,1,498,mp3,34,
+新星澜音乐源.js,新星澜音乐源,wy,flac,西西里,1,156,mp3,128,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),wy,flac,西西里,0,10504,,0,timeout wy
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),wy,320k,西西里,1,70,mp3,320,
+星海音乐源.js,星海音乐源,tx,flac,西西里,0,3,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,320k,西西里,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,128k,西西里,0,2,,0,fetch failed
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,flac,西西里,0,10502,,0,timeout kg
+星海音乐源.js,星海音乐源,wy,flac,西西里,1,586,mp3,320,
+星海音乐源.js,星海音乐源,kg,flac,西西里,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,320k,西西里,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,128k,西西里,0,1,,0,fetch failed
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,320k,西西里,0,1476,,0,获取播放链接失败
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),tx,flac,西西里,1,902,mp3,34,
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,128k,西西里,0,698,,0,获取播放链接失败
+墨澜聚合音源.js,墨澜聚合音源,kg,128k,西西里,0,4016,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+月落音源.js,月落音源,tx,flac,西西里,1,107,mp3,34,
+杰翔聚合音源.js,杰翔聚合音源,tx,flac,西西里,1,181,mp3,34,
+杰翔聚合音源.js,杰翔聚合音源,wy,flac,西西里,1,97,mp3,320,
+新星澜音乐源.js,新星澜音乐源,kg,flac,西西里,0,10501,,0,timeout kg
+HYWmusic_公益版.js,HYWmusic_公益版,tx,128k,西西里,0,13777,,0,timeout verify
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,320k,西西里,0,10504,,0,timeout kg
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,flac,西西里,0,10503,,0,timeout wy
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,flac,西西里,0,10502,,0,timeout kg
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,flac,西西里,0,2301,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,320k,西西里,0,75,unknown:3c68746d6c3e0d0a,0,
+杰翔聚合音源.js,杰翔聚合音源,kg,flac,西西里,0,10502,,0,timeout kg
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,128k,西西里,0,1397,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,wy,flac,西西里,0,1100,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,wy,320k,西西里,0,71,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,wy,128k,西西里,1,1841,mp3,128,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,flac,西西里,0,52,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,320k,西西里,0,59,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,128k,西西里,0,1167,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,flac,西西里,0,1192,unknown,0,
+新星澜音乐源.js,新星澜音乐源,kg,320k,西西里,0,10502,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,320k,西西里,0,813,unknown,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,128k,西西里,0,10502,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,128k,西西里,0,740,unknown,0,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,320k,西西里,1,10438,mp3,320,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,320k,西西里,0,10503,,0,timeout kg
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],kg,flac,西西里,1,1942,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],wy,flac,西西里,0,2048,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,flac,西西里,0,1586,unknown,0,
+杰翔聚合音源.js,杰翔聚合音源,kg,320k,西西里,0,10502,,0,timeout kg
+新星澜音乐源.js,新星澜音乐源,kg,128k,西西里,0,4224,,0,所有后端均失败，已尝试音质：128k  320k  flac  flac24bit 128k 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 128k 长青海棠: 长青海棠: 无数据 
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],wy,flac,西西里,1,1805,mp3,320,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],wy,320k,西西里,1,1884,mp3,320,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,320k,西西里,0,1640,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,flac,西西里,0,725,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],wy,flac,西西里,1,1565,mp3,320,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],kg,flac,西西里,1,2022,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,flac,西西里,0,366,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,320k,西西里,0,371,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,128k,西西里,0,2338,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,flac,西西里,0,37,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,128k,西西里,0,338,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,320k,西西里,0,79,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,128k,西西里,0,36,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,320k,西西里,0,2180,unknown,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,flac,西西里,0,84,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],kg,flac,西西里,1,1279,unknown:7b0a202020202263,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,320k,西西里,0,224,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],kg,flac,西西里,1,394,unknown:7b0a202020202263,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,128k,西西里,0,82,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,flac,西西里,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,320k,西西里,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,128k,西西里,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,flac,西西里,0,90,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,320k,西西里,0,95,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,128k,西西里,0,89,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,flac,西西里,0,264,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,320k,西西里,0,172,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,128k,西西里,0,172,,0,无可用音源
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,wy,flac,西西里,1,103,mp3,320,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,128k,西西里,0,1283,unknown,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,wy,flac,西西里,1,1352,mp3,320,
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,tx,flac,西西里,1,910,mp3,34,
+疑似早期版本\非常刀 (v4).js,非常刀,tx,flac,西西里,0,698,,0,所有音源均失败
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,kg,flac,西西里,1,1461,mp3,128,
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,flac,西西里,0,108,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,320k,西西里,0,103,,0,获取链接失败，可能是该歌曲无版权或接口维护
+疑似早期版本\非常刀 (v4).js,非常刀,wy,flac,西西里,1,1316,mp3,320,
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,128k,西西里,0,81,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,flac,西西里,0,89,,0,获取链接失败，可能是该歌曲无版权或接口维护
+疑似早期版本\非常刀 (v4).js,非常刀,tx,320k,西西里,0,811,,0,所有音源均失败
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,flac,西西里,0,84,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,320k,西西里,0,96,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,128k,西西里,0,25,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,flac,西西里,0,31,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,320k,西西里,0,82,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,320k,西西里,0,24,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,128k,西西里,0,32,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,128k,西西里,0,82,,0,获取链接失败，可能是该歌曲无版权或接口维护
+疑似早期版本\非常刀 (v4).js,非常刀,kg,flac,西西里,0,1691,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,tx,128k,西西里,0,474,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,kg,320k,西西里,0,484,,0,所有音源均失败
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,flac,西西里,0,542,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,flac,西西里,0,1169,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,wy,flac,西西里,1,1342,mp3,320,
+聚合音源·净化版.js,聚合音源·净化版,tx,flac,西西里,0,0,,0,所有链路均失败 [tx/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,tx,320k,西西里,0,0,,0,所有链路均失败 [tx/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,tx,128k,西西里,0,0,,0,所有链路均失败 [tx/128k]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,flac,西西里,0,0,,0,所有链路均失败 [wy/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,320k,西西里,0,0,,0,所有链路均失败 [wy/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,128k,西西里,0,0,,0,所有链路均失败 [wy/128k]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,flac,西西里,0,0,,0,所有链路均失败 [kg/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,320k,西西里,0,0,,0,所有链路均失败 [kg/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,128k,西西里,0,0,,0,所有链路均失败 [kg/128k]: 
+疑似早期版本\非常刀 (v4).js,非常刀,kg,128k,西西里,0,992,,0,所有音源均失败
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,128k,西西里,0,10501,,0,timeout kg
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,320k,西西里,0,1429,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,320k,西西里,0,1344,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,128k,西西里,0,896,,0,bad url: 
+杰翔聚合音源.js,杰翔聚合音源,kg,128k,西西里,0,10501,,0,timeout kg
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,128k,西西里,0,848,,0,bad url: 
+非常刀.js,非常刀,tx,flac,西西里,0,538,,0,所有音源均失败
+非常刀.js,非常刀,wy,flac,西西里,1,581,mp3,320,
+西瓜聚合源.js,西瓜聚合源,kg,flac,西西里,0,989,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜糖音乐.js,西瓜糖音乐,tx,flac,西西里,1,2782,flac,878,
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,flac,西西里,0,183,,0,所有API均失败(flac) [fetch failed] || 所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+非常刀.js,非常刀,tx,320k,西西里,0,505,,0,所有音源均失败
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,320k,西西里,0,124,,0,所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,128k,西西里,0,59,,0,所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,wy,flac,西西里,1,143,mp3,320,
+非常刀.js,非常刀,tx,128k,西西里,0,494,,0,所有音源均失败
+非常刀.js,非常刀,kg,flac,西西里,0,961,,0,所有音源均失败
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,flac,西西里,0,262,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,320k,西西里,0,52,,0,undefined
+西瓜聚合源.js,西瓜聚合源,tx,flac,西西里,0,3385,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,128k,西西里,0,25,,0,undefined
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,flac,西西里,1,233,mp3,34,
+非常刀.js,非常刀,kg,320k,西西里,0,573,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,kg,320k,西西里,0,1583,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜聚合源.js,西瓜聚合源,wy,flac,西西里,0,3868,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,flac,西西里,0,1124,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),wy,flac,西西里,1,1284,mp3,320,
+非常刀.js,非常刀,kg,128k,西西里,0,948,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,tx,320k,西西里,0,1779,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,320k,西西里,0,638,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,flac,西西里,0,1255,unknown,0,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,128k,西西里,0,718,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,wy,flac,西西里,1,1297,mp3,320,
+1010🎵音源.js,1010🎵音源,tx,flac,七月的极光,1,288,mp3,5,
+西瓜聚合源.js,西瓜聚合源,kg,128k,西西里,0,2844,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,320k,西西里,0,1313,unknown,0,
+西瓜聚合源.js,西瓜聚合源,tx,128k,西西里,0,2121,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+1010🎵音源.js,1010🎵音源,wy,flac,七月的极光,1,1516,mp3,315,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,kg,flac,西西里,1,2019,unknown:7b0a202020202263,0,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,128k,西西里,0,827,unknown,0,
+西瓜聚合源.js,西瓜聚合源,wy,320k,西西里,0,4723,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+1010🎵音源.js,1010🎵音源,kg,flac,七月的极光,0,2238,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+Hei Music聚合源.js,Hei Music聚合源,tx,flac,七月的极光,1,2149,flac,905,
+Hei Music聚合源.js,Hei Music聚合源,wy,flac,七月的极光,0,222,,0,所有API源均失败: 星海音乐源: fetch failed gdstudio: fetch failed 聆澜: fetch failed (共7个源失败)
+西瓜聚合源.js,西瓜聚合源,wy,128k,西西里,0,2373,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+Hei Music聚合源.js,Hei Music聚合源,kg,flac,七月的极光,0,61,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,kg,320k,七月的极光,0,141,unknown:3c68746d6c3e0d0a,0,
+Hei Music聚合源.js,Hei Music聚合源,wy,320k,七月的极光,0,1170,,0,所有API源均失败: gdstudio: fetch failed 星海音乐源: fetch failed 念心wy: fetch failed (共7个源失败)
+Hei Music聚合源.js,Hei Music聚合源,kg,128k,七月的极光,0,70,unknown:3c68746d6c3e0d0a,0,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,tx,flac,七月的极光,1,942,flac,905,
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,wy,flac,七月的极光,1,422,flac,754,
+Hei Music聚合源.js,Hei Music聚合源,wy,128k,七月的极光,0,1607,,0,所有API源均失败: gdstudio: fetch failed 星海音乐源: fetch failed 念心wy: fetch failed (共7个源失败)
+monster🐱‍🐉.js,monster🐱‍🐉,tx,flac,七月的极光,0,626,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,320k,七月的极光,0,165,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,tx,128k,七月的极光,0,251,,0,failed
+monster🐱‍🐉.js,monster🐱‍🐉,wy,flac,七月的极光,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,320k,七月的极光,0,0,,0,text is not defined
+monster🐱‍🐉.js,monster🐱‍🐉,wy,128k,七月的极光,0,0,,0,text is not defined
+HYWmusic_公益版.js,HYWmusic_公益版,kg,flac,七月的极光,0,6391,,0,酷狗音源暂时不可用（平台熔断保护中，通常 1-3 分钟内自动恢复）
+monster🐱‍🐉.js,monster🐱‍🐉,kg,128k,七月的极光,0,134,,0,Error
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,flac,七月的极光,0,2004,,0,酷狗所有接口未获取到有效播放链接
+HYWmusic_公益版.js,HYWmusic_公益版,tx,flac,七月的极光,0,8001,,0,This operation was aborted
+HYWmusic_公益版.js,HYWmusic_公益版,wy,flac,七月的极光,0,8001,,0,This operation was aborted
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,320k,七月的极光,0,1071,,0,酷狗所有接口未获取到有效播放链接
+1010🎵音源.js,1010🎵音源,kg,320k,七月的极光,0,7057,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+lx-玉宁熙-Pro.js,lx-玉宁熙-Pro,kg,128k,七月的极光,0,1179,,0,酷狗所有接口未获取到有效播放链接
+全豆要.js,全豆要,wy,flac,七月的极光,1,645,flac,754,
+全豆要.js,全豆要,kg,flac,七月的极光,0,59,unknown:3c68746d6c3e0d0a,0,
+HYWmusic_公益版.js,HYWmusic_公益版,kg,320k,七月的极光,0,3655,,0,酷狗音源暂时不可用（平台熔断保护中，通常 1-3 分钟内自动恢复）
+全豆要.js,全豆要,kg,320k,七月的极光,0,79,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,tx,flac,七月的极光,0,3750,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,tx,320k,七月的极光,0,58,unknown:3c68746d6c3e0d0a,0,
+全豆要.js,全豆要,kg,128k,七月的极光,0,1116,unknown:3c68746d6c3e0d0a,0,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,flac,七月的极光,0,1058,unknown,0,
+全豆要.js,全豆要,tx,128k,七月的极光,0,2357,unknown:3c68746d6c3e0d0a,0,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,320k,七月的极光,0,840,unknown,0,
+全豆要[聚合音源].js,全豆要[聚合音源],wy,flac,七月的极光,1,538,flac,754,
+HYWmusic_公益版.js,HYWmusic_公益版,kg,128k,七月的极光,0,3087,,0,酷狗音源暂时不可用（平台熔断保护中，通常 1-3 分钟内自动恢复）
+1010🎵音源.js,1010🎵音源,kg,128k,七月的极光,0,4935,,0,全部链路失败 → HYW:HTTP 500 | 海棠备用:未取到直链 | 念心备用:HTTP 404
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),wy,flac,七月的极光,1,179,flac,754,
+全豆要[聚合音源].js,全豆要[聚合音源],kg,flac,七月的极光,1,684,unknown:7b0a202020202263,0,
+HYWmusic_公益版.js,HYWmusic_公益版,wy,320k,七月的极光,1,6153,mp3,315,
+全豆要[聚合音源].js,全豆要[聚合音源],tx,128k,七月的极光,0,1352,unknown,0,
+HYWmusic_公益版.js,HYWmusic_公益版,tx,320k,七月的极光,0,8001,,0,This operation was aborted
+墨澜聚合音源.js,墨澜聚合音源,tx,flac,七月的极光,1,1565,mp3,5,
+安妮独家音源.js,安妮独家音源,tx,flac,七月的极光,0,37,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,320k,七月的极光,0,57,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,tx,128k,七月的极光,0,36,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,wy,flac,七月的极光,0,47,,0,unknow error
+安妮独家音源.js,安妮独家音源,wy,320k,七月的极光,0,146,,0,unknow error
+安妮独家音源.js,安妮独家音源,wy,128k,七月的极光,0,84,,0,unknow error
+安妮独家音源.js,安妮独家音源,kg,flac,七月的极光,0,41,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,320k,七月的极光,0,38,,0,Cannot read properties of undefined (reading 'code')
+安妮独家音源.js,安妮独家音源,kg,128k,七月的极光,0,48,,0,Cannot read properties of undefined (reading 'code')
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),tx,flac,七月的极光,1,272,mp4/aac,97,
+墨澜聚合音源.js,墨澜聚合音源,wy,flac,七月的极光,1,2237,flac,754,
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,flac,七月的极光,0,1630,,0,获取播放链接失败
+墨澜聚合音源.js,墨澜聚合音源,kg,flac,七月的极光,0,3507,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,320k,七月的极光,0,356,,0,获取播放链接失败
+收集の聚合接口(LX版).js,收集の聚合接口(LX版),wy,128k,七月的极光,0,704,,0,获取播放链接失败
+新星澜音乐源.js,新星澜音乐源,wy,flac,七月的极光,1,144,mp3,126,
+墨澜聚合音源.js,墨澜聚合音源,kg,320k,七月的极光,0,1535,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+墨澜聚合音源.js,墨澜聚合音源,kg,128k,七月的极光,0,1417,,0,所有后端均失败（共12个） 星海主后端: fetch failed 星海备后端: 星海备后端: 此接口已废弃，请升级至新版本。需提供 name 和 songmid 参数。 聚合API: 聚合API: 
+星海音乐源.js,星海音乐源,tx,flac,七月的极光,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,320k,七月的极光,0,3,,0,fetch failed
+星海音乐源.js,星海音乐源,tx,128k,七月的极光,0,2,,0,fetch failed
+星海音乐源.js,星海音乐源,wy,flac,七月的极光,1,599,flac,754,
+星海音乐源.js,星海音乐源,kg,flac,七月的极光,0,3,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,320k,七月的极光,0,1,,0,fetch failed
+星海音乐源.js,星海音乐源,kg,128k,七月的极光,0,2,,0,fetch failed
+新星澜音乐源.js,新星澜音乐源,kg,flac,七月的极光,0,2906,,0,所有后端均失败，已尝试音质：flac  128k  320k  flac24bit flac 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 flac 长青海棠: 长青海棠: 无数据 
+HYWmusic_公益版.js,HYWmusic_公益版,tx,128k,七月的极光,0,8001,,0,This operation was aborted
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),tx,flac,七月的极光,1,1931,mp3,5,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),tx,flac,七月的极光,0,10504,,0,timeout tx
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,flac,七月的极光,0,10503,,0,timeout kg
+新星澜音乐源.js,新星澜音乐源,kg,320k,七月的极光,0,2713,,0,所有后端均失败，已尝试音质：320k  128k  flac  flac24bit 320k 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 320k 长青海棠: 长青海棠: 无数据 
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),tx,320k,七月的极光,1,1326,mp3,5,
+月落音源.js,月落音源,tx,flac,七月的极光,0,77,,0,获取链接失败
+月落音源.js,月落音源,tx,320k,七月的极光,0,88,,0,获取链接失败
+月落音源.js,月落音源,tx,128k,七月的极光,0,81,,0,获取链接失败
+新星澜音乐源.js,新星澜音乐源,tx,flac,七月的极光,0,10502,,0,timeout tx
+新星澜音乐源.js,新星澜音乐源,kg,128k,七月的极光,0,4248,,0,所有后端均失败，已尝试音质：128k  320k  flac  flac24bit 128k 梯队1: 酷狗官方: 无数据; HYWmusic: 卡密不存在 128k 长青海棠: 长青海棠: 无数据 
+杰翔聚合音源.js,杰翔聚合音源,wy,flac,七月的极光,1,96,flac,754,
+杰翔聚合音源.js,杰翔聚合音源,tx,flac,七月的极光,1,5296,mp3,5,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),wy,flac,七月的极光,1,9601,flac,754,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,flac,七月的极光,0,9816,,0,所有后端均失败（共 15 个） This operation was aborted 念心 失败 yuafeng: 未配置 apikey 星海主后端: fetch failed 星海备后端: 星海备后
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,wy,flac,七月的极光,1,549,flac,754,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,flac,七月的极光,0,53,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,320k,七月的极光,0,69,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,flac,七月的极光,0,3368,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,320k,七月的极光,0,51,unknown:3c68746d6c3e0d0a,0,
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,320k,七月的极光,0,10503,,0,timeout kg
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,kg,128k,七月的极光,0,878,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,flac,七月的极光,0,769,unknown,0,
+疑似早期版本\全豆要 (v3.0.0).js,全豆要,tx,128k,七月的极光,0,1522,unknown:3c68746d6c3e0d0a,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],wy,flac,七月的极光,1,629,flac,754,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,320k,七月的极光,0,1357,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],kg,flac,七月的极光,1,666,unknown:7b0a202020202263,0,
+新星澜音乐源.js,新星澜音乐源,tx,320k,七月的极光,0,10502,,0,timeout tx
+疑似早期版本\全豆要[聚合音源] (v4.0).js,全豆要[聚合音源],tx,128k,七月的极光,0,801,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,flac,七月的极光,0,869,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],wy,flac,七月的极光,1,666,flac,754,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,320k,七月的极光,0,806,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],kg,flac,七月的极光,1,668,unknown:7b0a202020202263,0,
+杰翔聚合音源.js,杰翔聚合音源,kg,flac,七月的极光,0,10001,,0,所有后端均失败（共18个） 长青直链: 长青直链: 无数据 长青海棠: 长青海棠: 无数据 长青POST: 长青POST: 无数据 长青SVIP直链: 长青SVIP直链: 无数据 星海主后端: fet
+疑似早期版本\全豆要[聚合音源] (v4.1).js,全豆要[聚合音源],tx,128k,七月的极光,0,791,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,flac,七月的极光,0,755,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],wy,flac,七月的极光,1,542,flac,754,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,320k,七月的极光,0,801,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],kg,flac,七月的极光,1,726,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,flac,七月的极光,0,325,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.1 91特供版).js,全豆要[聚合音源],tx,128k,七月的极光,0,822,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,flac,七月的极光,0,37,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,320k,七月的极光,0,331,unknown,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,320k,七月的极光,0,43,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],wy,128k,七月的极光,0,35,unknown:3c68746d6c3e0a3c,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],kg,flac,七月的极光,1,225,unknown:7b0a202020202263,0,
+疑似早期版本\全豆要[聚合音源] (v9.7 修复优化版).js,全豆要[聚合音源],tx,128k,七月的极光,0,335,unknown,0,
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,flac,七月的极光,0,81,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,320k,七月的极光,0,204,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,tx,128k,七月的极光,0,80,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,flac,七月的极光,0,85,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,320k,七月的极光,0,82,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,kg,128k,七月的极光,0,81,,0,无法获取音频地址：所有关键词均未搜索到歌曲（可能接口异常或歌曲不存在）
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,flac,七月的极光,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,320k,七月的极光,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,wy,128k,七月的极光,0,0,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,flac,七月的极光,0,160,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,320k,七月的极光,0,160,,0,无可用音源
+疑似早期版本\星海音乐源 (v3.2.5).js,星海音乐源,kg,128k,七月的极光,0,166,,0,无可用音源
+疑似早期版本\星海音乐源 (v2.3.0).js,星海音乐源,wy,flac,七月的极光,1,1178,flac,754,
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,wy,flac,七月的极光,1,126,flac,754,
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,tx,flac,七月的极光,1,976,mp3,40,
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,320k,七月的极光,0,10502,,0,timeout kg
+疑似早期版本\非常刀 (v4).js,非常刀,tx,flac,七月的极光,0,608,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,tx,320k,七月的极光,0,505,,0,所有音源均失败
+回避聚合 (HuiBi Aggregate).js,回避聚合 (HuiBi Aggregate),kg,128k,七月的极光,0,10277,,0,所有音质尝试失败（从 128k 降至最低）
+疑似早期版本\非常刀 (v4).js,非常刀,tx,128k,七月的极光,0,505,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,wy,flac,七月的极光,1,583,flac,754,
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,flac,七月的极光,0,83,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,320k,七月的极光,0,87,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,tx,128k,七月的极光,0,85,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,flac,七月的极光,0,98,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,320k,七月的极光,0,93,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.2-debug.js,稳定版音源 v1.0.2-debug,wy,128k,七月的极光,0,26,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,flac,七月的极光,0,85,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,320k,七月的极光,0,88,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,tx,128k,七月的极光,0,82,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,flac,七月的极光,0,26,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,320k,七月的极光,0,29,,0,获取链接失败，可能是该歌曲无版权或接口维护
+稳定版音源 v1.0.3.js,稳定版音源 v1.0.3,wy,128k,七月的极光,0,25,,0,获取链接失败，可能是该歌曲无版权或接口维护
+疑似早期版本\非常刀 (v4).js,非常刀,kg,flac,七月的极光,0,933,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,kg,320k,七月的极光,0,422,,0,所有音源均失败
+疑似早期版本\非常刀 (v4).js,非常刀,kg,128k,七月的极光,0,519,,0,所有音源均失败
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,flac,七月的极光,0,1099,,0,bad url: 
+疑似早期版本\杰翔聚合音源 (v2.3.0).js,杰翔聚合音源,kg,flac,七月的极光,1,4364,mp3,128,
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,wy,flac,七月的极光,1,710,flac,754,
+聚合音源·净化版.js,聚合音源·净化版,tx,flac,七月的极光,0,0,,0,所有链路均失败 [tx/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,tx,320k,七月的极光,0,0,,0,所有链路均失败 [tx/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,tx,128k,七月的极光,0,0,,0,所有链路均失败 [tx/128k]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,flac,七月的极光,0,0,,0,所有链路均失败 [wy/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,320k,七月的极光,0,0,,0,所有链路均失败 [wy/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,wy,128k,七月的极光,0,0,,0,所有链路均失败 [wy/128k]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,flac,七月的极光,0,0,,0,所有链路均失败 [kg/flac]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,320k,七月的极光,0,0,,0,所有链路均失败 [kg/320k]: 
+聚合音源·净化版.js,聚合音源·净化版,kg,128k,七月的极光,0,0,,0,所有链路均失败 [kg/128k]: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,320k,七月的极光,0,628,,0,bad url: 
+新星澜音乐源.js,新星澜音乐源,tx,128k,七月的极光,0,10502,,0,timeout tx
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,flac,七月的极光,0,709,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,320k,七月的极光,0,878,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,tx,128k,七月的极光,0,972,,0,bad url: 
+聚合Hi-Res音乐音源v1.0.js,聚合Hi-Res音乐音源v1.0,kg,128k,七月的极光,0,486,,0,bad url: 
+杰翔聚合音源.js,杰翔聚合音源,kg,320k,七月的极光,0,10500,,0,timeout kg
+西瓜聚合源.js,西瓜聚合源,kg,flac,七月的极光,0,1118,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜聚合源.js,西瓜聚合源,tx,flac,七月的极光,0,2943,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+西瓜糖音乐.js,西瓜糖音乐,tx,flac,七月的极光,1,4234,flac,905,
+西瓜聚合源.js,西瓜聚合源,kg,320k,七月的极光,0,1641,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+西瓜聚合源.js,西瓜聚合源,tx,320k,七月的极光,0,1300,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+非常刀.js,非常刀,tx,flac,七月的极光,0,563,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,kg,128k,七月的极光,0,785,,0,所有音源均失败: HTTP 429; 长青未返回URL; zrcdy所有搜索词失败; HTTP 404; HTTP 400; 请求错误: fetch failed; HTTP 503; 请求错误: f
+非常刀.js,非常刀,wy,flac,七月的极光,1,554,flac,754,
+非常刀.js,非常刀,tx,320k,七月的极光,0,999,,0,所有音源均失败
+非常刀.js,非常刀,kg,flac,七月的极光,0,478,,0,所有音源均失败
+非常刀.js,非常刀,tx,128k,七月的极光,0,499,,0,所有音源均失败
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,flac,七月的极光,0,192,,0,所有API均失败(flac) [fetch failed] || 所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+非常刀.js,非常刀,kg,320k,七月的极光,0,452,,0,所有音源均失败
+西瓜聚合源.js,西瓜聚合源,wy,flac,七月的极光,0,5506,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+星澜聚合音源 (StellarWave).js,星澜聚合音源 (StellarWave),kg,128k,七月的极光,0,10502,,0,timeout kg
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,320k,七月的极光,0,116,,0,所有API均失败(320k) [fetch failed] || 所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,tx,128k,七月的极光,0,61,,0,所有API均失败(128k) [fetch failed]
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,wy,flac,七月的极光,1,148,flac,754,
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,flac,七月的极光,0,189,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,320k,七月的极光,0,55,,0,undefined
+𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ.js,𝖧౿ᥣᥣ𝗈 Ԝ𝗈𝗋ᥣᑯ,kg,128k,七月的极光,0,27,,0,undefined
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,flac,七月的极光,0,215,,0,所有接口均失败: ChKSz QQ: ChKSz未配置apikey; vkeys QQ: 系统运行错误！; 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:und
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,320k,七月的极光,0,219,,0,所有接口均失败: ChKSz QQ: ChKSz未配置apikey; vkeys QQ: 系统运行错误！; 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:und
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),tx,128k,七月的极光,0,233,,0,所有接口均失败: ChKSz QQ: ChKSz未配置apikey; vkeys QQ: 系统运行错误！; 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:und
+非常刀.js,非常刀,kg,128k,七月的极光,0,848,,0,所有音源均失败
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),wy,flac,七月的极光,1,1588,flac,754,
+西瓜聚合源.js,西瓜聚合源,tx,128k,七月的极光,0,4229,,0,所有音源均失败: 溯音QQ所有码率失败; HTTP 400; HTTP 403; 收集聚合: Cannot read properties of undefined (reading 'url'); 
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,flac,七月的极光,0,1460,unknown,0,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,flac,七月的极光,0,1513,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,wy,flac,七月的极光,1,630,flac,754,
+西瓜聚合源.js,西瓜聚合源,wy,320k,七月的极光,0,2661,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,320k,七月的极光,0,1157,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,320k,七月的极光,0,1343,unknown,0,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,kg,flac,七月的极光,1,2082,unknown:7b0a202020202263,0,
+👖裤佬SVIP音源.js,👖裤佬SVIP音源,tx,128k,七月的极光,0,1219,unknown,0,
+👖裤佬SVIP音源(二改整合版).js,👖裤佬SVIP音源(二改整合版),kg,128k,七月的极光,0,2019,,0,所有接口均失败: 酷狗安妮: 酷狗安妮获取失败(code:undefined); 星海后端: fetch failed; 星海后端(备): 星海后端获取失败(code:undefined)
+杰翔聚合音源.js,杰翔聚合音源,kg,128k,七月的极光,0,10502,,0,timeout kg
+西瓜聚合源.js,西瓜聚合源,wy,128k,七月的极光,0,3800,,0,所有音源均失败: CHKSZ所有音质失败; 星海主未返回URL; 溯音163获取失败; 长青SVIP: HTTP 404; 收集聚合: HTTP 521; 念心SVIP: HTTP 404; 星海备:
