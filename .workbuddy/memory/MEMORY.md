@@ -18,7 +18,9 @@
 - `update.json` 字段：channel=user / packageName / versionName / versionCode / apkUrl（必须 `releases/download/<tag>/` 下）/ sizeBytes / sha256 / minSdk / notes（`\n` 转义，≤3000 字）。
 - 客户端读 `releases/latest/download/update.json`，所以 release 不能是 draft/prerelease。
 - 发布后回传校验：下载 APK 比对 sha256；`ghfast` 拉 latest 清单确认内容。
+- 源码推送坑：`tools/gh_push_tree.py` 只推 git HEAD，未提交/未跟踪的新文件会漏（2.4 就漏了一批）。发布前用 `.tmp/push_full_tree.py`（按工作区磁盘快照推 Git Data API）全量同步，再用 `git/trees/main?recursive=1` 对比本地文件数。
+- 2.4.1 已发布：tag `v2.4.1`，main 587 个文件全量同步（2.4 为 556 blob）。
 
 ## 文案约定
 - 应用内更新弹窗宽 400dp、无滚动，notes 控制在 4~6 行、每行 ≤ 20 汉字，带 emoji。
-- GitHub Release 正文用 `## X.Y 更新说明` + `### emoji 分类` + `- **要点**：说明`，结尾 `---`（与既有 release 统一）。
+- GitHub Release 正文：2.4.1 起按用户指定为 `## X.Y 更新说明` + 5 行 emoji 短句（无分类、无分隔线）；2.4 及更早用 `### emoji 分类` + `- **要点**：说明` + 结尾 `---`。后续以 2.4.1 格式为默认。
