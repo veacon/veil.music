@@ -510,6 +510,8 @@ fun NowPlayingScreen(
                 artworkUrl = song.artworkUrl(500), quality = state.fluidQuality,
                 playing = state.isPlaying, reduceMotion = state.reduceMotion, lowPower = state.lowPowerMode,
                 modifier = Modifier.fillMaxSize(),
+                spectrum = spectrumProvider,
+                pulseSpeedMultiplier = pulseMultiplier,
             )
         }
         // Remount when switching orientation so the old split view cannot flash in portrait.

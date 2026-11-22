@@ -16,6 +16,7 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.Surface
 import android.view.TextureView
+import com.veacon.veilmusic.data.NetworkLog
 import com.veacon.veilmusic.media.AudioSpectrum
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -168,6 +169,8 @@ private class LavaRenderWorker {
                             "${session.gpuTiming()}; " +
                             "display callback mean=${if (cadenceSamples > 0) cadenceNanos / cadenceSamples / 1_000 else -1}us max=${maximumCadenceNanos / 1_000}us; " +
                             "measured band maxima=${bandMaximum.joinToString { (it * 100).roundToInt().toString() }}%")
+                        NetworkLog.line(TAG, "300f bands bass=${(bandMaximum[0] * 100).roundToInt()}% " +
+                            "mid=${(bandMaximum[1] * 100).roundToInt()}% treble=${(bandMaximum[2] * 100).roundToInt()}%")
                     }
                 }
                 if (enabled && measured.available && motion.elapsedNanos > 2_000_000_000L && responseWindows < 4) {
@@ -178,6 +181,8 @@ private class LavaRenderWorker {
                     responseFrames++
                     if (responseFrames == 120) {
                         Log.i(TAG, "Bass response: measured=${(responseRange[0] * 100).roundToInt()}..${(responseRange[1] * 100).roundToInt()}%, impact=${(responseRange[2] * 100).roundToInt()}..${(responseRange[3] * 100).roundToInt()}%")
+                        NetworkLog.line(TAG, "bass response measured=${(responseRange[0] * 100).roundToInt()}..${(responseRange[1] * 100).roundToInt()}% " +
+                            "impact=${(responseRange[2] * 100).roundToInt()}..${(responseRange[3] * 100).roundToInt()}%")
                         responseWindows++
                         responseFrames = 0
                         responseRange[0] = 1f; responseRange[1] = 0f
@@ -573,16 +578,16 @@ private class LavaGlRenderer(private var width: Int, private var height: Int) {
               p.y+=.045*sin(x*3.8-t*.12);
               float center=aspect*.61;
               float hit=bassImpact;
-              // 色块基础尺寸缩小约一半；律动/冲击项保持不变，呼吸相对更明显。
-              float BASE=.55;
-              float g=ellipse(p,vec2(center+.19*sin(t*.17)-.07*hit,.07+.15*sin(t*.12)),vec2(.165*BASE+.06*energy.x+.14*hit,.49*BASE+.025*energy.x+.04*hit));
-              g=merge(g,ellipse(p,vec2(center+.21*sin(t*.13+.8)+.09*hit,.43+.14*sin(t*.18)),vec2(.18*BASE+.055*energy.x+.12*hit,.30*BASE-.025*hit)),.12);
-              g=merge(g,ellipse(p,vec2(center-.08+.25*sin(t*.11+2.),.91+.20*cos(t*.17)-.07*hit),vec2(.12*BASE+.035*energy.x+.08*hit,.15*BASE)),.10);
-              float side=ellipse(p,vec2(-.13+.18*sin(t*.12+.7),.79+.18*sin(t*.10)),vec2(.34*BASE+.04*hit,.61*BASE));
-              side=merge(side,ellipse(p,vec2(aspect+.14+.07*cos(t*.13),.24+.12*cos(t*.11)),vec2(.27*BASE,.70*BASE)),.08);
-              float m=ellipse(p,vec2(aspect*.34+.18*sin(t*.1)-.05*hit,1.07+.18*cos(t*.14)),vec2(.31*BASE-.025*hit,.45*BASE));
-              m=merge(m,ellipse(p,vec2(aspect*.85+.16*sin(t*.11+2.),.17+.16*cos(t*.15)),vec2(.16*BASE,.57*BASE)),.08);
-              m=merge(m,ellipse(p,vec2(aspect*.94+.14*cos(t*.09),1.19+.10*sin(t*.12)),vec2(.37*BASE,.43*BASE)),.1);
+              // 色块只随鼓点做线性缩放呼吸（最大 1.25x），不位移、不改色，避免全屏爆闪。
+              float s=1.+.25*hit;
+              float g=ellipse(p,vec2(center+.19*sin(t*.17),.07+.15*sin(t*.12)),vec2(.165+.06*energy.x,.49+.025*energy.x)*s);
+              g=merge(g,ellipse(p,vec2(center+.21*sin(t*.13+.8),.43+.14*sin(t*.18)),vec2(.18+.055*energy.x,.30)*s),.12);
+              g=merge(g,ellipse(p,vec2(center-.08+.25*sin(t*.11+2.),.91+.20*cos(t*.17)),vec2(.12+.035*energy.x,.15)*s),.10);
+              float side=ellipse(p,vec2(-.13+.18*sin(t*.12+.7),.79+.18*sin(t*.10)),vec2(.34,.61)*s);
+              side=merge(side,ellipse(p,vec2(aspect+.14+.07*cos(t*.13),.24+.12*cos(t*.11)),vec2(.27,.70)*s),.08);
+              float m=ellipse(p,vec2(aspect*.34+.18*sin(t*.1),1.07+.18*cos(t*.14)),vec2(.31,.45)*s);
+              m=merge(m,ellipse(p,vec2(aspect*.85+.16*sin(t*.11+2.),.17+.16*cos(t*.15)),vec2(.16,.57)*s),.08);
+              m=merge(m,ellipse(p,vec2(aspect*.94+.14*cos(t*.09),1.19+.10*sin(t*.12)),vec2(.37,.43)*s),.1);
               float gm=1.-smoothstep(-.012,.018,g),sm=1.-smoothstep(-.012,.018,side),mm=1.-smoothstep(-.012,.018,m);
               vec3 ink=colors[0]*(.96+.045*sin(p.y*2.+p.x)+.012*energy.y+.006*energy.z);
               vec3 edgeColor=mix(colors[1],mix(colors[3],colors[4],smoothstep(0.,aspect,p.x)),.24);

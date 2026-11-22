@@ -77,10 +77,12 @@ internal class MacRenderer(private val context: Context, private val clock: MacC
         transition=if(outgoing==0)MacScene.TRANSITION_SECONDS else 0.0
         checkGl()
     }
-    fun render(width:Int,height:Int,state:FluidRenderState,now:Long,outputWidth:Int=width,outputHeight:Int=height):Boolean{
+    fun render(width:Int,height:Int,state:FluidRenderState,now:Long,outputWidth:Int=width,outputHeight:Int=height,beat:Float=0f,flowSpeed:Float=1f):Boolean{
         if(width<=0||height<=0)return false
         val dt=if(lastFrame==0L)0.0 else ((now-lastFrame)/1e9).coerceIn(0.0,.1)
-        lastFrame=now;clock.time=MacScene.advanceTime(clock.time,dt);transition+=dt
+        lastFrame=now
+        // 脉动速度只缩放场景时钟（旋转/warp 流速），不影响封面交叉淡入的真实时长。
+        clock.time=MacScene.advanceTime(clock.time,dt*flowSpeed.coerceIn(0.1f,4.0f));transition+=dt
         if(image==0)return false
         val cap=min(MacScene.maxEdge(state.quality,highp),maxSize)
         val plan=intermediatePlan(width,height,cap,state.quality)
@@ -106,7 +108,8 @@ internal class MacRenderer(private val context: Context, private val clock: MacC
         use(gaussian,c!!);gaussian.texture("u_texture",b!!.texture);gaussian.pair("u_axis",0f,1f/h);drawQuad(gaussian)
         GL.glBindFramebuffer(GL.GL_FRAMEBUFFER,0);GL.glViewport(0,0,outputWidth,outputHeight);GL.glUseProgram(meshProgram.id)
         GL.glClearColor(0f,0f,0f,1f);GL.glClear(GL.GL_COLOR_BUFFER_BIT)
-        meshProgram.texture("u_texture",c!!.texture);meshProgram.float("u_warpMix",MacScene.warpMix(clock.time));meshProgram.float("u_dark",1f);meshProgram.float("u_luma",.5f)
+        val kick=beat.coerceIn(0f,1f)
+        meshProgram.texture("u_texture",c!!.texture);meshProgram.float("u_warpMix",(MacScene.warpMix(clock.time)+.04f*kick).coerceAtMost(1f));meshProgram.float("u_dark",1f);meshProgram.float("u_luma",.5f);meshProgram.float("u_beat",kick)
         disableAttributes()
         for((name,offset)in listOf("a_texCoord" to 0,"a_from" to 2,"a_to" to 4)){
             val loc=meshProgram.attr(name);if(loc>=0){mesh.vertexBuffer.position(offset);GL.glEnableVertexAttribArray(loc);GL.glVertexAttribPointer(loc,2,GL.GL_FLOAT,false,24,mesh.vertexBuffer)}

@@ -21,15 +21,16 @@ float g=dot(c,vec3(.3,.59,.11));gl_FragColor=vec4(vec3(g)+(c-g)*1.3,1.);}
     """.trimIndent()
     val MESH_VERTEX = """
 attribute vec2 a_texCoord,a_from,a_to;
-uniform float u_warpMix;varying highp vec2 v_uv;
-void main(){float k=u_warpMix;gl_Position=vec4(mix(a_from,a_to,k),0.,1.);v_uv=(a_texCoord-.5)*.8+.5;}
+uniform float u_warpMix,u_beat;varying highp vec2 v_uv;
+void main(){float k=u_warpMix;vec2 p=mix(a_from,a_to,k);
+gl_Position=vec4(p*(1.+.02*u_beat),0.,1.);v_uv=(a_texCoord-.5)*.8+.5;}
     """.trimIndent()
     val MESH = """
-precision highp float;uniform sampler2D u_texture;uniform float u_dark,u_luma;
+precision highp float;uniform sampler2D u_texture;uniform float u_dark,u_luma,u_beat;
 varying highp vec2 v_uv;void main(){vec3 c=texture2D(u_texture,vec2(v_uv.x,1.-v_uv.y)).rgb;
 float g=dot(c,vec3(.3,.59,.11));c=min(vec3(.9951171875),vec3(g)+(c-g)*2.);
-if(u_dark>.5)c=mix(c,vec3(0.),.25)-.02;
-else c=min(vec3(1.),mix(c,vec3(1.),.25)+(u_luma<.3?.38:.08)*.05);
+// 基线整体压暗到 80%，鼓点线性提亮到 95%，不做额外闪烁。
+c*=.80+.15*u_beat;
 gl_FragColor=vec4(clamp(c,.07,.97),1.);}
     """.trimIndent()
     fun gaussian(sigma: Double): String {

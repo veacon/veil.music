@@ -40,6 +40,9 @@ fun MacBackground(
     reduceMotion: Boolean,
     lowPower: Boolean,
     modifier: Modifier = Modifier,
+    /** 背景律动采样；与熔岩背景共用同一份频谱，驱动流体的鼓点脉动。 */
+    spectrum: (() -> com.veacon.veilmusic.media.AudioSpectrum)? = null,
+    pulseSpeedMultiplier: Float = 1f,
 ) {
     if (quality == FluidQuality.OFF || artworkUrl == null) {
         Box(modifier.fillMaxSize().background(Color.Black))
@@ -86,6 +89,8 @@ fun MacBackground(
         reduceMotion -> FluidQuality.STATIC
         else -> quality
     }
+    val spectrumSource: () -> com.veacon.veilmusic.media.AudioSpectrum =
+        spectrum ?: { com.veacon.veilmusic.media.AudioSpectrum() }
     var failed by remember(effectiveQuality) { mutableStateOf(false) }
     Box(modifier.fillMaxSize().background(Color.Black)) {
         val frame = artwork
@@ -98,6 +103,8 @@ fun MacBackground(
                     modifier = Modifier.fillMaxSize(),
                     onRelease = { it.close() },
                     update = { view ->
+                        view.spectrum = spectrumSource
+                        view.speedMultiplier = pulseSpeedMultiplier
                         view.update(frame.source, FluidRenderState(effectiveQuality, playing), foreground)
                     },
                 )

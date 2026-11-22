@@ -98,27 +98,25 @@ internal class LavaCpuField(val width: Int = 96, val height: Int = 54) {
         if (!aspect.isFinite()) setAspect(width.toFloat() / height)
         val t = elapsedNanos / 1_000_000_000f * 2.4f
         val center = aspect * .61f
-        // 与 GPU FIELD 一致：色块基础尺寸缩小约一半，律动/冲击项保持不变。
-        val base = .55f
-        shapes[0].set(center + .19f * sin(t * .17f) - .07f * impact,
-            .07f + .15f * sin(t * .12f), .165f * base + .06f * bass + .14f * impact,
-            .49f * base + .025f * bass + .04f * impact)
-        shapes[1].set(center + .21f * sin(t * .13f + .8f) + .09f * impact,
-            .43f + .14f * sin(t * .18f), .18f * base + .055f * bass + .12f * impact,
-            .30f * base - .025f * impact)
+        // 与 GPU 同步：色块只随鼓点线性缩放（最大 1.25x），不位移、不改色。
+        val s = 1f + .25f * impact
+        shapes[0].set(center + .19f * sin(t * .17f),
+            .07f + .15f * sin(t * .12f), (.165f + .06f * bass) * s,
+            (.49f + .025f * bass) * s)
+        shapes[1].set(center + .21f * sin(t * .13f + .8f),
+            .43f + .14f * sin(t * .18f), (.18f + .055f * bass) * s, .30f * s)
         shapes[2].set(center - .08f + .25f * sin(t * .11f + 2f),
-            .91f + .20f * cos(t * .17f) - .07f * impact,
-            .12f * base + .035f * bass + .08f * impact, .15f * base)
+            .91f + .20f * cos(t * .17f), (.12f + .035f * bass) * s, .15f * s)
         shapes[3].set(-.13f + .18f * sin(t * .12f + .7f),
-            .79f + .18f * sin(t * .10f), .34f * base + .04f * impact, .61f * base)
+            .79f + .18f * sin(t * .10f), .34f * s, .61f * s)
         shapes[4].set(aspect + .14f + .07f * cos(t * .13f),
-            .24f + .12f * cos(t * .11f), .27f * base, .70f * base)
-        shapes[5].set(aspect * .34f + .18f * sin(t * .1f) - .05f * impact,
-            1.07f + .18f * cos(t * .14f), .31f * base - .025f * impact, .45f * base)
+            .24f + .12f * cos(t * .11f), .27f * s, .70f * s)
+        shapes[5].set(aspect * .34f + .18f * sin(t * .1f),
+            1.07f + .18f * cos(t * .14f), .31f * s, .45f * s)
         shapes[6].set(aspect * .85f + .16f * sin(t * .11f + 2f),
-            .17f + .16f * cos(t * .15f), .16f * base, .57f * base)
+            .17f + .16f * cos(t * .15f), .16f * s, .57f * s)
         shapes[7].set(aspect * .94f + .14f * cos(t * .09f),
-            1.19f + .10f * sin(t * .12f), .37f * base, .43f * base)
+            1.19f + .10f * sin(t * .12f), .37f * s, .43f * s)
 
         // sin(2*py + px) is separable after the shader's row/column warp.
         // Preserve that expression without calling sin for every field pixel.
@@ -157,13 +155,18 @@ internal class LavaCpuField(val width: Int = 96, val height: Int = 54) {
             val edgeMix = smooth(0f, aspect, px)
             val gScale = .84f + .16f * (1f - smooth(-.15f, .05f, g))
             val mScale = .84f + .16f * (1f - smooth(-.18f, .05f, m))
+            var cr = 0f; var cg = 0f; var cb = 0f
             for (channel in 0..2) {
                 val edge = mix(palette[3 + channel], mix(palette[9 + channel],
                     palette[12 + channel], edgeMix), .24f)
                 var color = mix(palette[channel] * inkScale, edge, sm)
                 color = mix(color, palette[3 + channel] * gScale, gm)
-                field[offset++] = mix(color, palette[6 + channel] * mScale, mm)
+                color = mix(color, palette[6 + channel] * mScale, mm)
+                when (channel) { 0 -> cr = color; 1 -> cg = color; else -> cb = color }
             }
+            field[offset++] = cr.coerceIn(0f, 1f)
+            field[offset++] = cg.coerceIn(0f, 1f)
+            field[offset++] = cb.coerceIn(0f, 1f)
         }
         blurHorizontal()
         blurVertical()

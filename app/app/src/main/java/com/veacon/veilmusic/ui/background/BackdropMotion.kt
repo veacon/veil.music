@@ -59,7 +59,7 @@ internal class BackdropMotion {
         // Two short envelopes keep the silhouette continuous at a kick's attack, while
         // letting it return between kicks. This is separate from sustained bass pressure.
         bassImpulse = smooth(bassImpulse, impactTarget, seconds, 0.025f, 0.10f)
-        // 幅度挡位只放大输出包络（不反馈进检测），配合缩小后的底色块做更明显的呼吸。
+        // 呼吸幅度只缩放输出包络（不反馈进检测），保持原版底色块几何与配色。
         val depth = amplitude.coerceIn(0.5f, 2.5f)
         bassImpact = (smooth(bassImpact, bassImpulse, seconds, 0.045f, 0.17f) * depth).coerceIn(0f, 1f)
         // A fluid silhouette needs a soft attack/longer release, rather than strobing on FFT bins.

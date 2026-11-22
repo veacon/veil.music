@@ -1,0 +1,95 @@
+# Veil Music 2.4.2 升级说明（背景律动 · 鼓点可视化修复）
+
+> 基线：2.4.1（veil.music main 快照 `070cdf3`）。本版为**鼓点律动修复版**，相对 2.4.1 的真实内容变更集中在背景渲染链路，其余功能未改动。
+
+---
+
+## ① GitHub Release 正文
+
+发布到 `veacon/veil.music`，tag `v2.4.2`，资产：`Veil-Music-2.4.2.apk` + `update.json`。
+
+```
+## 2.4.2 更新说明
+
+🎵熔岩背景随鼓点呼吸放大，不再爆闪
+🌊流体背景鼓点提亮，脉动速度生效
+🔧修复脉动速度对流体流速无效
+📡鼓点采集链路更稳，低内存不易卡麦
+```
+
+---
+
+## ② update.json
+
+> 托管在 `veil.music` latest release 的 `download/update.json`；APK 必须同仓 `/releases/download/` 下。字段需通过 `AppUpdates.parse` 校验（channel/packageName/minSdk 必填，sha256 小写 64 位，notes ≤3000）。
+
+```json
+{
+  "channel": "user",
+  "packageName": "com.veacon.veilmusic",
+  "versionName": "2.4.2",
+  "versionCode": 255,
+  "apkUrl": "https://github.com/veacon/veil.music/releases/download/v2.4.2/Veil-Music-2.4.2.apk",
+  "sizeBytes": 19726343,
+  "sha256": "fdc9a6a4fb0f308a8d36b1ffedb85a3b432731bf2a0355ba56c75652783eab39",
+  "minSdk": 23,
+  "notes": "熔岩背景随鼓点呼吸放大，无爆闪\n流体背景鼓点提亮，脉动速度生效\n鼓点采集链路更稳，低内存不卡麦\n版本 2.4.2（versionCode 255）"
+}
+```
+
+- APK：`Veil-Music-2.4.2.apk`，19,726,343 字节（≈19.7 MB），SHA-256 见上。
+- 签名：沿用 debug keystore（`build.gradle.kts` release signingConfig = debug），与线上 2.4.1 同证书，可直接覆盖安装。
+- `versionCode` 254 → 255，`versionName` 2.4.1 → 2.4.2，`channel=user` 不变。
+
+---
+
+## ③ 差异分析（相对 2.4.1）
+
+> 用 `git diff -w --ignore-cr-at-eol 070cdf3` 过滤行尾噪音后，真实内容变更共 37 个文件；其中用户可见的只有背景律动链路，其余为文档/探针/内存笔记。
+
+### A. 背景律动（核心，9 个源码文件）
+
+| 文件 | 变更 |
+| --- | --- |
+| `ui/background/LavaBackdropView.kt` | 熔岩 GPU：**仅**按鼓点缩放色块半径 `×(1 + 0.25·hit)`（峰值 1.25×）；移除饱和/对比/亮度脉冲 → 解决整屏爆闪 |
+| `ui/background/LavaCpuField.kt` | 熔岩 CPU 回退：与 GPU 逻辑同步（临时变量改 `cr/cg/cb` 避免与椭圆场 `g` 命名冲突） |
+| `ui/background/MacShaders.kt` | 流体片元：基线 `c *= 0.80`，鼓点线性提亮到 `c *= 0.95`；顶点微缩放 `p*(1+0.02·beat)`；移除旧的 `u_dark>.5` 压暗分支与整屏加亮 → 无频闪 |
+| `ui/background/MacRenderer.kt` | `render()` 新增 `flowSpeed` 参数，`clock.time` 按 `dt * flowSpeed` 推进（限幅 0.1–4.0）→ **修复「脉动速度」对流体流速无效** |
+| `ui/background/MacBackground.kt` | 重新接入 `spectrum` 与 `pulseSpeedMultiplier` 入参（曾被误删，导致流体完全不动） |
+| `ui/background/MacTextureView.kt` | 重新接入 `BackdropMotion` worker 与 `flowSpeed`/`spectrum` 布线；加 `NetworkLog` 诊断 |
+| `ui/background/BackdropMotion.kt` | 鼓点检测：`bassImpact` 产出与 `speedMultiplier` 缩放 `elapsedNanos`（脉动速度对熔岩生效的根因）；采集链路/会话稳定性增强 |
+| `ui/screens/NowPlayingScreen.kt` | 把 `spectrumProvider` 与 `pulseMultiplier` 正确传入 `MacBackground` |
+
+**调参旋钮**（用户可调，已写入文档）：
+- 熔岩呼吸倍率：`0.25`（最大 1.25×）
+- 流体基线 `0.80` / 峰值 `0.95`；流体形变 `0.04`；顶点缩放 `0.02`
+- 脉动速度档位（`LavaPulseSpeed.STEPS`）：0.3 – 2.5 六档
+
+### B. 版本号
+- `app/release-version.properties`：`versionName=2.4.2`、`versionCode=255`，`channel=user` 不变。
+
+### C. 文档
+- `CHANGELOG.md` 顶部新增 `## 2.4.2（2026-11-22）` 条目。
+- 本文件 `2.4.2-升级说明.md`。
+- `docs/screenshots/01–11` 截图、`docs/HANDOFF-2026-11-13.md` 随快照同步。
+
+### D. 未改动（已在 2.4.1 发布，避免误记）
+- 歌词来源 QQ 优先 + 多源回退（`DirectLyricsSource` / `ThirdPartyLyrics`）—— 2.4.1 已上线。
+- 洛雪音源脚本（`luoxue/音源/洛雪音源1–15.js`、内置 `lx-01..lx-12`）—— 2.4.1 已上线，本版仅行尾归一化。
+- 设置页两列重构、音源命中提速 —— 2.4.1 已上线。
+
+### E. 兼容性与风险
+- `minSdk = 23` 不变；targetSdk 不变。
+- 证书不变 → 2.4.1 可直接覆盖升级到 2.4.2，无需卸载。
+- 视觉参数已在极米 Z6X（1.6GB 低内存）上验证：鼓点触发正常（`bassImpact` 峰值 36–51%）、无爆闪、无卡麦。
+- 回滚：若用户反馈异常，可在 veil.music 删 tag/release 回退到 v2.4.1；`update.json` 仍指向 2.4.1 即停止推送。
+
+### F. 发布清单（执行前勾）
+- [x] `release-version.properties` 升到 2.4.2 / 255
+- [x] `CHANGELOG.md` 加 2.4.2 条目
+- [x] release 构建成功，APK 校验 `aapt` = 2.4.2 / 255
+- [x] `update.json` sizeBytes/sha256 与实际 APK 一致
+- [ ] 源码快照推到 `veil.music` main（父 = `070cdf3`，快进，不覆盖历史）
+- [ ] 打 tag `v2.4.2` 并创建 GitHub Release
+- [ ] 上传资产 `Veil-Music-2.4.2.apk` + `update.json`
+- [ ] 设备端「检查更新」能看到 2.4.2

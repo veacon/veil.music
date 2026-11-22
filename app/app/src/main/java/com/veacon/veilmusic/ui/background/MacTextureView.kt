@@ -16,9 +16,11 @@ import android.view.Choreographer
 import android.view.TextureView
 import android.view.View
 import com.veacon.veilmusic.data.NetworkLog
+import com.veacon.veilmusic.media.AudioSpectrum
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** A composited background texture: never owns touch, focus, an audio decoder or the player. */
 internal class MacTextureView(context: Context, private val clock: MacClock, private val onFailure: () -> Unit) :
@@ -26,6 +28,9 @@ internal class MacTextureView(context: Context, private val clock: MacClock, pri
 
     @Volatile private var artwork: Bitmap? = null
     @Volatile private var renderState = FluidRenderState()
+    /** 与熔岩背景共用同一份采样器；暂停/未授权时返回空频谱，流体保持纯环境动画。 */
+    @Volatile var spectrum: () -> AudioSpectrum = { AudioSpectrum() }
+    @Volatile var speedMultiplier: Float = 1f
     @Volatile private var active = false
     @Volatile private var closed = false
     @Volatile private var surfaceGeneration = 0
@@ -138,6 +143,11 @@ internal class MacTextureView(context: Context, private val clock: MacClock, pri
         private var renderer: MacRenderer? = null
         private var uploaded: Bitmap? = null
         private var contextRestarts = 0
+        private val motion = BackdropMotion()
+        private var prevFrameNanos = 0L
+        private var diagFrames = 0
+        private var diagBassMax = 0f
+        private var diagImpactMax = 0f
 
         private var choreographer: Choreographer? = null
         private val vsyncFrame = Choreographer.FrameCallback { timestamp -> onVsync(timestamp) }
@@ -169,6 +179,8 @@ internal class MacTextureView(context: Context, private val clock: MacClock, pri
         private fun schedule() {
             handler.removeCallbacks(frame)
             choreographer?.removeFrameCallback(vsyncFrame)
+            // 暂停/状态变化后重新起拍，避免把停机时间当成一帧推进。
+            prevFrameNanos = 0L
             if (!stopping.get() && !closed && active && renderer != null) {
                 renderer?.resetFrameClock()
                 handler.post(frame)
@@ -181,19 +193,38 @@ internal class MacTextureView(context: Context, private val clock: MacClock, pri
             try {
                 val renderer = renderer ?: return
                 val now = System.nanoTime()
+                val state = renderState
+                // 节拍与熔岩背景完全同源：同一采样器、同一套 BackdropMotion 检测。
+                val previous = prevFrameNanos
+                prevFrameNanos = now
+                val measured = spectrum()
+                if (state.playing && previous != 0L) {
+                    motion.speedMultiplier = speedMultiplier
+                    motion.advance(now - previous, measured)
+                }
+                val beat = if (state.playing)
+                    (motion.bassImpact + .15f * motion.bass).coerceIn(0f, 1f) else 0f
+                // 设备可读诊断：每 120 帧（约 2 秒）报告 bass/impact 峰值，确认鼓点真的在触发。
+                diagFrames++
+                diagBassMax = maxOf(diagBassMax, motion.bass)
+                diagImpactMax = maxOf(diagImpactMax, motion.bassImpact)
+                if (diagFrames >= 120) {
+                    NetworkLog.line("LAVA", "fluid capture=${measured.available} bass=${(diagBassMax * 100).roundToInt()}% " +
+                        "impact=${(diagImpactMax * 100).roundToInt()}%")
+                    diagFrames = 0; diagBassMax = 0f; diagImpactMax = 0f
+                }
                 val bitmap = artwork
                 if (bitmap !== uploaded) {
                     renderer.setArtwork(bitmap, now)
                     uploaded = bitmap
                 }
-                val state = renderState
                 val viewWidth = surfaceWidth
                 val viewHeight = surfaceHeight
                 val requested = backgroundOutputSize(viewWidth, viewHeight, state.quality)
                 ensureOutputSurface(requested)
                 // The scene receives the full View dimensions. Only the final viewport shrinks.
                 visibleFrame = renderer.render(viewWidth, viewHeight, state, now,
-                    requested.width, requested.height)
+                    requested.width, requested.height, beat, flowSpeed = speedMultiplier)
                 if (reportedQuality != state.quality) {
                     NetworkLog.line("MacOutput", "quality=${state.quality.name}; pacing=display-vsync; view=${viewWidth}x$viewHeight; buffer=${requested.width}x${requested.height}")
                     reportedQuality = state.quality

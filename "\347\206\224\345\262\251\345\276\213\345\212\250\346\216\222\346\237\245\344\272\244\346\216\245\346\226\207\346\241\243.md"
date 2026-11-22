@@ -2,6 +2,16 @@
 
 日期：2026-11-21 · 设备：极米投影（XGIMI TV · Android 8.0 / SDK 26 · armeabi-v7a · 1.6GB low-ram · Mali-G51）· IP：192.168.6.219 · 应用版本：2.4（包名 `com.veacon.veilmusic`）
 
+## 最新进展（2026-11-22，最终调参，用户确认「完美」）
+
+> 以下是在 11-21 实验版基础上，根据用户多轮实测反馈回调后的最终状态。原第一~九节的历史排查记录保留在下方。
+
+- **采集链路正常**：`SPEC attached / nonzero FFT` 持续出现，鼓点检测有效——设备日志 `AMATV-lava bass response ... impact=0..51%`，`bassImpact` 峰值能到 36~51%。
+- **熔岩背景**：鼓点只驱动色块半径线性缩放 `×(1 + 0.25*hit)`，最大 1.25 倍；**不位移、不改色、不加亮度**。已去掉上一版的饱和度/对比度/亮度脉冲（那是爆闪来源）。GPU 版 [LavaBackdropView.kt FIELD](file:///E:/ai/amusic/app/app/src/main/java/com/veacon/veilmusic/ui/background/LavaBackdropView.kt) 与 CPU 版 [LavaCpuField.kt](file:///E:/ai/amusic/app/app/src/main/java/com/veacon/veilmusic/ui/background/LavaCpuField.kt) 同步。
+- **流体（Mac）背景**：基线亮度压到 80%，鼓点线性提亮到 95%（`c *= 0.80 + 0.15*beat`），无爆闪；warp +0.04、顶点缩放 +0.02 作为轻微呼吸。代码在 [MacShaders.kt](file:///E:/ai/amusic/app/app/src/main/java/com/veacon/veilmusic/ui/background/MacShaders.kt)、[MacRenderer.kt](file:///E:/ai/amusic/app/app/src/main/java/com/veacon/veilmusic/ui/background/MacRenderer.kt)、[MacTextureView.kt](file:///E:/ai/amusic/app/app/src/main/java/com/veacon/veilmusic/ui/background/MacTextureView.kt)。
+- **「脉动速度」设置项修复**：此前流体流速不受该设置影响——流体场景时钟由 [MacRenderer.kt](file:///E:/ai/amusic/app/app/src/main/java/com/veacon/veilmusic/ui/background/MacRenderer.kt) 的 `clock.time = advanceTime(clock.time, dt)` 用真实帧间隔推进，完全没乘 `speedMultiplier`；熔岩因为 `t` 来自 `motion.elapsedNanos`（已乘倍率）所以正常。现已给 `render()` 加 `flowSpeed` 参数，时钟推进乘 `flowSpeed.coerceIn(0.1,4.0)`；`transition`（封面交叉淡入）保持真实 dt 不变。`KawarpBackground` 未被界面引用，无需改。
+- **调参旋钮**（用户可要求微调）：熔岩呼吸倍数 `0.25`、流体基线 `0.80` / 峰值 `0.95`、流体 warp `0.04`、流体顶点缩放 `0.02`、`LavaPulseSpeed.STEPS`（0.3~2.5 六档）。
+
 ## 零、当前状态（2026-11-21 22:40，最新）
 
 - **采集链路已经打通**：设备日志里已出现 `SPEC attached session=425` 与 `SPEC nonzero FFT session=425`，说明 Visualizer 挂载成功、频谱是真实数据；旧版「session 永远为 0」的根因修复有效，不要再往这个方向排查。
