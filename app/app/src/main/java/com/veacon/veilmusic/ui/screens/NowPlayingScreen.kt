@@ -560,6 +560,9 @@ fun NowPlayingScreen(
                     TextStyle(fontFamily = LocalTextStyle.current.fontFamily, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)) +
                     referenceTextHeight(song.artistName,
                         TextStyle(fontFamily = LocalTextStyle.current.fontFamily, fontSize = 14.sp, fontWeight = FontWeight.Normal)) + 10.dp
+                // 专辑下方歌名/歌手字号档位（设置 → 封面动效）；基准高度按标准档预留，
+                // 小档多出呼吸空间不挪封面，大档自然撑开。
+                val songInfoScale = state.songInfoScale
                 val centeredControls=centerPlayerControls(state,lyricsHidden,showQueue&&chromeVisible,fontState.ready,artworkCentered)
                 PlayerSplitLayout(screenWidth,coverSize,spacing,
                     centered=centeredControls,
@@ -613,9 +616,9 @@ fun NowPlayingScreen(
                                     FadeThrough(song, Modifier.fillMaxWidth(), contentKey = { it.id }) { song ->
                                         Column(Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally) {
-                                            MarqueeText(song.title, fontSize = 17.sp * UnderCoverVisualScale, fontWeight = FontWeight.SemiBold,
+                                            MarqueeText(song.title, fontSize = 17.sp * songInfoScale * UnderCoverVisualScale, fontWeight = FontWeight.SemiBold,
                                                 color = Color.White, modifier = Modifier.fillMaxWidth())
-                                            MarqueeText(song.artistName, fontSize = 14.sp * UnderCoverVisualScale, color = PlayerSecondaryColor,
+                                            MarqueeText(song.artistName, fontSize = 14.sp * songInfoScale * UnderCoverVisualScale, color = PlayerSecondaryColor,
                                                 modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
                                         }
                                     }
@@ -2242,8 +2245,9 @@ private fun MarqueeText(
     letterSpacing: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
 ) {
     val scrollState = rememberScrollState()
-    var overflows by remember(text) { mutableStateOf(false) }
-    var measured  by remember(text) { mutableStateOf(false) }
+    // 溢出测量按「文本 + 字号」记：同曲换字号档位（设置 → 歌曲信息字号）后要重新测量。
+    var overflows by remember(text, fontSize) { mutableStateOf(false) }
+    var measured  by remember(text, fontSize) { mutableStateOf(false) }
     // Ping-pong: glide left→right to reveal the tail, pause, then glide back right→left — smooth
     // both ways, no fade-and-jump. Ease-in-out easing softens each turnaround.
     LaunchedEffect(text, overflows) {

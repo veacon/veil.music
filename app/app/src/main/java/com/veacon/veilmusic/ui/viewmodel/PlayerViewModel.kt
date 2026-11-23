@@ -201,6 +201,8 @@ data class PlayerState(
     val lyricsScale: Float = 1.0f,
     /** Rounded (true) vs square (false) album-art corners. */
     val artworkRounded: Boolean = true,
+    /** 专辑下方歌名/歌手字号档位：0.85 小 · 1.0 标准 · 1.25 大 · 1.5 超大。 */
+    val songInfoScale: Float = 1.0f,
     /** Accessibility: freeze/minimise background motion. */
     val reduceMotion: Boolean = false,
     /** Low Power Mode: cheaper background rendering (also forces motion art off). */
@@ -1451,6 +1453,7 @@ class PlayerViewModel @Inject constructor(
             orbSpeed = prefs.getFloat("orb_speed", 1.0f),
             lyricsScale = prefs.getFloat("lyrics_scale", 1.0f),
             artworkRounded = prefs.getBoolean("artwork_rounded", true),
+            songInfoScale = prefs.getFloat("song_info_scale", 1.0f),
             reduceMotion = false,
             lowPowerMode = false,
             volumeLeveling = prefs.getBoolean("volume_leveling", false),
@@ -1636,7 +1639,7 @@ class PlayerViewModel @Inject constructor(
             val motionArt = prefs.getBoolean("motion_art", true)
             com.veacon.veilmusic.media.GainProcessor.enabled = prefs.getBoolean("volume_leveling", false)
             _state.update { it.copy(currentSong = song, song = song, queue = queue, queueIndex = idx, isFullStream = full, beatIntensity = beat, crossfadeEnabled = crossfade, screensaverTimeoutMin = screensaverMin, nowPlayingBackground = npBg, screensaverKeepBackground = keepBg, showNowPlayingInfo = npInfo, motionArtworkEnabled = motionArt,
-                orbSpeed = prefs.getFloat("orb_speed", 1.0f), lyricsScale = prefs.getFloat("lyrics_scale", 1.0f), artworkRounded = prefs.getBoolean("artwork_rounded", true), reduceMotion = false, lowPowerMode = false, volumeLeveling = prefs.getBoolean("volume_leveling", false), progressMs = posMs) }
+                orbSpeed = prefs.getFloat("orb_speed", 1.0f), lyricsScale = prefs.getFloat("lyrics_scale", 1.0f), artworkRounded = prefs.getBoolean("artwork_rounded", true), songInfoScale = prefs.getFloat("song_info_scale", 1.0f), reduceMotion = false, lowPowerMode = false, volumeLeveling = prefs.getBoolean("volume_leveling", false), progressMs = posMs) }
             if (song == null) return@launch
             // 纯音乐应用：MV 已整链路删除，恢复书签时若命中旧版本留下的 MV 条目，直接跳过。
             // 续播：上次退出时正在播放就直接从断点接着放；退出时是暂停的，就只恢复出来、等按下播放。
@@ -1948,6 +1951,14 @@ class PlayerViewModel @Inject constructor(
         val next = !_state.value.artworkRounded
         _state.update { it.copy(artworkRounded = next) }
         prefs.edit { putBoolean("artwork_rounded", next) }
+    }
+
+    /** 弹框/步进选择用：直接落到指定档位（专辑下方歌名/歌手字号）。 */
+    fun setSongInfoScale(value: Float) {
+        val steps = floatArrayOf(0.85f, 1.0f, 1.25f, 1.5f)
+        val next = steps.minByOrNull { kotlin.math.abs(it - value) } ?: 1.0f
+        _state.update { it.copy(songInfoScale = next) }
+        prefs.edit { putFloat("song_info_scale", next) }
     }
 
     /**

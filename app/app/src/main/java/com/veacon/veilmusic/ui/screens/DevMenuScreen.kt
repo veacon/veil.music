@@ -482,6 +482,16 @@ fun DevMenuScreen(
                     { playerVm.setLyricsScale(listOf(0.8f, 1.0f, 1.25f, 1.6f, 2.0f)[(scaleIdx + 1).coerceAtMost(4)]) },
                     decEnabled = scaleIdx > 0, incEnabled = scaleIdx < 4)
                 SettingDivider()
+                // 播放页专辑下方歌名/歌手字号（小/标准/大/超大 四档）。
+                val infoSteps = listOf(0.85f, 1.0f, 1.25f, 1.5f)
+                val infoIdx = infoSteps.indexOfFirst { kotlin.math.abs(it - pstate.songInfoScale) < 0.05f }.let { if (it < 0) 1 else it }
+                Stepper(tx("歌曲信息字号", "Song info text size"),
+                    songInfoScaleLabel(pstate.songInfoScale),
+                    tx("专辑下方歌名与歌手名的大小", "Size of the title and artist under the artwork"),
+                    { playerVm.setSongInfoScale(infoSteps[(infoIdx - 1).coerceAtLeast(0)]) },
+                    { playerVm.setSongInfoScale(infoSteps[(infoIdx + 1).coerceAtMost(infoSteps.lastIndex)]) },
+                    decEnabled = infoIdx > 0, incEnabled = infoIdx < infoSteps.lastIndex)
+                SettingDivider()
                 Toggle(tx("逐字歌词", "Word-by-word lyrics"), wordByWordLyrics,
                     tx("歌词按字逐个点亮，随演唱节奏显示", "Light up lyrics per character as they are sung")) {
                     vm.setWordByWordLyrics(!wordByWordLyrics)
@@ -833,6 +843,14 @@ internal fun lyricsScaleLabel(f: Float): String = when {
     f < 1.1f  -> tr(R.string.msg_254)
     f < 1.4f  -> tr(R.string.msg_007)
     f < 1.8f  -> tr(R.string.msg_255)
+    else      -> tr(R.string.msg_256)
+}
+
+/** 专辑下方歌名/歌手字号档位标签：0.85 小 · 1.0 标准 · 1.25 大 · 1.5 超大。 */
+internal fun songInfoScaleLabel(f: Float): String = when {
+    f < 0.9f  -> tr(R.string.msg_254)
+    f < 1.1f  -> tr(R.string.msg_007)
+    f < 1.35f -> tr(R.string.msg_255)
     else      -> tr(R.string.msg_256)
 }
 
